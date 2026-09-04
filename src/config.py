@@ -23,6 +23,13 @@ class Config:
     # what happens when the agent picks a truly infeasible LP
     invalid_action_mode: str = "terminate"   # terminate | resample
 
+    # Pre-generate this many training sequences once and cycle them, instead of
+    # running the CUT cutting-stock recursion on every episode reset (measured
+    # 5.7% of a PPO iteration at convergence, more early on when episodes are
+    # short). 0 = off, generate a fresh sequence per reset (the paper's setting
+    # and the default, since a finite pool is seen many times over a long run).
+    seq_pool: int = 0
+
     # ---- constrained-DRL scheme (paper Sec. 3.1/3.2) ------------------------
     use_mask_prediction: bool = True     # MP  - train the mask predictor
     use_mask_constraint: bool = True     # MC  - project action probs with mask

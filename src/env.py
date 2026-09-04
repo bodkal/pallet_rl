@@ -128,6 +128,13 @@ class VecPackingEnv:
         self.envs = [PackingEnv(cfg, dataset, sequences, seed=seed * 1000 + i)
                      for i in range(n)]
         self.n = n
+        if sequences is not None:
+            # Each PackingEnv walks `sequences` from its own pointer, so without
+            # an offset all n envs would pack the *same* sequence at the same
+            # time and the batch would carry n copies of one episode. Spread the
+            # starting pointers evenly over the pool instead.
+            for i, e in enumerate(self.envs):
+                e._seq_ptr = i * len(sequences) // n
 
     def reset(self):
         return _stack([e.reset() for e in self.envs])

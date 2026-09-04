@@ -16,6 +16,7 @@ import torch
 
 from .config import build, Config
 from .env import VecPackingEnv
+from .items import make_testset
 from .model import PackNet
 from .ppo import PPOTrainer
 
@@ -43,6 +44,9 @@ def main(argv=None):
     p.add_argument("--seed", type=int, default=None)
     p.add_argument("--lr", type=float, default=None)
     p.add_argument("--num-envs", type=int, default=None)
+    p.add_argument("--seq-pool", type=int, default=None,
+                   help="pre-generate N training sequences and cycle them "
+                        "instead of generating one per episode reset (0 = off)")
     p.add_argument("--device", default=None)
     p.add_argument("--resume", action="store_true")
     # ablation switches (paper Table 1)
@@ -54,7 +58,8 @@ def main(argv=None):
     cfg = build(a.preset, run_name=a.run, dataset=a.dataset,
                 orientations=a.orientations, total_steps=a.total_steps,
                 max_hours=a.max_hours, seed=a.seed, lr=a.lr,
-                num_envs=a.num_envs, device=a.device)
+                num_envs=a.num_envs, device=a.device,
+                seq_pool=a.seq_pool)
     if a.no_mp: cfg.use_mask_prediction = False
     if a.no_mc: cfg.use_mask_constraint = False
     if a.no_fe: cfg.use_feasibility_entropy = False
@@ -66,7 +71,14 @@ def main(argv=None):
     cfg.to_json(os.path.join(d, "config.json"))
     metrics_path = os.path.join(d, "metrics.jsonl")
 
-    envs = VecPackingEnv(cfg, cfg.num_envs, seed=cfg.seed)
+    pool = None
+    if cfg.seq_pool > 0:
+        # NOTE: seed must not collide with the held-out benchmark, which
+        # src.evaluate builds with seed=999 — training on it would be leakage.
+        pool = make_testset(cfg.seq_pool, cfg.L, cfg.W, cfg.H, cfg.item_min,
+                            cfg.item_max, cfg.dataset, seed=100_000 + cfg.seed)
+        print(f"training on a pre-generated pool of {cfg.seq_pool:,} sequences")
+    envs = VecPackingEnv(cfg, cfg.num_envs, seed=cfg.seed, sequences=pool)
     net = PackNet(cfg).to(device)
     tr = PPOTrainer(cfg, net, envs, device)
 
