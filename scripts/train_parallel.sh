@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Train several configurations AT THE SAME TIME, one process each.
 #
+#   ./scripts/train_parallel.sh                  # no args = the full 6-network matrix
 #   ./scripts/train_parallel.sh RS CUT-1
 #   ./scripts/train_parallel.sh RS:2 RS CUT-1 CUT-2 CUT-2:2
 #   STEPS=30000000 MAX_PARALLEL=3 ./scripts/train_parallel.sh RS CUT-2
@@ -52,7 +53,17 @@ EXTRA=${EXTRA:-}                   # anything else to pass to src.train
 RUN_SUFFIX=${RUN_SUFFIX:-}         # appended to every run name; use it to
                                    # experiment without touching a real run
 
-[ $# -gt 0 ] || { sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
+case ${1:-} in -h|--help)
+  sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; exit 0;; esac
+
+# No specs given -> the whole matrix train_all_options.sh covers: 3 streams x
+# 2 orientation settings = the 6 networks the duel game offers as opponents.
+# CUT-2 first, as in train_all_options.sh, so the paper's headline config gets
+# a slot first if MAX_PARALLEL is capped below the job count.
+if [ $# -eq 0 ]; then
+  set -- CUT-2 CUT-1 RS CUT-2:2 CUT-1:2 RS:2
+  echo "### no specs given -- training the full matrix: {RS, CUT-1, CUT-2} x {1 pose, 2 poses}"
+fi
 
 run_name () {                      # run_name <dataset> <orientations>
   local ds slug
