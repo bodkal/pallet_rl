@@ -47,6 +47,12 @@ def main(argv=None):
     p.add_argument("--seq-pool", type=int, default=None,
                    help="pre-generate N training sequences and cycle them "
                         "instead of generating one per episode reset (0 = off)")
+    p.add_argument("--epochs", type=int, default=None,
+                   help="PPO epochs per update (paper/default 4). Lowering this "
+                        "raises steps/s but takes fewer gradient steps per sample")
+    p.add_argument("--minibatches", type=int, default=None,
+                   help="PPO minibatches per epoch (paper/default 8). Same "
+                        "trade-off as --epochs")
     p.add_argument("--device", default=None)
     p.add_argument("--resume", action="store_true")
     # ablation switches (paper Table 1)
@@ -59,7 +65,8 @@ def main(argv=None):
                 orientations=a.orientations, total_steps=a.total_steps,
                 max_hours=a.max_hours, seed=a.seed, lr=a.lr,
                 num_envs=a.num_envs, device=a.device,
-                seq_pool=a.seq_pool)
+                seq_pool=a.seq_pool, epochs=a.epochs,
+                minibatches=a.minibatches)
     if a.no_mp: cfg.use_mask_prediction = False
     if a.no_mc: cfg.use_mask_constraint = False
     if a.no_fe: cfg.use_feasibility_entropy = False
