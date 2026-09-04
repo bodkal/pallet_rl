@@ -3,7 +3,7 @@
 Reproduction of **"Online 3D Bin Packing with Constrained Deep Reinforcement Learning"**
 — Zhao, She, Zhu, Yang & Xu, AAAI 2021 ([arXiv:2006.14978](https://arxiv.org/abs/2006.14978)).
 
-*Last updated: 2026-08-31*
+*Last updated: 2026-09-04*
 
 **Everything finished lives at the bottom, under [DONE](#done).** The sections
 above it are only what is still open.
@@ -129,20 +129,52 @@ guessing from a single forward pass, which gave a wrong first answer (see below)
 
 | phase | share | bound by |
 |---|---|---|
-| `collect` — the env loop (`VecPackingEnv.step`) + policy forward | **60.5%** | 1 CPU core |
-| `update` — 32 grad steps (PPO epochs x minibatches) | **39.5%** | GPU |
+| `collect` — the env loop (`VecPackingEnv.step`) + policy forward | **66.2%** | 1 CPU core / GPU latency |
+| `update` — 32 grad steps (PPO epochs x minibatches) | **33.8%** | GPU |
+
+Re-measured 2026-09-04 at `num_envs=32` on an idle RTX 4070 Laptop + 16 cores
+(3,374 steps/s, 6.3 h per 100M steps). Broken down over the whole iteration:
+
+| component | share of iteration | Amdahl ceiling if free |
+|---|---|---|
+| `env.step` — all of it | 44.1% | 1.79x |
+| — of which `bin3d.feasibility_mask` | 23.7% | 1.31x |
+| — of which `items.gen_sequence` (amortised) | 5.7% | 1.06x |
+| — of which `bin3d.is_feasible` | 3.4% | 1.04x |
+| policy forward inside `collect` | 22.1% | 1.28x |
+| `update` | 33.8% | 1.51x |
+| *all of `collect`* | *66.2%* | *2.96x* |
 
 Inside `collect`, `bin3d.feasibility_mask`/`pose_mask` alone is **54%** of
 `env.step`, and `items.gen_sequence` (the CUT cutting-stock recursion, re-run on
 every episode reset) is another **14%** — both currently plain numpy in a
 Python `for` loop over `num_envs`, i.e. one core.
 
-**Raising `num_envs` buys nothing** — measured flat at ~10,200 steps/s from 32
-envs up to 512; `env.step` scales perfectly *linearly* with `num_envs` (3 -> 6
--> 12 -> 24 -> 48 ms), i.e. zero parallelism, while the network handles 16x the
-batch for 4x the time. The "1000 robots on one GPU" pattern (IsaacGym-style)
-does not transfer here because the *simulator* is numpy on the CPU, not a GPU
-kernel — unlike those environments, which put the sim itself on the GPU.
+**~~Raising `num_envs` buys nothing~~ — CORRECTED 2026-09-04. It is worth 1.57x.**
+The original measurement (flat at ~10,200 steps/s from 32 to 512) was of the
+**env loop alone**, and that part stands: `env.step` scales perfectly linearly
+with `num_envs` (3 -> 6 -> 12 -> 24 -> 48 ms), i.e. zero parallelism, because
+the simulator is numpy on the CPU, not a GPU kernel — the IsaacGym "1000 robots
+on one GPU" pattern does not transfer. But the *conclusion drawn from it was
+wrong end-to-end*, because 56% of an iteration is GPU work that amortises over
+a bigger batch. Measured end-to-end with a trained net (`bpp1_cut2/best.pt`,
+so episode lengths are realistic) and a sequence pool:
+
+| `num_envs` | steps/s | vs 32 | h per 100M |
+|---|---|---|---|
+| 32 | 4,613 | 1.00x | 6.0 |
+| 128 | 7,257 | **1.57x** | 3.8 |
+| 256 | 7,731 | 1.68x | 3.6 |
+| 512 | 7,878 | 1.71x | 3.5 |
+
+The source is the per-step GPU round-trip: one policy forward costs 0.70 ms at
+batch 32 and 1.17 ms at batch 512 — 16x the work for 1.7x the time. Shipped as
+the `fast` preset. **Caveat:** batch goes 1,280 -> 5,120, i.e. 4x fewer gradient
+steps per sample, so this is a wall-clock win that still needs an A/B on
+utilisation-vs-*step* before it is used for a reproduction number.
+
+*Ruled out:* running the collect-phase forward on CPU to dodge the round-trip.
+The GPU wins at every batch size (0.70 ms vs 3.46 ms at batch 32).
 
 **Running several trainings concurrently helps, but less than a naive
 env-only benchmark suggests** — measured on real end-to-end trainings
@@ -185,15 +217,24 @@ gets close to using the hardware fully; they need to land together.
       that) — so this and `SubprocVecEnv` are a package: batching the mask is
       what makes raising `num_envs` worth anything once the env loop is no
       longer serial.
-- [ ] Pre-generate/cache a pool of CUT-1/CUT-2 sequences instead of running
-      `gen_sequence`'s cutting-stock recursion on every episode reset (14% of
-      `env.step`) — cheap win, independent of the two above
+- [x] Pre-generate/cache a pool of CUT-1/CUT-2 sequences instead of running
+      `gen_sequence`'s cutting-stock recursion on every episode reset — shipped
+      as `--seq-pool N` (off by default; `fast` preset uses 40,000).
+      > **Worth less than it looks.** Benchmarked with an *untrained* net it
+      > shows 1.35-1.57x, but only because a random policy dies after 1.8 items
+      > so `gen_sequence` runs almost every step. With a trained net (episode
+      > length 12) it is **1.05x**, matching the 5.7% amortised cost. Take it —
+      > it is ~5 lines — but the throughput is in `num_envs`, not here.
 - [ ] **MCTS speed** — batch network evaluations across simulations (currently one forward pass per node visit). Target the paper's 3.6 s per decision at k=20. Add a transposition table keyed on `(height-map bytes, item, remaining set)`.
 - [ ] Mixed precision / `torch.compile` for the CNN — revisit after the above:
       the GPU is 39.5% of a PPO iteration, not the ~2% a single forward pass
       would suggest, so this is worth more than first assumed
-- [ ] Larger minibatches / fewer PPO epochs — attacks the `update` 39.5% share
-      directly; untested
+- [x] Larger minibatches / fewer PPO epochs — attacks the `update` 33.8% share
+      directly; exposed as `--epochs` / `--minibatches`. Measured at
+      `num_envs=32`: 4x8 -> 4x4 = 1.10x, 4x2 = 1.17x, 2x8 = 1.19x, 2x4 = 1.25x,
+      1x4 = 1.32x; stacked with `fast` (128 envs, 2x4) the whole config reaches
+      **1.98x** (3.2 h per 100M). Trades gradient steps for wall-clock — still
+      needs the utilisation-vs-step A/B, so defaults stay at the paper's 4x8.
 
 ### D.2 Other
 

@@ -77,6 +77,51 @@ runs, `NO_EVAL=1` to train now and evaluate later.
 
 ---
 
+## Making it faster
+
+Profiled at the default `num_envs=32` on an RTX 4070 Laptop + 16 cores: 66% of a
+PPO iteration is `collect` (44% the numpy env loop on **one** core, 22% the
+per-step GPU round-trip) and 34% is the update. Three knobs, all measured
+end-to-end on a trained net:
+
+```bash
+# 1.65x - the whole tuned config in one word (num_envs=128 + 40k sequence pool)
+python3 -m src.train --preset fast --dataset CUT-2 --run bpp1_cut2_fast
+
+# or the pieces, on top of any preset
+python3 -m src.train --preset paper --num-envs 128        # 1.57x  <- almost all of it
+python3 -m src.train --preset paper --seq-pool 40000      # 1.05x
+python3 -m src.train --preset paper --epochs 2 --minibatches 4   # 1.25x
+```
+
+| config | steps/s | vs default | h per 100M |
+|---|---|---|---|
+| `paper` (32 envs, 4x8) | 4,385 | 1.00x | 6.3 |
+| `+ --seq-pool 40000` | 4,613 | 1.05x | 6.0 |
+| `fast` (128 envs + pool) | 7,257 | **1.65x** | **3.8** |
+| `fast --num-envs 512` | 7,878 | 1.80x | 3.5 |
+| `fast --epochs 2 --minibatches 4` | 8,701 | 1.98x | 3.2 |
+
+**`--num-envs` is where the speed is**, because a bigger batch amortises the GPU
+round-trip (one forward costs 0.70 ms at batch 32 and 1.17 ms at batch 512) and
+the update. The env loop itself does **not** parallelise - it is a serial numpy
+loop over the envs, so `env.step` scales linearly with `num_envs`.
+
+> **These are not free.** `--num-envs` and `--epochs`/`--minibatches` both change
+> the optimisation: 128 envs takes the batch from 1,280 to 5,120, i.e. 4x fewer
+> gradient steps per sample. Higher steps/s is not automatically higher
+> utilisation per hour. A/B them on utilisation-vs-**step** over ~5M steps before
+> committing a long run, and keep `--preset paper` for reproduction numbers.
+> `--seq-pool` is the only one that cannot change a gradient - though a finite
+> pool is reused (40,000 sequences is ~1,400 repeats over 100M steps), so do not
+> shrink it much.
+
+Running several trainings at once does **not** make one run faster - each process
+still uses one core for its env loop - but it does use otherwise idle cores when
+there is a queue: 2 concurrent runs = 1.74x aggregate, 3 = 2.18x.
+
+---
+
 # Play against it - human vs. agent
 
 ```bash
