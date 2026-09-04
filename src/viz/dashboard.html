@@ -24,6 +24,8 @@ svg{width:100%;height:170px;display:block;overflow:visible}
 .bar{height:8px;background:var(--line);border-radius:99px;overflow:hidden}
 .bar>i{display:block;height:100%;background:linear-gradient(90deg,var(--c0),var(--c2));
        border-radius:99px;transition:width .6s ease}
+.prow{margin-bottom:9px}
+.prow:last-child{margin-bottom:0}
 .barlab{display:flex;justify-content:space-between;font-size:11px;color:var(--dim);padding:5px 0 0}
 .barlab b{color:var(--fg);font-weight:600;font-variant-numeric:tabular-nums}
 #queue{display:flex;gap:6px;flex-wrap:wrap;padding:10px 20px 0;font-size:11px}
@@ -127,7 +129,7 @@ async function tick(){
   document.getElementById('status').textContent = last
     ? `${SEL[0]} · update ${last.update} · ${(last.step/1e6).toFixed(2)}M steps · ${(last.time/3600).toFixed(2)} h · ${last.fps.toFixed(0)} fps`
     : 'no metrics yet — start a training run';
-  progress(SEL[0],d); queue(); kpis(last,d); draw();
+  progress(SEL); queue(); kpis(last,d); draw();
 }
 function best(d,k){return d.length?Math.max(...d.map(x=>x[k]||0)):0}
 function eta(run,d){
@@ -140,16 +142,27 @@ function eta(run,d){
   return {h, capped:byTime<byStep, pct:100*l.step/c.total_steps,
           step:l.step, total:c.total_steps, rt};
 }
-function progress(run,d){
-  const e=eta(run,d), el=document.getElementById('prog');
-  if(!e){el.innerHTML='';return}
-  el.innerHTML=`<div class="bar"><i style="width:${Math.min(100,e.pct).toFixed(1)}%"></i></div>
-    <div class="barlab">
-      <span><b>${run}</b> &nbsp; ${(e.step/1e6).toFixed(2)}M / ${(e.total/1e6).toFixed(0)}M steps
-        &nbsp;·&nbsp; <b>${e.pct.toFixed(1)}%</b></span>
-      <span>${(e.rt).toFixed(0)} steps/s &nbsp;·&nbsp; time left
-        <b>${hms(e.h)}</b>${e.capped?' (max-hours cap)':''}</span>
-    </div>`;
+function progress(runs){
+  // One bar per selected run.  When several are overlaid the bar takes the same
+  // colour the run's series has in the charts, so a bar and a curve that belong
+  // together look like they do; a lone run keeps the original gradient.
+  const el=document.getElementById('prog');
+  el.innerHTML = runs.map((r,ri)=>{
+    const d=DATA[r]||[], e=eta(r,d), l=d[d.length-1];
+    const fill = runs.length>1 ? `;background:var(${COLORS[ri%6]})` : '';
+    if(!e) return `<div class="prow">
+      <div class="bar"><i style="width:0%${fill}"></i></div>
+      <div class="barlab"><span><b>${r}</b>${l?` &nbsp; ${(l.step/1e6).toFixed(2)}M steps`:''}</span>
+        <span>${l?'no total_steps in config':'no metrics yet'}</span></div></div>`;
+    return `<div class="prow">
+      <div class="bar"><i style="width:${Math.min(100,e.pct).toFixed(1)}%${fill}"></i></div>
+      <div class="barlab">
+        <span><b>${r}</b> &nbsp; ${(e.step/1e6).toFixed(2)}M / ${(e.total/1e6).toFixed(0)}M steps
+          &nbsp;·&nbsp; <b>${e.pct.toFixed(1)}%</b></span>
+        <span>${(e.rt).toFixed(0)} steps/s &nbsp;·&nbsp; time left
+          <b>${hms(e.h)}</b>${e.capped?' (max-hours cap)':''}</span>
+      </div></div>`;
+  }).join('');
 }
 function queue(){
   const el=document.getElementById('queue');
