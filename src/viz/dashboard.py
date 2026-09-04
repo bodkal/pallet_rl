@@ -13,6 +13,7 @@ import argparse
 import json
 import os
 import sys
+import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
@@ -30,20 +31,58 @@ def list_runs():
     return out
 
 
+_CACHE: dict = {}                 # path -> incremental parse state
+_CACHE_LOCK = threading.Lock()    # ThreadingHTTPServer: polls can overlap
+_KEEP = 4800                      # decimation bound: ~9 MB/run, not ~140 MB
+
+
 def read_metrics(run, max_points=1200):
+    """Rows from runs/<run>/metrics.jsonl, parsed incrementally.
+
+    The file is append-only and reaches ~55 MB / 78k rows over a 100M-step run.
+    Re-parsing all of it on every 4 s poll cost 645 ms of CPU per run, and
+    pipeline_queue() does it for all 8 scripted stages whatever you have
+    selected -- together about a core.  That matters because each training
+    process only gets one core (D.1), so the dashboard was competing with the
+    thing it is watching.  Parse only the bytes appended since the last call,
+    and keep a decimated history so memory stays bounded however long the run.
+    """
     p = os.path.join(ROOT, "runs", run, "metrics.jsonl")
-    if not os.path.exists(p):
+    try:
+        size = os.path.getsize(p)
+    except OSError:
         return []
-    rows = []
-    with open(p) as f:
-        for line in f:
-            line = line.strip()
-            if line:
+    with _CACHE_LOCK:
+        c = _CACHE.get(p)
+        if c is None or size < c["off"]:   # unseen, or truncated by a fresh run
+            c = {"off": 0, "rows": [], "tail": "", "stride": 1, "seen": 0, "last": None}
+            _CACHE[p] = c
+        if size > c["off"]:
+            with open(p, "rb") as f:
+                f.seek(c["off"])
+                chunk = f.read()
+                c["off"] = f.tell()
+            parts = (c["tail"] + chunk.decode("utf-8", "replace")).split("\n")
+            c["tail"] = parts.pop()        # trailing "" or a half-written line
+            for line in parts:
+                line = line.strip()
+                if not line:
+                    continue
                 try:
-                    rows.append(json.loads(line))
+                    r = json.loads(line)
                 except json.JSONDecodeError:
-                    pass                      # partially written last line
-    if len(rows) > max_points:                # uniform downsample, keep the last
+                    continue               # partially written line, retry next poll
+                c["last"] = r
+                if c["seen"] % c["stride"] == 0:
+                    c["rows"].append(r)
+                c["seen"] += 1
+                if len(c["rows"]) > _KEEP:  # halve, and thin future appends too
+                    c["rows"] = c["rows"][::2]
+                    c["stride"] *= 2
+        rows, last = list(c["rows"]), c["last"]
+    if last is not None and (not rows or rows[-1] is not last):
+        rows.append(last)                  # the newest point is always shown
+    if len(rows) > max_points:
         step = len(rows) / max_points
         rows = [rows[int(i * step)] for i in range(max_points - 1)] + [rows[-1]]
     return rows
