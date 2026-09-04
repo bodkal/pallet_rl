@@ -1,7 +1,7 @@
 """A/B the throughput knobs: do they actually buy utilisation, or just steps/s?
 
     python3 -m scripts.ab_throughput --steps 3000000     # run + render
-    python3 -m scripts.ab_throughput --render-only       # re-draw from runs/ab_*
+    python3 -m scripts.ab_throughput --render-only       # re-draw from runs/old_run/ab_*
 
 Each arm adds ONE change to the one before it, so the deltas are attributable.
 Arms run sequentially -- concurrent runs contend for the GPU and would make the
@@ -37,10 +37,10 @@ PALETTE = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4"]
 
 # each arm = the previous one plus exactly one change
 ARMS = [
-    ("paper (32 envs)", "ab_paper",   []),
-    ("+ seq pool",      "ab_pool",    ["--seq-pool", "40000"]),
-    ("+ 128 envs",      "ab_envs128", ["--seq-pool", "40000", "--num-envs", "128"]),
-    ("+ PPO 2x4",       "ab_ppo24",   ["--seq-pool", "40000", "--num-envs", "128",
+    ("paper (32 envs)", "old_run/ab_paper",   []),
+    ("+ seq pool",      "old_run/ab_pool",    ["--seq-pool", "40000"]),
+    ("+ 128 envs",      "old_run/ab_envs128", ["--seq-pool", "40000", "--num-envs", "128"]),
+    ("+ PPO 2x4",       "old_run/ab_ppo24",   ["--seq-pool", "40000", "--num-envs", "128",
                                        "--epochs", "2", "--minibatches", "4"]),
 ]
 

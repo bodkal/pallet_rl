@@ -17,7 +17,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 OUT = "docs"
-RUNS = {"RS": "runs/bpp1_rs", "CUT-1": "runs/bpp1_cut1", "CUT-2": "runs/bpp1_cut2"}
+# the 10^3 reproduction runs the README documents, archived under old_run/
+RUNS = {"RS": "runs/old_run/bpp1_rs", "CUT-1": "runs/old_run/bpp1_cut1",
+        "CUT-2": "runs/old_run/bpp1_cut2"}
 PAPER_BPP1 = {"RS": 0.505, "CUT-1": 0.734, "CUT-2": 0.669}   # paper Table 3
 
 # dataviz reference palette, categorical slots 1-3 (validated all-pairs, light)
@@ -193,7 +195,7 @@ def fig_lookahead():
 
 
 # ---------------------------------------------------------------- figure 4
-def fig_packing(run="runs/bpp1_cut2", ds="CUT-2", ep=1,
+def fig_packing(run="runs/old_run/bpp1_cut2", ds="CUT-2", ep=1,
                 pair=("boundary rule", "BPP-1 (ours)")):
     """The same box sequence, packed by the heuristic and by the policy."""
     from matplotlib.colors import LinearSegmentedColormap, Normalize
