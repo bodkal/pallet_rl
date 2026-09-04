@@ -78,12 +78,14 @@ def opponents():
                             note=f"same network + permutation tree search over {k} boxes",
                             run=r["run"], dataset=r["dataset"], lookahead=k,
                             orientations=r["orientations"], can_rotate=False, **geom))
+    d = default_cfg()
+    hgeom = dict(L=d.L, W=d.W, H=d.H)
     out.append(dict(lookahead=1, orientations=1, can_rotate=True, dataset=None, id="boundary", label="boundary rule",
-                    note="the paper's spare-cuboid heuristic (slow, strong)", run=None))
+                    note="the paper's spare-cuboid heuristic (slow, strong)", run=None, **hgeom))
     out.append(dict(lookahead=1, orientations=1, can_rotate=True, dataset=None, id="dbl", label="deepest-bottom-left",
-                    note="classic online placement rule", run=None))
+                    note="classic online placement rule", run=None, **hgeom))
     out.append(dict(lookahead=1, orientations=1, can_rotate=True, dataset=None, id="random", label="random feasible",
-                    note="uniform over legal positions - the floor", run=None))
+                    note="uniform over legal positions - the floor", run=None, **hgeom))
     return out
 
 
@@ -106,11 +108,21 @@ def opponent_label(opp: str):
     return opp
 
 
+# Geometry for the heuristic opponents, which have no checkpoint to read one
+# from.  Set by main() via --bin; the paper's 10^3 unless asked otherwise.
+DEFAULT_CFG = None
+
+
+def default_cfg():
+    from ..config import build
+    return DEFAULT_CFG if DEFAULT_CFG is not None else build("paper")
+
+
 def config_for(run):
-    from ..config import Config
     if run:
+        from ..config import Config
         return Config.from_json(os.path.join(ROOT, "runs", run, "config.json"))
-    return Config()
+    return default_cfg()
 
 
 def build_policy(cfg, opp: str, device: str, sims: int):
@@ -443,7 +455,22 @@ def main(argv=None):
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--device", default="cuda")
     ap.add_argument("--mcts-sims", type=int, default=100)
+    ap.add_argument("--bin", default=None, metavar="N|LxWxH",
+                    help="bin for the HEURISTIC opponents, e.g. 15 (default 10). "
+                         "A trained opponent always uses the geometry in its own "
+                         "config.json, so this does not affect those.")
     a = ap.parse_args(argv)
+    if a.bin:
+        from ..config import build as _build
+        try:
+            parts = [int(v) for v in a.bin.lower().split("x")]
+        except ValueError:
+            ap.error(f"--bin: expected N or LxWxH, got {a.bin!r}")
+        if len(parts) == 1:
+            parts *= 3
+        if len(parts) != 3 or min(parts) < 2:
+            ap.error(f"--bin: expected N or LxWxH with every dim >= 2, got {a.bin!r}")
+        globals()["DEFAULT_CFG"] = _build("paper", L=parts[0], W=parts[1], H=parts[2])
     Handler.device, Handler.sims = a.device, a.mcts_sims
     opps = opponents()
     srv = QuietServer((a.host, a.port), Handler)

@@ -664,7 +664,7 @@ function oppNote(){
   const o = SETUP.opponents.find(o=>o.id===$('#opp').value);
   if(!o) return;
   $('#opp-note').innerHTML = o.note
-    + (o.run ? ` · bin ${o.L}×${o.W}×${o.H} (set by the checkpoint)` : ' · bin 10×10×10')
+    + ` · bin ${o.L}×${o.W}×${o.H}${o.run ? ' (set by the checkpoint)' : ''}`
     + (o.run && o.dataset !== DS
         ? `<br><b style="color:var(--c1)">Trained on ${o.dataset}, playing ${DS}</b>
            — off-distribution, so it will pack below its own numbers.` : '');
