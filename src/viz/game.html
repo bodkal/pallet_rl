@@ -1,0 +1,753 @@
+<!doctype html>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>3D-BPP &mdash; you vs. the agent</title>
+<style>
+:root{--bg:#0f1115;--panel:#171a21;--line:#262b36;--fg:#e6e9ef;--dim:#8b93a7;
+      --c0:#4cc9f0;--c1:#f7b32b;--c2:#57cc99;--c3:#ef476f;--c4:#b892ff;--c5:#ff9770;}
+@media(prefers-color-scheme:light){:root{--bg:#f6f7f9;--panel:#fff;--line:#e2e5ea;--fg:#1a1d23;--dim:#6b7280;}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:13px/1.45 ui-sans-serif,-apple-system,Segoe UI,Roboto,sans-serif}
+header{display:flex;gap:14px;align-items:baseline;flex-wrap:wrap;padding:13px 20px;
+  border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg);z-index:5}
+h1{font-size:15px;margin:0;font-weight:650;letter-spacing:.2px}
+.sub{color:var(--dim);font-size:12px}
+.spacer{margin-left:auto}
+button{font:inherit;border:1px solid var(--line);background:var(--panel);color:var(--fg);
+  border-radius:8px;padding:7px 14px;cursor:pointer}
+button:hover:not(:disabled){border-color:var(--c0);color:var(--c0)}
+button:disabled{opacity:.45;cursor:default}
+button.go{background:var(--c0);border-color:var(--c0);color:#06121a;font-weight:640}
+button.go:hover:not(:disabled){filter:brightness(1.08);color:#06121a}
+select,input{font:inherit;background:var(--panel);color:var(--fg);border:1px solid var(--line);
+  border-radius:8px;padding:7px 10px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+.card h2{font-size:11px;margin:0 0 10px;font-weight:600;color:var(--dim);
+  letter-spacing:.6px;text-transform:uppercase}
+.pill{border:1px solid var(--line);border-radius:999px;padding:5px 13px;cursor:pointer;
+  user-select:none;font-size:12px;background:var(--panel)}
+.pill.on{background:var(--fg);color:var(--bg);border-color:var(--fg);font-weight:600}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+label.f{display:block;color:var(--dim);font-size:11px;text-transform:uppercase;
+  letter-spacing:.5px;margin:0 0 6px}
+.field{margin-bottom:16px}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:9px 13px;flex:1;min-width:96px}
+.kpi .v{font-size:21px;font-weight:640;font-variant-numeric:tabular-nums;line-height:1.15}
+.kpi .k{color:var(--dim);font-size:10px;text-transform:uppercase;letter-spacing:.5px}
+main{padding:16px 20px 48px;max-width:1400px;margin:0 auto}
+[hidden]{display:none!important}
+
+/* setup */
+#setup{max-width:760px;margin:26px auto}
+.opt{color:var(--dim);font-size:12px;margin-top:6px}
+table.hist{width:100%;border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums}
+table.hist th{text-align:left;color:var(--dim);font-weight:500;font-size:10px;
+  text-transform:uppercase;letter-spacing:.5px;padding:0 10px 6px 0}
+table.hist td{padding:4px 10px 4px 0;border-top:1px solid var(--line)}
+.win-human{color:var(--c2);font-weight:640}
+.win-agent{color:var(--c3);font-weight:640}
+.win-draw{color:var(--dim)}
+
+/* play */
+#play{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:14px;align-items:start}
+@media(max-width:960px){#play{grid-template-columns:1fr}}
+#board{display:grid;grid-template-columns:auto minmax(250px,1fr);gap:14px;align-items:start}
+@media(max-width:1180px){#board{grid-template-columns:1fr}}
+#pallet{display:block;cursor:crosshair;border-radius:8px;touch-action:none}
+#curbox{display:block;margin:10px 0 2px;border-radius:3px}
+.qb{display:flex;flex-direction:column;align-items:center;gap:3px}
+.qb canvas{border-radius:2px}
+.qb span{font-size:10.5px;color:var(--dim);font-variant-numeric:tabular-nums}
+.qb.pk span{opacity:.8}
+.pklab{font-size:9.5px!important;letter-spacing:.3px;text-transform:uppercase;opacity:.7}
+.pknote{flex-basis:100%;font-size:11px;line-height:1.5;color:var(--dim);opacity:.85;margin-top:2px}
+.dims{font-size:23px;font-weight:660;font-variant-numeric:tabular-nums;letter-spacing:-.3px}
+.qrow{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+#msg{min-height:19px;font-size:12px;color:var(--c1)}
+.lg{display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--dim);padding-top:8px}
+.lg i{width:11px;height:11px;border-radius:3px;display:inline-block;vertical-align:-1px;margin-right:5px}
+.hint{color:var(--dim);font-size:11.5px;line-height:1.6}
+kbd{border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:1px 5px;
+  font:11px ui-monospace,monospace;color:var(--fg)}
+
+/* result */
+#result{max-width:1180px;margin:0 auto}
+.duel{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:820px){.duel{grid-template-columns:1fr}}
+.big{font-size:40px;font-weight:680;letter-spacing:-1px;font-variant-numeric:tabular-nums;line-height:1}
+.verdict{font-size:26px;font-weight:680;letter-spacing:-.4px;margin:0 0 4px}
+.bar{height:9px;background:var(--line);border-radius:99px;overflow:hidden;margin:8px 0 4px}
+.bar>i{display:block;height:100%;border-radius:99px;transition:width .5s ease}
+.side{border:1px solid var(--line);border-radius:12px;padding:14px 16px;background:var(--panel)}
+.side.win{box-shadow:0 0 0 1px currentColor inset}
+.side.win.h{border-color:var(--c2);color:var(--c2)}
+.side.win.a{border-color:var(--c1);color:var(--c1)}
+.side h2 .crown{float:right;font-size:11px;letter-spacing:.6px}
+.stat{display:flex;justify-content:space-between;padding:3px 0;font-variant-numeric:tabular-nums}
+.stat span{color:var(--dim)}
+input[type=range]{width:100%;accent-color:var(--c0)}
+.spin{display:inline-block;width:13px;height:13px;border:2px solid var(--line);
+  border-top-color:var(--c0);border-radius:50%;animation:sp .7s linear infinite;vertical-align:-2px}
+@keyframes sp{to{transform:rotate(360deg)}}
+</style>
+
+<header>
+  <h1>Online 3D-BPP &mdash; you vs. the agent</h1>
+  <span class="sub" id="hsub">pack the stream by hand, then watch the agent try the same boxes</span>
+  <span class="spacer"></span>
+  <button id="btn-new" hidden>&larr; Back to setup</button>
+</header>
+
+<main>
+<!-- ===================== SETUP ===================== -->
+<section id="setup">
+  <div class="card">
+    <h2>Set up the duel</h2>
+
+    <div class="field">
+      <label class="f">Box stream &mdash; how the sequence is generated</label>
+      <div class="row" id="ds"></div>
+      <div class="opt" id="ds-note"></div>
+    </div>
+
+    <div class="field">
+      <label class="f">Your opponent</label>
+      <select id="opp" style="width:100%"></select>
+      <label class="row" style="cursor:pointer;margin-top:8px">
+        <input type="checkbox" id="allagents">
+        <span class="opt" style="margin:0">show every agent, including ones trained on another stream</span>
+      </label>
+      <div class="opt" id="opp-note"></div>
+      <div class="opt" id="nonehere" hidden
+           style="color:var(--c1);margin-top:6px;line-height:1.6"></div>
+    </div>
+
+    <div class="field" id="rotwrap">
+      <label class="f">Rotation</label>
+      <label class="row" style="cursor:pointer">
+        <input type="checkbox" id="rotate"> <span id="rotlab">let boxes be turned 90&deg; &mdash; for both players</span>
+      </label>
+    </div>
+
+    <div class="row" style="align-items:flex-end;gap:16px">
+      <div>
+        <label class="f">Seed</label>
+        <input id="seed" size="9" placeholder="random">
+      </div>
+      <button class="go" id="start" style="margin-left:auto">Start packing &rarr;</button>
+    </div>
+    <div class="opt" id="fair"></div>
+  </div>
+
+  <div class="card" style="margin-top:14px" id="histcard" hidden>
+    <h2>Past duels</h2>
+    <div id="hist"></div>
+  </div>
+</section>
+
+<!-- ===================== PLAY ===================== -->
+<section id="play" hidden>
+  <div>
+    <div class="row" id="kpis" style="margin-bottom:12px"></div>
+    <div id="board">
+    <div class="card">
+      <h2>The pallet &mdash; top view <span id="palsub" style="text-transform:none;letter-spacing:0"></span></h2>
+      <canvas id="pallet"></canvas>
+      <div class="lg">
+        <span><i style="background:var(--c2)"></i>legal here</span>
+        <span><i style="background:var(--c3)"></i>illegal here</span>
+        <span><i style="background:var(--c0);opacity:.45"></i>legal position</span>
+        <span>cell number = stacked height</span>
+      </div>
+      <div id="msg"></div>
+    </div>
+    <div class="card">
+      <h2>Your bin <span style="text-transform:none;letter-spacing:0;font-weight:400"
+          class="sub">&mdash; drag to rotate, double-click to reset</span></h2>
+      <canvas id="iso3d"></canvas>
+    </div>
+    </div>
+  </div>
+
+  <div>
+    <div class="card">
+      <h2>Pack this box</h2>
+      <div class="dims" id="cur">&mdash;</div>
+      <div class="sub" id="curinfo"></div>
+      <canvas id="curbox"></canvas>
+      <div id="hoverinfo" class="sub" style="margin-top:10px;min-height:34px"></div>
+      <button id="rot" hidden style="width:100%">Rotate 90&deg; <kbd>R</kbd></button>
+    </div>
+
+    <div class="card" style="margin-top:12px" id="qcard">
+      <h2>Coming next <span id="qsub" style="text-transform:none;letter-spacing:0;font-weight:400"></span></h2>
+      <div class="qrow" id="q"></div>
+    </div>
+
+    <div class="card" style="margin-top:12px">
+      <h2>Controls</h2>
+      <label class="row" style="cursor:pointer;margin-bottom:10px">
+        <input type="checkbox" id="hint" checked> <span>show every legal position</span>
+      </label>
+      <button id="resign" style="width:100%;margin-bottom:8px">I'm stuck &mdash; stop here</button>
+      <button class="go" id="tourn" style="width:100%;margin-bottom:8px" hidden>Let the agent try &rarr;</button>
+      <button id="tosetup" style="width:100%">&larr; Back to setup</button>
+      <div class="hint" style="margin-top:10px">
+        Click a cell to drop the box with its front-left-bottom corner there.
+        It lands on top of whatever is underneath and must be stable
+        (the paper's support rule), so illegal spots are refused.
+        The game ends when no legal spot is left.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== RESULT ===================== -->
+<section id="result" hidden>
+  <div class="card" style="margin-bottom:14px">
+    <h2>Result</h2>
+    <div class="verdict" id="verdict">&mdash;</div>
+    <div class="sub" id="vsub"></div>
+    <div style="margin-top:14px">
+      <div class="row" style="justify-content:space-between"><b>You</b><b id="hu"></b></div>
+      <div class="bar"><i id="hbar" style="background:var(--c2)"></i></div>
+      <div class="row" style="justify-content:space-between;margin-top:10px"><b id="alab">Agent</b><b id="au"></b></div>
+      <div class="bar"><i id="abar" style="background:var(--c1)"></i></div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:14px">
+    <h2>Replay &mdash; same boxes, same order</h2>
+    <input type="range" id="scrub" min="0" max="1" value="1">
+    <div class="sub" id="scrublab" style="font-variant-numeric:tabular-nums"></div>
+    <div class="sub" style="margin-top:6px;opacity:.8">Drag either bin to rotate both together
+      &mdash; same angle, fair comparison. Double-click resets.</div>
+  </div>
+
+  <div class="duel">
+    <div class="side" id="side-h">
+      <h2 style="font-size:11px;color:var(--dim);letter-spacing:.6px;text-transform:uppercase;margin:0 0 8px">You<span class="crown" id="crown-h"></span></h2>
+      <canvas id="iso-h"></canvas>
+      <div id="stat-h" style="margin-top:10px"></div>
+    </div>
+    <div class="side" id="side-a">
+      <h2 style="font-size:11px;color:var(--dim);letter-spacing:.6px;text-transform:uppercase;margin:0 0 8px"><span id="alab2">Agent</span><span class="crown" id="crown-a"></span></h2>
+      <canvas id="iso-a"></canvas>
+      <div id="stat-a" style="margin-top:10px"></div>
+    </div>
+  </div>
+
+  <div class="row" style="margin-top:16px">
+    <button class="go" id="again">Rematch &mdash; new boxes</button>
+    <button id="samesame">Replay this exact sequence</button>
+    <button id="tomenu">Back to setup</button>
+  </div>
+</section>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const DPR = () => Math.min(2, window.devicePixelRatio || 1);
+async function api(path, body){
+  const r = await fetch(path, body ? {method:'POST', headers:{'Content-Type':'application/json'},
+                                      body:JSON.stringify(body)} : undefined);
+  return r.json();
+}
+
+let SETUP=null, S=null, ORIENT=0, HOVER=null, DS='CUT-2';
+const DS_NOTE = {
+ 'RS':'Random sampling: boxes drawn uniformly from the 64 types until their volume reaches the bin. A perfect packing usually does not exist.',
+ 'CUT-1':'The bin is cut into boxes, then sorted by height of their bottom face. 100% is always achievable.',
+ 'CUT-2':'Same cutting, ordered so a box only arrives once everything it rests on has arrived. 100% is always achievable. This is the paper\'s main benchmark.'};
+
+/* ================= colours ================= */
+function boxColor(i, light){
+  const h = (i*137.508 + 28) % 360;
+  return `hsl(${h.toFixed(0)} 62% ${light}%)`;
+}
+const RAMP = [[27,42,74],[31,95,139],[32,144,141],[92,178,112],[200,195,63],[224,138,46],[208,73,47]];
+function heightColor(h, H){
+  if(h<=0) return css('--panel');
+  const t = Math.min(1, h/H) * (RAMP.length-1);
+  const i = Math.min(RAMP.length-2, Math.floor(t)), f = t-i;
+  const c = RAMP[i].map((v,k)=>Math.round(v + f*(RAMP[i+1][k]-v)));
+  return `rgb(${c[0]} ${c[1]} ${c[2]})`;
+}
+
+/* ================= isometric 3D ================= */
+// azimuth/elevation, shared by every bin.  th = -45deg puts the origin corner on
+// the left of the silhouette, so all three axes fall outside the packed boxes.
+const VIEW  = {th: -Math.PI/4, ph: 35*Math.PI/180};
+const VIEW0 = {th: VIEW.th, ph: VIEW.ph};
+
+function drawIso(cv, boxes, L, W, H, opts){
+  opts = opts || {};
+  const dpr = DPR();
+  cv.style.width = '100%';                       // measure the container, not the attribute
+  const cw = Math.max(200, cv.clientWidth), ch = opts.height || Math.round(cw*0.72);
+  cv.style.height = ch+'px';
+  cv.width = cw*dpr; cv.height = ch*dpr;
+  const g = cv.getContext('2d');
+  g.setTransform(dpr,0,0,dpr,0,0);
+  g.clearRect(0,0,cw,ch);
+
+  // free axonometric camera: spin about the vertical axis (th), tilt down (ph).
+  const st=Math.sin(VIEW.th), ct=Math.cos(VIEW.th), sp=Math.sin(VIEW.ph), cp=Math.cos(VIEW.ph);
+  const raw   = (x,y,z)=>[x*ct - y*st, (x*st + y*ct)*sp - z*cp];
+  const depth = (x,y,z)=>(x*st + y*ct)*cp + z*sp;      // bigger = nearer the camera
+  const AX = -0.9, EXT = 1.6;                          // axes sit just outside the bin
+
+  // fit the bin *and* its axes into the canvas at this angle
+  let mnx=1e9,mxx=-1e9,mny=1e9,mxy=-1e9;
+  const fit = (x,y,z)=>{const [a,b]=raw(x,y,z);
+    mnx=Math.min(mnx,a);mxx=Math.max(mxx,a);mny=Math.min(mny,b);mxy=Math.max(mxy,b);};
+  for(const x of [0,L]) for(const y of [0,W]) for(const z of [0,H]) fit(x,y,z);
+  fit(AX-1.6, AX-1.6, 0); fit(L+EXT, AX, 0); fit(AX, W+EXT, 0); fit(AX, AX, H+EXT);
+  const pad=10, s=Math.min((cw-2*pad)/(mxx-mnx),(ch-2*pad)/(mxy-mny));
+  const ox=pad-mnx*s + ((cw-2*pad)-(mxx-mnx)*s)/2, oy=pad-mny*s + ((ch-2*pad)-(mxy-mny)*s)/2;
+  const P=(x,y,z)=>{const [a,b]=raw(x,y,z); return [ox+a*s, oy+b*s];};
+
+  // GHOST > 0 while painting the pass that goes *over* the boxes
+  let GHOST = 0;
+  const line=(p,q,col,lw,halo)=>{
+    const seg=()=>{g.beginPath();g.moveTo(p[0],p[1]);g.lineTo(q[0],q[1]);g.stroke();};
+    if(halo && !GHOST){ g.strokeStyle=css('--bg'); g.lineWidth=(lw||1)+3.5;
+                        g.globalAlpha=.85; seg(); }
+    g.globalAlpha = GHOST || 1;
+    g.strokeStyle=col; g.lineWidth=lw||1; seg();
+    g.globalAlpha = 1;
+  };
+  const label=(t,p,col,px)=>{
+    g.font = `700 ${px}px ui-sans-serif,system-ui,sans-serif`;
+    if(!GHOST){ g.lineWidth=3.5; g.strokeStyle=css('--bg'); g.globalAlpha=.85;
+                g.strokeText(t, p[0], p[1]); }
+    g.globalAlpha = GHOST || 1;
+    g.fillStyle=col; g.fillText(t, p[0], p[1]);
+    g.globalAlpha = 1;
+  };
+  const poly=(pts,fill,stroke,lw)=>{
+    g.beginPath(); pts.forEach((p,i)=>i?g.lineTo(p[0],p[1]):g.moveTo(p[0],p[1])); g.closePath();
+    if(fill){g.fillStyle=fill;g.fill();}
+    if(stroke){g.strokeStyle=stroke;g.lineWidth=lw||1;g.stroke();}
+  };
+
+  // ---- bin: floor grid + the eight edges ----
+  for(let i=0;i<=L;i++) line(P(i,0,0), P(i,W,0), css('--line'));
+  for(let j=0;j<=W;j++) line(P(0,j,0), P(L,j,0), css('--line'));
+  for(const x of [0,L]) for(const y of [0,W]) line(P(x,y,0), P(x,y,H), css('--line'));
+  for(const [a,b] of [[[0,0],[L,0]],[[L,0],[L,W]],[[L,W],[0,W]],[[0,W],[0,0]]])
+    line(P(a[0],a[1],H), P(b[0],b[1],H), css('--line'));
+
+  // ---- axes ----
+  const O = P(AX,AX,0), fs = Math.max(8, Math.min(12, s*0.55));
+  const nums = s >= 11;                                  // too tight to number on small canvases
+  const axis = (end, tick, col, lab, n) => {
+    const c = css(col);
+    line(O, P(...end), c, 1.5, true);
+    for(let i=0;i<=n;i++){
+      line(P(...tick(i)), P(...tick(i, true)), c, i%5===0 ? 1.4 : 0.7, true);
+      if(nums && i%2===0 && i<n) label(i, P(...tick(i,true,true)), c, fs);
+    }
+    label(lab, P(...end), c, fs*1.2);
+  };
+  const paintAxes = () => {
+    g.textAlign='center'; g.textBaseline='middle';
+    axis([L+EXT, AX, 0], (i,o,t)=>[i, AX-(t?1.15:o?0.45:0), 0], '--c3', 'x', L);
+    axis([AX, W+EXT, 0], (i,o,t)=>[AX-(t?1.15:o?0.45:0), i, 0], '--c2', 'y', W);
+    axis([AX, AX, H+EXT], (i,o,t)=>[AX-(t?1.0:o?0.4:0), AX-(t?1.0:o?0.4:0), i], '--c0', 'z', H);
+    g.globalAlpha = GHOST || 1;
+    g.beginPath(); g.arc(O[0], O[1], Math.max(2.5, s*0.11), 0, 7);
+    g.fillStyle = css('--fg'); g.fill();
+    if(!GHOST){ g.strokeStyle = css('--bg'); g.lineWidth=1.5; g.stroke(); }
+    g.globalAlpha = 1;
+    label('0', P(AX-1.2, AX-1.2, 0), css('--fg'), fs*1.1);
+  };
+  paintAxes();                                   // solid, so boxes can bury it
+
+  // ---- boxes, far to near ----
+  const idx = boxes.map((b,i)=>i)
+    .sort((i,j)=>depth(boxes[i][0],boxes[i][1],boxes[i][2])
+                -depth(boxes[j][0],boxes[j][1],boxes[j][2]));
+  for(const i of idx){
+    const [x,y,z,l,w,h]=boxes[i];
+    const xf = st>=0 ? x+l : x, yf = ct>=0 ? y+w : y;   // the faces turned toward us
+    const top =[P(x,y,z+h),P(x+l,y,z+h),P(x+l,y+w,z+h),P(x,y+w,z+h)];
+    const fx  =[P(xf,y,z),P(xf,y+w,z),P(xf,y+w,z+h),P(xf,y,z+h)];
+    const fy  =[P(x,yf,z),P(x+l,yf,z),P(x+l,yf,z+h),P(x,yf,z+h)];
+    poly(top, boxColor(i,64), 'rgba(0,0,0,.35)');
+    poly(fx,  boxColor(i,44), 'rgba(0,0,0,.35)');
+    poly(fy,  boxColor(i,32), 'rgba(0,0,0,.35)');
+    if(opts.highlight===i) for(const f of [top,fx,fy]) poly(f, null, '#fff', 2);
+  }
+
+  // Second pass at low alpha.  Over open space it lands on the identical colour
+  // already there and changes nothing; where a box now covers the axis it shows
+  // through faintly, so hidden stretches read as hidden instead of floating.
+  GHOST = 0.3; paintAxes(); GHOST = 0;
+}
+
+/* drag any bin to spin them all; double-click puts the camera back */
+let DRAG = null;
+function redrawIsos(){
+  if(!$('#play').hidden && S)
+    drawIso($('#iso3d'), S.placed, S.L, S.W, S.H, {highlight:S.placed.length-1, height:300});
+  if(!$('#result').hidden && RES) drawReplay(parseInt($('#scrub').value,10));
+}
+function bindRotate(sel){
+  const cv = $(sel); if(!cv) return;
+  cv.style.cursor = 'grab'; cv.style.touchAction = 'none';
+  cv.addEventListener('pointerdown', e=>{
+    DRAG = {x:e.clientX, y:e.clientY, th:VIEW.th, ph:VIEW.ph};
+    cv.setPointerCapture(e.pointerId); cv.style.cursor='grabbing'; e.preventDefault();
+  });
+  cv.addEventListener('pointermove', e=>{
+    if(!DRAG) return;
+    VIEW.th = DRAG.th + (e.clientX-DRAG.x)*0.011;
+    VIEW.ph = Math.max(0.10, Math.min(1.50, DRAG.ph - (e.clientY-DRAG.y)*0.009));
+    redrawIsos();
+  });
+  const stop = e=>{ if(DRAG){ DRAG=null; cv.style.cursor='grab'; } };
+  cv.addEventListener('pointerup', stop);
+  cv.addEventListener('pointercancel', stop);
+  cv.addEventListener('dblclick', ()=>{ VIEW.th=VIEW0.th; VIEW.ph=VIEW0.ph; redrawIsos(); });
+}
+
+/* a box drawn to scale: l x w real pallet cells, height written on it */
+function drawFootprint(cv, dims, u, idx, peek){
+  const [l,w,h]=dims, dpr=DPR();
+  cv.style.width=(l*u)+'px'; cv.style.height=(w*u)+'px';
+  cv.width=l*u*dpr; cv.height=w*u*dpr;
+  const g=cv.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0);
+  g.globalAlpha = peek ? .38 : 1;                                 // a peeked box is not yours to place
+  g.fillStyle=boxColor(idx,56); g.fillRect(0,0,l*u,w*u);
+  g.strokeStyle='rgba(0,0,0,.22)'; g.lineWidth=1;                 // one line per unit cell
+  for(let i=1;i<l;i++){ g.beginPath(); g.moveTo(i*u+.5,0); g.lineTo(i*u+.5,w*u); g.stroke(); }
+  for(let j=1;j<w;j++){ g.beginPath(); g.moveTo(0,j*u+.5); g.lineTo(l*u,j*u+.5); g.stroke(); }
+  g.globalAlpha = 1;
+  if(peek){ g.setLineDash([4,3]); g.strokeStyle=css('--dim'); }
+  else    { g.strokeStyle='rgba(0,0,0,.55)'; }
+  g.lineWidth=2; g.strokeRect(1,1,l*u-2,w*u-2); g.setLineDash([]);
+  g.fillStyle = peek ? css('--dim') : 'rgba(0,0,0,.8)';
+  g.textAlign='center'; g.textBaseline='middle';
+  g.font=`700 ${Math.max(9,Math.round(Math.min(u*0.62,Math.min(l,w)*u*0.42)))}px ui-sans-serif,system-ui,sans-serif`;
+  g.fillText('\u2195'+h, l*u/2, w*u/2);
+}
+
+/* ================= the pallet (top view) ================= */
+function cellSize(L){
+  const avail = ($('#board').clientWidth||700) - 300;         // leave room for the 3D bin
+  return Math.max(22, Math.min(42, Math.floor(Math.max(260, Math.min(460, avail))/L)));
+}
+
+function drawPallet(){
+  const cv=$('#pallet'), L=S.L, W=S.W, C=cellSize(L), dpr=DPR();
+  cv.style.width=(L*C)+'px'; cv.style.height=(W*C)+'px';
+  cv.width=L*C*dpr; cv.height=W*C*dpr;
+  const g=cv.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0);
+  g.clearRect(0,0,L*C,W*C);
+
+  const item = S.item ? poseDims() : null;
+  for(let y=0;y<W;y++) for(let x=0;x<L;x++){
+    const h=S.hmap[y][x];
+    g.fillStyle=heightColor(h,S.H); g.fillRect(x*C,y*C,C,C);
+    g.strokeStyle=css('--line'); g.lineWidth=1; g.strokeRect(x*C+.5,y*C+.5,C-1,C-1);
+    if(h>0){ g.fillStyle='rgba(255,255,255,.82)'; g.font=`600 ${Math.round(C*0.32)}px ui-monospace,monospace`;
+             g.textAlign='center'; g.textBaseline='middle'; g.fillText(h, x*C+C/2, y*C+C/2); }
+  }
+  // every legal loading position
+  if($('#hint').checked && item && !S.done){
+    g.fillStyle=css('--c0'); g.globalAlpha=.5;
+    for(let y=0;y<W;y++) for(let x=0;x<L;x++)
+      if(legal(x,y)){ g.beginPath(); g.arc(x*C+C/2,y*C+C/2,Math.max(2,C*0.09),0,7); g.fill(); }
+    g.globalAlpha=1;
+  }
+  // hovered footprint
+  if(HOVER && item && !S.done){
+    const {x,y}=HOVER, ok=legal(x,y);
+    const l=Math.min(item[0], L-x), w=Math.min(item[1], W-y);
+    g.fillStyle = ok ? css('--c2') : css('--c3'); g.globalAlpha=.34;
+    g.fillRect(x*C, y*C, l*C, w*C); g.globalAlpha=1;
+    g.strokeStyle = ok ? css('--c2') : css('--c3'); g.lineWidth=2;
+    g.strokeRect(x*C+1, y*C+1, l*C-2, w*C-2);
+  }
+}
+function poseDims(){
+  const [l,w,h]=S.item;
+  return ORIENT===1 ? [w,l,h] : [l,w,h];
+}
+function legal(x,y){
+  return S.mask[ORIENT*S.L*S.W + x + S.L*y] === 1;
+}
+function restZ(x,y){
+  const [l,w]=poseDims(); let z=0;
+  for(let j=y;j<Math.min(S.W,y+w);j++) for(let i=x;i<Math.min(S.L,x+l);i++) z=Math.max(z,S.hmap[j][i]);
+  return z;
+}
+
+/* ================= play screen ================= */
+function renderPlay(){
+  $('#setup').hidden=true; $('#result').hidden=true; $('#play').hidden=false; $('#btn-new').hidden=false;
+  $('#hsub').textContent = `${S.dataset} · ${S.L}×${S.W}×${S.H} · vs ${S.opponent_label} · seed ${S.seed}`;
+  const pct = (S.utilization*100).toFixed(1);
+  $('#kpis').innerHTML = [
+    ['space filled', pct+'%'], ['boxes packed', S.n_items],
+    ['boxes left', S.remaining], ['stream length', S.seq_len]
+  ].map(([k,v])=>`<div class="kpi"><div class="v">${v}</div><div class="k">${k}</div></div>`).join('');
+  $('#palsub').innerHTML = `<span class="sub">&nbsp;x &rarr; right, y &darr; down</span>`;
+
+  const C = cellSize(S.L);
+  if(S.item){
+    const [l,w,h]=poseDims();
+    $('#cur').textContent = `${l} × ${w} × ${h}`;
+    $('#curinfo').textContent = `box ${S.idx+1} of ${S.seq_len} · volume ${l*w*h} of ${S.L*S.W*S.H}`
+      + (ORIENT? ' · turned' : '');
+    drawFootprint($('#curbox'), poseDims(), C, S.n_items);       // 1:1 with the grid
+  } else {
+    $('#cur').textContent='—'; $('#curinfo').textContent='';
+    $('#curbox').width=0; $('#curbox').style.width='0px';
+  }
+  // a square footprint has no distinct second pose - the mask for it is all zero
+  const square = S.item && S.item[0]===S.item[1];
+  $('#rot').hidden = S.orientations<2 || S.done || !S.item || square;
+
+  const qu = Math.max(9, Math.round(C*0.6));                     // same scale for all of them
+  $('#qcard').hidden = false;
+  $('#qsub').innerHTML = S.lookahead>1
+      ? `<span class="sub">&mdash; the agent sees these too</span>` : '';
+  // the k-1 boxes it can still reorder, then the one it may only look at
+  const ahead = S.queue.map((d,i)=>({d, i, peek:false}));
+  if(S.peek) ahead.push({d:S.peek, i:S.queue.length, peek:true});
+  if(ahead.length){
+    $('#q').innerHTML = ahead.map(a=>
+      `<div class="qb${a.peek?' pk':''}"><canvas data-i="${a.i}"></canvas>` +
+      `<span>${a.d[0]}×${a.d[1]}×${a.d[2]}</span>` +
+      (a.peek ? `<span class="pklab">peek only</span>` : '')+`</div>`).join('');
+    $('#q').querySelectorAll('canvas').forEach(cv=>{
+      const a = ahead[+cv.dataset.i];
+      drawFootprint(cv, a.d, qu, S.n_items+1+a.i, a.peek);
+    });
+    if(S.peek) $('#q').insertAdjacentHTML('beforeend',
+      `<div class="pknote">The agent never places or reorders the dashed box &mdash;
+       it only values the bin knowing that shape is next. Now so do you.</div>`);
+  } else {
+    $('#q').innerHTML = S.lookahead>1
+      ? `<span class="sub">nothing left in the stream</span>`
+      : `<span class="sub">nothing — ${S.opponent_label} only ever sees the box
+         it is placing, so neither do you</span>`;
+  }
+
+  drawPallet();
+  drawIso($('#iso3d'), S.placed, S.L, S.W, S.H, {highlight:S.placed.length-1, height:300});
+
+  $('#resign').disabled = S.done;
+  $('#tourn').hidden = !S.done;
+  if(S.done){
+    const why = {sequence_end:'you packed the entire stream!',
+                 no_feasible:'no legal position left for the next box',
+                 resigned:'you stopped here'}[S.reason] || S.reason;
+    $('#msg').innerHTML = `<b style="color:var(--c2)">Your packing is done</b> — ${why}
+      &nbsp; <span class="sub">${pct}% of the bin, ${S.n_items} boxes.</span>`;
+    $('#hoverinfo').textContent='';
+  }
+}
+
+function onMove(ev){
+  if(!S || S.done || !S.item){ HOVER=null; return; }
+  const r=$('#pallet').getBoundingClientRect(), C=cellSize(S.L);
+  const x=Math.floor((ev.clientX-r.left)/C), y=Math.floor((ev.clientY-r.top)/C);
+  const inside = x>=0&&x<S.L&&y>=0&&y<S.W;
+  const changed = inside ? (!HOVER||HOVER.x!==x||HOVER.y!==y) : !!HOVER;
+  HOVER = inside ? {x,y} : null;
+  if(changed){
+    drawPallet();
+    if(HOVER){
+      const [l,w,h]=poseDims(), z=restZ(x,y), ok=legal(x,y);
+      $('#hoverinfo').innerHTML =
+        `<b>(${x}, ${y})</b> → lands at z = ${z}, top at ${z+h}<br>` +
+        (ok ? `<span style="color:var(--c2)">legal — click to drop</span>`
+            : `<span style="color:var(--c3)">illegal — ${z+h>S.H ? 'it would poke out of the bin'
+               : (x+l>S.L||y+w>S.W) ? 'it hangs off the pallet' : 'not enough support underneath'}</span>`);
+    } else $('#hoverinfo').textContent='';
+  }
+}
+
+async function onClick(ev){
+  if(!S || S.done || !S.item) return;
+  const r=$('#pallet').getBoundingClientRect(), C=cellSize(S.L);
+  const x=Math.floor((ev.clientX-r.left)/C), y=Math.floor((ev.clientY-r.top)/C);
+  if(x<0||x>=S.L||y<0||y>=S.W) return;
+  const st = await api('/api/place', {game:S.game, x, y, o:ORIENT});
+  if(st.error && st.game){ S=st; $('#msg').textContent = '⚠ '+st.error; renderPlay(); return; }
+  if(!st.ok){ $('#msg').textContent = '⚠ '+(st.error||'rejected'); return; }
+  S=st; ORIENT=0; $('#msg').textContent=''; renderPlay();
+}
+
+/* ================= result screen ================= */
+let RES=null;
+function renderResult(){
+  $('#play').hidden=true; $('#setup').hidden=true; $('#result').hidden=false;
+  const h=RES.human, a=RES.agent;
+  const hp=h.utilization*100, ap=a.utilization*100;
+  const win = hp>ap+1e-9 ? 'human' : ap>hp+1e-9 ? 'agent' : 'draw';
+  $('#verdict').innerHTML = win==='human'
+      ? `You win by ${(hp-ap).toFixed(1)} points. 🏆`
+      : win==='agent' ? `${a.label} wins by ${(ap-hp).toFixed(1)} points.`
+      : `Dead heat — ${hp.toFixed(1)}% each.`;
+  $('#vsub').textContent = `${RES.dataset} · seed ${RES.seed} · ${RES.seq_len} boxes in the stream · `
+    + `both of you saw ${RES.lookahead===1?'one box':RES.lookahead+' boxes'} at a time`
+    + (RES.peeks ? ' (+1 peeked)' : '')
+    + (RES.orientations>1 ? ' · boxes could be turned 90°' : '');
+  $('#hu').textContent = hp.toFixed(1)+'%'; $('#au').textContent = ap.toFixed(1)+'%';
+  $('#hbar').style.width = hp+'%'; $('#abar').style.width = ap+'%';
+  $('#alab').textContent = a.label; $('#alab2').textContent = a.label;
+  $('#side-h').className = 'side' + (win==='human' ? ' win h' : '');
+  $('#side-a').className = 'side' + (win==='agent' ? ' win a' : '');
+  $('#crown-h').textContent = win==='human' ? '\u2b50 WINNER' : '';
+  $('#crown-a').textContent = win==='agent' ? '\u2b50 WINNER' : '';
+  const why = r => ({sequence_end:'packed the whole stream', no_feasible:'ran out of room',
+                     invalid_action:'made an illegal move', resigned:'stopped early'}[r]||r);
+  const stat = (o,extra)=>`
+    <div class="big">${(o.utilization*100).toFixed(1)}<span style="font-size:18px">%</span></div>
+    <div class="sub" style="margin-bottom:8px">of the bin filled</div>
+    <div class="stat"><span>boxes packed</span><b>${o.n_items} / ${RES.seq_len}</b></div>
+    <div class="stat"><span>ended because</span><b>${why(o.reason)}</b></div>${extra||''}`;
+  $('#stat-h').innerHTML = stat(h, `<div class="stat"><span>time taken</span><b>${h.seconds.toFixed(0)} s</b></div>`);
+  $('#stat-a').innerHTML = stat(a, `<div class="stat"><span>time taken</span><b>${a.seconds.toFixed(2)} s</b></div>`);
+
+  const n = Math.max(h.placed.length, a.placed.length);
+  const sc=$('#scrub'); sc.max=n; sc.value=n; drawReplay(n);
+}
+function drawReplay(n){
+  const h=RES.human.placed.slice(0,n), a=RES.agent.placed.slice(0,n);
+  drawIso($('#iso-h'), h, RES.L, RES.W, RES.H, {highlight:h.length-1, height:290});
+  drawIso($('#iso-a'), a, RES.L, RES.W, RES.H, {highlight:a.length-1, height:290});
+  $('#scrublab').textContent = n===0 ? 'empty bins — drag to replay'
+    : `after box ${n}:  you ${h.length} placed`
+      + (h.length<n ? ' (you had already stopped)' : '')
+      + `,  agent ${a.length} placed` + (a.length<n ? ' (agent had already stopped)' : '');
+}
+
+/* ================= setup ================= */
+function renderSetup(){
+  $('#play').hidden=true; $('#result').hidden=true; $('#setup').hidden=false; $('#btn-new').hidden=true;
+  $('#hsub').textContent='pack the stream by hand, then watch the agent try the same boxes';
+  $('#ds').innerHTML = SETUP.datasets.map(d=>
+    `<span class="pill${d===DS?' on':''}" data-ds="${d}">${d}</span>`).join('');
+  $('#ds').querySelectorAll('.pill').forEach(p=>p.onclick=()=>{DS=p.dataset.ds; renderSetup();});
+  $('#ds-note').textContent = DS_NOTE[DS]||'';
+  // a network is only meaningful on the stream it was trained on, so that is all
+  // we offer until you ask for the rest; the heuristics belong to every stream
+  const all = $('#allagents').checked;
+  const here  = SETUP.opponents.filter(o=>o.run && o.dataset===DS);
+  const other = SETUP.opponents.filter(o=>o.run && o.dataset!==DS);
+  const heur  = SETUP.opponents.filter(o=>!o.run);
+  const grp=(lab,list)=> list.length? `<optgroup label="${lab}">`+
+      list.map(o=>`<option value="${o.id}">${o.label}</option>`).join('')+`</optgroup>` : '';
+  const keep=$('#opp').value;
+  $('#opp').innerHTML = grp(`trained on ${DS}`, here)
+      + (all ? grp('trained on another stream', other) : '')
+      + grp('heuristics — any stream', heur);
+  const ids = [...$('#opp').options].map(o=>o.value);
+  $('#opp').value = ids.includes(keep) ? keep : ids[0];      // keep it if still offered
+  $('#allagents').parentElement.hidden = !other.length;
+  $('#nonehere').hidden = here.length > 0;
+  $('#nonehere').innerHTML = other.length
+      ? `No agent has been trained on <b>${DS}</b>. Tick the box above to play one
+         trained on another stream, or use a heuristic.`
+      : `No trained agents yet — <code>python3 -m src.train --preset paper --dataset ${DS}
+         --run bpp1_${DS.toLowerCase().replace('-','')}</code> makes one. The heuristics need no checkpoint.`;
+  oppNote();
+  $('#hist').innerHTML = histTable(SETUP.history);
+  $('#histcard').hidden = !SETUP.history.length;
+}
+function oppNote(){
+  const o = SETUP.opponents.find(o=>o.id===$('#opp').value);
+  if(!o) return;
+  $('#opp-note').innerHTML = o.note
+    + (o.run ? ` · bin ${o.L}×${o.W}×${o.H} (set by the checkpoint)` : ' · bin 10×10×10')
+    + (o.run && o.dataset !== DS
+        ? `<br><b style="color:var(--c1)">Trained on ${o.dataset}, playing ${DS}</b>
+           — off-distribution, so it will pack below its own numbers.` : '');
+  $('#rotwrap').hidden = false;
+  $('#rotate').disabled = !o.can_rotate;
+  if(!o.can_rotate){
+    $('#rotate').checked = o.orientations > 1;
+    $('#rotlab').innerHTML = o.orientations > 1
+      ? `this checkpoint packs with <b>2 orientations</b> — so both of you may turn boxes`
+      : `this checkpoint packs with <b>1 orientation</b> — so neither of you may turn boxes`;
+  } else {
+    $('#rotlab').innerHTML = `let boxes be turned 90° — <b>for both players</b>`;
+  }
+  $('#fair').innerHTML = o.lookahead === 1
+    ? `You will see exactly what it sees: <b>one box at a time</b>. Same stream, same rules.`
+    : `You will see exactly what it sees: the <b>${o.lookahead} boxes</b> it searches over,
+       plus the one after them that it peeks at to value the bin but may never place.`;
+}
+function histTable(rows){
+  if(!rows.length) return '<span class="sub">none yet</span>';
+  return `<table class="hist"><tr><th>when</th><th>stream</th><th>opponent</th>
+    <th>you</th><th>agent</th><th>winner</th></tr>` + rows.map(r=>`<tr>
+    <td class="sub">${r.t.slice(5,16)}</td><td>${r.dataset}</td><td>${r.opponent_label}</td>
+    <td>${(r.human_util*100).toFixed(1)}%</td><td>${(r.agent_util*100).toFixed(1)}%</td>
+    <td class="win-${r.winner}">${r.winner}</td></tr>`).join('') + '</table>';
+}
+
+/* ================= wiring ================= */
+async function newGame(seed){
+  const body = {dataset:DS, opponent:$('#opp').value,
+                rotate: $('#rotate').checked && !$('#rotate').disabled,
+                seed: seed!==undefined ? seed : ($('#seed').value.trim()||null)};
+  const st = await api('/api/new', body);
+  if(!st.ok){ alert(st.error); return; }
+  S=st; ORIENT=0; HOVER=null; RES=null; $('#msg').textContent=''; renderPlay();
+}
+
+$('#start').onclick = ()=>newGame();
+$('#opp').onchange = oppNote;
+$('#allagents').onchange = renderSetup;
+$('#hint').onchange = drawPallet;
+$('#rot').onclick = ()=>{ if(S.orientations>1){ ORIENT=1-ORIENT; renderPlay(); } };
+$('#pallet').addEventListener('mousemove', onMove);
+$('#pallet').addEventListener('mouseleave', ()=>{HOVER=null; drawPallet(); $('#hoverinfo').textContent='';});
+$('#pallet').addEventListener('click', onClick);
+window.addEventListener('keydown', e=>{
+  if(e.key==='r'||e.key==='R'){ if(S&&S.orientations>1&&!S.done){ ORIENT=1-ORIENT; renderPlay(); } }
+});
+$('#resign').onclick = async ()=>{
+  if(!confirm('Stop packing here and hand the sequence to the agent?')) return;
+  S = await api('/api/resign', {game:S.game}); renderPlay();
+};
+$('#tourn').onclick = async ()=>{
+  $('#tourn').disabled=true;
+  $('#tourn').innerHTML = '<span class="spin"></span> the agent is packing…';
+  const st = await api('/api/agent', {game:S.game});
+  $('#tourn').disabled=false; $('#tourn').textContent='Let the agent try →';
+  if(!st.ok){ alert(st.error); return; }
+  RES = {human:st.human, agent:st.agent, dataset:st.dataset, seed:st.seed,
+         seq_len:st.seq_len, lookahead:st.lookahead, peeks:st.peeks,
+         orientations:st.orientations,
+         L:st.L, W:st.W, H:st.H};
+  renderResult();
+};
+$('#scrub').oninput = e=>drawReplay(parseInt(e.target.value,10));
+$('#again').onclick = ()=>newGame(null);
+$('#samesame').onclick = ()=>newGame(RES.seed);
+async function goSetup(){
+  if(S && !S.done && S.n_items > 0 &&
+     !confirm(`Leave this game? Your ${S.n_items} placed box${S.n_items===1?'':'es'} will be lost.`))
+    return;
+  S = null; RES = null;
+  SETUP = await api('/api/setup'); renderSetup();
+}
+$('#tomenu').onclick = goSetup;
+$('#tosetup').onclick = goSetup;
+$('#btn-new').onclick = goSetup;
+window.addEventListener('resize', ()=>{
+  if(!$('#play').hidden && S){ drawPallet(); drawIso($('#iso3d'),S.placed,S.L,S.W,S.H,{highlight:S.placed.length-1,height:300}); }
+  if(!$('#result').hidden && RES) drawReplay(parseInt($('#scrub').value,10));
+});
+
+['#iso3d','#iso-h','#iso-a'].forEach(bindRotate);
+
+(async()=>{ SETUP = await api('/api/setup'); renderSetup(); })();
+</script>
