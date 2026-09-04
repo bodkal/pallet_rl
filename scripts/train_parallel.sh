@@ -2,6 +2,7 @@
 # Train several configurations AT THE SAME TIME, one process each.
 #
 #   ./scripts/train_parallel.sh                  # no args = the full 6-network matrix
+#   BIN=15 ./scripts/train_parallel.sh           # the same matrix on a 15x15x15 bin
 #   ./scripts/train_parallel.sh RS CUT-1
 #   ./scripts/train_parallel.sh RS:2 RS CUT-1 CUT-2 CUT-2:2
 #   STEPS=30000000 MAX_PARALLEL=3 ./scripts/train_parallel.sh RS CUT-2
@@ -52,6 +53,16 @@ MAX_PARALLEL=${MAX_PARALLEL:-0}    # 0 = all of them at once (measured optimal)
 EXTRA=${EXTRA:-}                   # anything else to pass to src.train
 RUN_SUFFIX=${RUN_SUFFIX:-}         # appended to every run name; use it to
                                    # experiment without touching a real run
+BIN=${BIN:-}                       # bin size: 15, or 15x15x20. Item sizes follow
+                                   # the paper's l<=L/2 rule, so a 15^3 bin uses
+                                   # items {2..7} rather than the 10^3 {2..5}.
+
+# A net trained on one bin size cannot be resumed from another -- the flattened
+# CNN feature is 4*L*W (400 at 10^3, 900 at 15^3). So name the runs apart
+# automatically; without this, BIN=15 would try to resume bpp1_cut2 and die on a
+# shape mismatch.
+if [ -n "$BIN" ] && [ -z "$RUN_SUFFIX" ]; then RUN_SUFFIX="_$BIN"; fi
+[ -n "$BIN" ] && EXTRA="$EXTRA --bin $BIN"
 
 case ${1:-} in -h|--help)
   sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; exit 0;; esac
@@ -100,6 +111,7 @@ done
 
 [ "$MAX_PARALLEL" -eq 0 ] && MAX_PARALLEL=${#NAMES[@]}
 echo "### ${#NAMES[@]} configuration(s), $STEPS steps each, up to $MAX_PARALLEL at a time"
+[ -n "$BIN" ] && echo "### bin ${BIN}, runs suffixed '$RUN_SUFFIX'"
 [ "${#NAMES[@]}" -gt "$MAX_PARALLEL" ] && \
   echo "### (the rest queue; raise with MAX_PARALLEL=N)"
 [ "$MAX_PARALLEL" -gt 6 ] && \

@@ -39,6 +39,12 @@ def main(argv=None):
     p.add_argument("--run", default=None)
     p.add_argument("--dataset", default=None, choices=[None, "RS", "CUT-1", "CUT-2"])
     p.add_argument("--orientations", type=int, default=None)
+    p.add_argument("--bin", default=None, metavar="N|LxWxH",
+                   help="bin size, e.g. 15 (cubic) or 15x15x20. Item sizes follow "
+                        "the paper's l<=L/2 rule unless --item-max is given, and a "
+                        "checkpoint from a different bin size cannot be resumed")
+    p.add_argument("--item-min", type=int, default=None)
+    p.add_argument("--item-max", type=int, default=None)
     p.add_argument("--total-steps", type=int, default=None)
     p.add_argument("--max-hours", type=float, default=None)
     p.add_argument("--seed", type=int, default=None)
@@ -61,7 +67,23 @@ def main(argv=None):
     p.add_argument("--no-fe", action="store_true", help="disable feasibility entropy")
     a = p.parse_args(argv)
 
-    cfg = build(a.preset, run_name=a.run, dataset=a.dataset,
+    L = W = H = None
+    if a.bin:
+        try:
+            parts = [int(v) for v in a.bin.lower().split("x")]
+        except ValueError:
+            p.error(f"--bin: expected N or LxWxH, got {a.bin!r}")
+        if len(parts) == 1:
+            L = W = H = parts[0]
+        elif len(parts) == 3:
+            L, W, H = parts
+        else:
+            p.error(f"--bin: expected N or LxWxH, got {a.bin!r}")
+        if min(parts) < 2:
+            p.error("--bin: every dimension must be >= 2")
+
+    cfg = build(a.preset, run_name=a.run, dataset=a.dataset, L=L, W=W, H=H,
+                item_min=a.item_min, item_max=a.item_max,
                 orientations=a.orientations, total_steps=a.total_steps,
                 max_hours=a.max_hours, seed=a.seed, lr=a.lr,
                 num_envs=a.num_envs, device=a.device,

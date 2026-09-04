@@ -17,6 +17,8 @@ class Config:
     H: int = 10                      # bin height  (Z)
     item_min: int = 2                # item dims are drawn from {2,3,4,5}
     item_max: int = 5                # -> |I| = 4^3 = 64 pre-defined item types
+                                     # build() derives this as min(L,W,H)//2 when
+                                     # neither the preset nor the CLI pins it
     dataset: str = "CUT-2"           # RS | CUT-1 | CUT-2
     orientations: int = 1            # 1 = paper's main setting, 2 = re-orienting
 
@@ -135,4 +137,13 @@ def build(preset: str = "paper", **overrides) -> Config:
         raise KeyError(f"unknown preset {preset!r}; have {sorted(PRESETS)}")
     kw = dict(PRESETS[preset])
     kw.update({k: v for k, v in overrides.items() if v is not None})
+    # The paper constrains items to l <= L/2, w <= W/2, h <= H/2 "to avoid
+    # over-simplified scenarios" (Sec. 4 and supplemental).  At its own 10^3 bin
+    # that is exactly item_max=5, so deriving it changes nothing for the paper
+    # preset -- it only matters once the bin size moves: a 15^3 bin gets items
+    # up to 7 ({2..7}^3 = 216 types) rather than silently keeping the 10^3 range,
+    # which would shrink items relative to the bin and change the problem.
+    if "item_max" not in kw:
+        n = min(kw.get("L", Config.L), kw.get("W", Config.W), kw.get("H", Config.H))
+        kw["item_max"] = n // 2
     return Config(**kw)
