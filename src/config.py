@@ -119,6 +119,14 @@ PRESETS = {
                   run_name="smoke"),
     # paper's re-orientation extension (Table 4)
     "orient": dict(orientations=2, run_name="bpp1_orient"),
+    # Same algorithm as "paper", tuned for throughput on one GPU: measured
+    # 7,257 vs 4,385 steps/s (1.65x, 6.3 h -> 3.8 h per 100M steps) on an
+    # RTX 4070 Laptop. The env loop is serial and one core, so a bigger
+    # num_envs is what amortises the per-step GPU round-trip and the update.
+    # NOT a drop-in for a reproduction run: batch goes 1,280 -> 5,120, i.e.
+    # 4x fewer gradient steps per sample. A/B it on utilisation-vs-step
+    # before trusting it, and keep "paper" for the headline numbers.
+    "fast": dict(num_envs=128, seq_pool=40_000, run_name="bpp1_fast"),
 }
 
 
