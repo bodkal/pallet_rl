@@ -642,7 +642,9 @@ function renderSetup(){
   const other = SETUP.opponents.filter(o=>o.run && o.dataset!==DS);
   const heur  = SETUP.opponents.filter(o=>!o.run);
   const grp=(lab,list)=> list.length? `<optgroup label="${lab}">`+
-      list.map(o=>`<option value="${o.id}">${o.label}</option>`).join('')+`</optgroup>` : '';
+      list.map(o=>{const t=trained(o);
+        return `<option value="${o.id}">${o.label}${t?` — ${t}`:''}</option>`}).join('')
+      +`</optgroup>` : '';
   const keep=$('#opp').value;
   $('#opp').innerHTML = grp(`trained on ${DS}`, here)
       + (all ? grp('trained on another stream', other) : '')
@@ -660,11 +662,23 @@ function renderSetup(){
   $('#hist').innerHTML = histTable(SETUP.history);
   $('#histcard').hidden = !SETUP.history.length;
 }
+// "7.5M", "1.3M", "10M", "100M" -- a decimal below 100M, none above, and no
+// trailing ".0" so a finished 10M run reads 10M/10M rather than 10.0M/10.0M.
+function mstep(v){
+  return (v/1e6).toFixed(v>=1e8?0:1).replace(/\.0$/,'')+'M';
+}
+function trained(o){
+  if(!o.run || !o.total_steps) return '';
+  return `${mstep(o.step||0)}/${mstep(o.total_steps)}`;
+}
+function done(o){ return o.total_steps && o.step >= o.total_steps*0.995 }
 function oppNote(){
   const o = SETUP.opponents.find(o=>o.id===$('#opp').value);
   if(!o) return;
+  const tr = trained(o);
   $('#opp-note').innerHTML = o.note
     + ` · bin ${o.L}×${o.W}×${o.H}${o.run ? ' (set by the checkpoint)' : ''}`
+    + (tr ? ` · trained <b>${tr}</b> steps${done(o) ? '' : ' (still short of its target)'}` : '')
     + (o.run && o.dataset !== DS
         ? `<br><b style="color:var(--c1)">Trained on ${o.dataset}, playing ${DS}</b>
            — off-distribution, so it will pack below its own numbers.` : '');

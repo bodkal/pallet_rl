@@ -40,6 +40,32 @@ _NETS: dict[tuple, tuple] = {}
 # ---------------------------------------------------------------------------
 # what you can play against
 # ---------------------------------------------------------------------------
+def last_step(run_dir):
+    """Steps trained so far, from the tail of metrics.jsonl.
+
+    The file is append-only and reaches ~55 MB over a long run, and this is
+    called for every run on every /api/setup, so read the last few KB rather
+    than parsing all of it.
+    """
+    p = os.path.join(run_dir, "metrics.jsonl")
+    try:
+        size = os.path.getsize(p)
+        with open(p, "rb") as f:
+            f.seek(max(0, size - 8192))
+            tail = f.read().decode("utf-8", "replace")
+    except OSError:
+        return 0
+    for line in reversed(tail.splitlines()):   # last COMPLETE line wins
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            return int(json.loads(line)["step"])
+        except Exception:
+            continue
+    return 0
+
+
 def runs_with_checkpoint():
     d = os.path.join(ROOT, "runs")
     out = []
@@ -57,7 +83,8 @@ def runs_with_checkpoint():
         except Exception:
             continue
         out.append(dict(run=r, L=cfg["L"], W=cfg["W"], H=cfg["H"],
-                        dataset=cfg["dataset"], orientations=cfg["orientations"]))
+                        dataset=cfg["dataset"], orientations=cfg["orientations"],
+                        step=last_step(rd), total_steps=cfg.get("total_steps", 0)))
     return out
 
 
@@ -65,7 +92,7 @@ def opponents():
     """Every playable opponent id, most interesting first."""
     out = []
     for r in runs_with_checkpoint():
-        geom = {k: r[k] for k in ("L", "W", "H")}
+        geom = {k: r[k] for k in ("L", "W", "H", "step", "total_steps")}
         # `dataset` is the stream this network was trained on - the setup screen
         # only offers it for that stream unless you ask for all of them
         out.append(dict(id=f"bpp1:{r['run']}", label=f"BPP-1 agent ({r['run']})",
