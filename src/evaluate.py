@@ -130,10 +130,28 @@ def main(argv=None):
     p.add_argument("--baseline-episodes", type=int, default=200)
     p.add_argument("--record", type=int, default=3, help="episodes to record for replay")
     p.add_argument("--out", default=None)
+    p.add_argument("--invalid-action-mode", default=None,
+                   choices=[None, "terminate", "resample"],
+                   help="override the run's setting. A run trained with "
+                        "'resample' stores it in config.json, and inheriting it "
+                        "here rescues illegal choices at TEST time and inflates "
+                        "the numbers -- pass 'terminate' to score it fairly")
     p.add_argument("--device", default="cuda")
     a = p.parse_args(argv)
 
     cfg, net, dev, d, step = load_run(a.run, a.ckpt, a.device)
+    if a.invalid_action_mode:
+        cfg.invalid_action_mode = a.invalid_action_mode
+    elif cfg.invalid_action_mode != "terminate":
+        # A run trained with "resample" carries it in config.json. Scoring with
+        # it substitutes a random feasible LP whenever the policy picks an
+        # illegal one, so the agent is never punished for a mistake and the
+        # utilisation is not comparable to the paper -- which terminates.
+        print(f"WARNING: scoring with invalid_action_mode="
+              f"{cfg.invalid_action_mode!r} inherited from the run's config. "
+              f"Illegal choices will be rescued and utilisation inflated. "
+              f"Pass --invalid-action-mode terminate for a comparable number.",
+              flush=True)
     out = {"run": a.run, "step": step, "config": cfg.__dict__, "results": []}
     all_traces = {}
 

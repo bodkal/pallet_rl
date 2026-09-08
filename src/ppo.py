@@ -98,7 +98,11 @@ class PPOTrainer:
                 ("loss", "actor", "critic", "mask", "einf", "entropy",
                  "approx_kl", "clipfrac", "mask_acc", "mask_rec", "mask_fpr")}
         nb = 0
+        logs["kl_stop"] = 0.0      # epochs abandoned for exceeding target_kl
+        stop = False
         for _ in range(cfg.epochs):
+            if stop:
+                break
             np.random.shuffle(idx)
             for s in range(0, B, mb):
                 j = idx[s:s + mb]
@@ -136,7 +140,8 @@ class PPOTrainer:
 
                 with torch.no_grad():
                     pm = (pmask > 0.5).float()
-                    logs["approx_kl"] += ((ratio - 1) - (logp - old_logp[j])).mean().item()
+                    kl_mb = ((ratio - 1) - (logp - old_logp[j])).mean().item()
+                    logs["approx_kl"] += kl_mb
                     logs["clipfrac"] += ((ratio - 1).abs() > cfg.clip_range).float().mean().item()
                     logs["mask_acc"] += (pm == mask[j]).float().mean().item()
                     denom = mask[j].sum().clamp(min=1)
@@ -149,6 +154,17 @@ class PPOTrainer:
                 logs["critic"] += l_critic.item(); logs["mask"] += l_mask.item()
                 logs["einf"] += e_inf.item(); logs["entropy"] += e_ent.item()
                 nb += 1
+
+                # PPO's clip bounds the probability RATIO, not the KL, so a
+                # bigger action space drifts further per update at the same
+                # clip_range (20^3 measured approx_kl 0.174 early, peaking at
+                # 2.92 against a ~0.02 target, with 60% of the batch clipped).
+                # Stop as soon as the policy has moved far enough -- the cheap
+                # first-order stand-in for ACKTR's KL trust region.
+                if cfg.target_kl and kl_mb > cfg.target_kl:
+                    logs["kl_stop"] = 1.0
+                    stop = True
+                    break
         return {k: v / nb for k, v in logs.items()}
 
     def set_lr(self, lr):

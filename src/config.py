@@ -23,9 +23,9 @@ class Config:
     # NEXT: 20 is the only resolution the paper reports (Fig. 14: RS 0.581,
     # CUT-1 0.634, CUT-2 0.654), so 20 is the size to compare on. 10 reproduces
     # the paper's headline tables. 15 compares to nothing published.
-    L: int = 15                      # bin length  (X)
-    W: int = 15                      # bin width   (Y)
-    H: int = 15                      # bin height  (Z)
+    L: int = 20                      # bin length  (X)
+    W: int = 20                      # bin width   (Y)
+    H: int = 20                      # bin height  (Z)
     item_min: int = 2                # item dims are drawn from {2,3,4,5}
     item_max: int = 5                # -> |I| = 4^3 = 64 pre-defined item types
                                      # build() derives this as min(L,W,H)//2 when
@@ -41,7 +41,12 @@ class Config:
     # the 55-69% of episodes currently dying at ~9.6 items would run to a full
     # bin -- far more learning signal per rollout. But it rescues the agent from
     # its own mistakes, so train with it and always EVALUATE with "terminate".
-    invalid_action_mode: str = "terminate"   # terminate | resample
+    invalid_action_mode: str = "resample"   # terminate | resample
+    # WARNING: "resample" is set. src.evaluate rebuilds its env from this same
+    # config.json, so the EVALUATION will also rescue an illegal choice and its
+    # utilisation will be inflated and not comparable to the paper. Pass
+    # `--invalid-action-mode terminate` when evaluating (src.evaluate warns if
+    # you forget).
 
     # Pre-generate this many training sequences once and cycle them, instead of
     # running the CUT cutting-stock recursion on every episode reset (measured
@@ -51,7 +56,7 @@ class Config:
     # NEXT: set 40000. The only throughput knob measured free -- +11% steps/s
     # for -0.01 pp utilisation at matched steps (docs/ab_throughput.png). Keep it
     # large; a small pool is reused thousands of times over a long run.
-    seq_pool: int = 0
+    seq_pool: int = 40000
 
     # ---- constrained-DRL scheme (paper Sec. 3.1/3.2) ------------------------
     use_mask_prediction: bool = True     # MP  - train the mask predictor
@@ -144,8 +149,33 @@ class Config:
     # for a problem that is already learning too slowly per sample.
     epochs: int = 4
     minibatches: int = 8
+    # NEXT: try 0.02. PPO's clip_range bounds the per-action probability RATIO
+    # and knows nothing about how many actions there are, so the same parameter
+    # step moves a 400-action distribution (20^3) much further in KL than a
+    # 100-action one (10^3). Measured on 20^3 CUT-2: approx_kl 0.174 at 1M with
+    # peaks of 2.92, and clipfrac 0.258 rising to 0.60 -- against the usual
+    # targets of ~0.01-0.02 and 0.1-0.2. At the peak 60% of the batch was being
+    # clipped, i.e. mostly truncated noise. 0 = off (unbounded, as before).
+    # This is the cheap first-order stand-in for what ACKTR does properly; see
+    # the NEXT note on the optimiser below.
+    target_kl: float = 0.0
     max_grad_norm: float = 0.5
     clip_value_loss: bool = True
+    # NEXT (the biggest open question): the paper uses ACKTR, we use PPO, and
+    # its own Table 10 shows the optimiser is worth up to ~14 pp on CUT-2 at
+    # 10^3 -- ACKTR 66.9%, RAINBOW 58.8%, A2C 53.0%, SAC 44.2%, DQN 35.3%,
+    # all "with well-tuned parameters". PPO is not among them.
+    #
+    # This is NOT simply "PPO is worse": our PPO matched ACKTR at 10^3 (67.1%
+    # vs 66.9%, far above A2C). The suspicion is that it degrades with the
+    # action space. ACKTR's trust region is defined in KL and preconditioned by
+    # the Fisher matrix, so it shrinks its step automatically as the action
+    # distribution grows; PPO's ratio clip does not. That predicts ACKTR's edge
+    # WIDENS with resolution, which matches what we see: the paper loses 1.5 pp
+    # going 10^3 -> 20^3 (66.9 -> 65.4) while we lose 26 pp (67.1 -> 41.4).
+    #
+    # Order of attack, cheapest first: target_kl above, then a sweep of lr,
+    # then implement ACKTR/K-FAC (TODO.md C.1).
 
     # ---- MCTS / BPP-k (paper Sec. 3.3, Algorithm 1) -------------------------
     # NEXT: free upside on the REPORTED number, no retraining -- BPP-k reuses

@@ -63,6 +63,19 @@ def main(argv=None):
     p.add_argument("--seq-pool", type=int, default=None,
                    help="pre-generate N training sequences and cycle them "
                         "instead of generating one per episode reset (0 = off)")
+    p.add_argument("--target-kl", type=float, default=None,
+                   help="abandon the rest of an update once approx_kl exceeds "
+                        "this (0 = off). ~0.02 is the usual PPO target; the "
+                        "20^3 runs measured 0.174 early with peaks of 2.92")
+    p.add_argument("--invalid-action-mode", default=None,
+                   choices=[None, "terminate", "resample"],
+                   help="terminate = the paper's setting; resample replaces an "
+                        "illegal choice with a random feasible LP")
+    p.add_argument("--w-mask", type=float, default=None,
+                   help="weight on the mask-prediction loss (paper 0.5)")
+    p.add_argument("--use-true-mask", action="store_true",
+                   help="DEVIATES from the paper: project with the ground-truth "
+                        "mask instead of the predicted one")
     p.add_argument("--epochs", type=int, default=None,
                    help="PPO epochs per update (paper/default 4). Lowering this "
                         "raises steps/s but takes fewer gradient steps per sample")
@@ -98,12 +111,14 @@ def main(argv=None):
                 max_hours=a.max_hours, seed=a.seed, lr=a.lr,
                 num_envs=a.num_envs, device=a.device, env_workers=a.workers,
                 hidden=a.hidden, cnn_channels=a.cnn_channels,
-                cnn_layers=a.cnn_layers,
+                cnn_layers=a.cnn_layers, target_kl=a.target_kl,
+                invalid_action_mode=a.invalid_action_mode, w_mask=a.w_mask,
                 seq_pool=a.seq_pool, epochs=a.epochs,
                 minibatches=a.minibatches)
     if a.no_mp: cfg.use_mask_prediction = False
     if a.no_mc: cfg.use_mask_constraint = False
     if a.no_fe: cfg.use_feasibility_entropy = False
+    if a.use_true_mask: cfg.use_true_mask_for_policy = True
 
     torch.manual_seed(cfg.seed); np.random.seed(cfg.seed)
     device = torch.device(cfg.device if torch.cuda.is_available() else "cpu")
