@@ -47,13 +47,13 @@ export PYTHONUNBUFFERED=1
 PY=${PY:-$(command -v python3 || command -v python)}
 [ -x "$PY" ] || { echo "FATAL: no python3 found"; exit 1; }
 
-STEPS=${STEPS:-30000000}
+STEPS=${STEPS:-50000000}
 SEQ_POOL=${SEQ_POOL:-40000}        # the one knob measured free (-0.01 pp at matched steps)
 MAX_PARALLEL=${MAX_PARALLEL:-0}    # 0 = all of them at once (measured optimal)
 EXTRA=${EXTRA:-}                   # anything else to pass to src.train
 RUN_SUFFIX=${RUN_SUFFIX:-}         # appended to every run name; use it to
                                    # experiment without touching a real run
-BIN=${BIN:-}                       # bin size: 15, or 15x15x20. Item sizes follow
+BIN=${BIN:-15}                       # bin size: 15, or 15x15x20. Item sizes follow
                                    # the paper's l<=L/2 rule, so a 15^3 bin uses
                                    # items {2..7} rather than the 10^3 {2..5}.
 

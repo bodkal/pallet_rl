@@ -12,9 +12,9 @@ from dataclasses import dataclass, field, asdict
 @dataclass
 class Config:
     # ---- environment (paper Sec. 4 "Training and test set") -----------------
-    L: int = 10                      # bin length  (X)
-    W: int = 10                      # bin width   (Y)
-    H: int = 10                      # bin height  (Z)
+    L: int = 15                      # bin length  (X)
+    W: int = 15                      # bin width   (Y)
+    H: int = 15                      # bin height  (Z)
     item_min: int = 2                # item dims are drawn from {2,3,4,5}
     item_max: int = 5                # -> |I| = 4^3 = 64 pre-defined item types
                                      # build() derives this as min(L,W,H)//2 when
