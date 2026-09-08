@@ -29,12 +29,14 @@ class PackNet(nn.Module):
         A = cfg.action_dim
         self.feat_dim = co * cfg.L * cfg.W          # 4*10*10 = 400 in the paper
 
-        self.cnn = nn.Sequential(
-            _init(nn.Conv2d(cfg.obs_channels, c, 3, padding=1)), nn.ReLU(),
-            _init(nn.Conv2d(c, c, 3, padding=1)), nn.ReLU(),
-            _init(nn.Conv2d(c, co, 1)), nn.ReLU(),
-            nn.Flatten(),
-        )
+        # cfg.cnn_layers 3x3 convs, then the 1x1 that squeezes to cfg.cnn_out
+        # channels. cnn_layers=2 is exactly the paper's Figure 9 stack.
+        layers = [_init(nn.Conv2d(cfg.obs_channels, c, 3, padding=1)), nn.ReLU()]
+        for _ in range(max(1, cfg.cnn_layers) - 1):
+            layers += [_init(nn.Conv2d(c, c, 3, padding=1)), nn.ReLU()]
+        layers += [_init(nn.Conv2d(c, co, 1)), nn.ReLU(), nn.Flatten()]
+        self.cnn = nn.Sequential(*layers)
+        self.receptive_field = 1 + 2 * max(1, cfg.cnn_layers)
         self.trunk = nn.Sequential(_init(nn.Linear(self.feat_dim, hid)), nn.ReLU())
         self.actor = _init(nn.Linear(hid, A), gain=0.01)
         self.critic = _init(nn.Linear(hid, 1), gain=1.0)

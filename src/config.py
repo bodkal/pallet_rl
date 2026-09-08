@@ -48,6 +48,12 @@ class Config:
 
     # ---- network ------------------------------------------------------------
     cnn_channels: int = 64
+    cnn_layers: int = 2          # 3x3 conv layers before the 1x1 bottleneck.
+                                 # 2 = the paper's Figure 9 stack. Each layer
+                                 # adds 2 cells of receptive field (k layers ->
+                                 # 1+2k), which is why a bigger bin may want
+                                 # more: 5x5 covers 25% of a 10x10 height map
+                                 # but only 6% of a 20x20 one.
     cnn_out_channels: int = 4   # -> 4*L*W = 400 features, matches paper Fig. 9
     hidden: int = 256
 

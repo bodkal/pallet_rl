@@ -49,6 +49,12 @@ def main(argv=None):
     p.add_argument("--max-hours", type=float, default=None)
     p.add_argument("--seed", type=int, default=None)
     p.add_argument("--lr", type=float, default=None)
+    p.add_argument("--hidden", type=int, default=None,
+                   help="trunk / mask-head width (paper 256)")
+    p.add_argument("--cnn-channels", type=int, default=None,
+                   help="conv width (paper 64)")
+    p.add_argument("--cnn-layers", type=int, default=None,
+                   help="3x3 conv layers before the 1x1 bottleneck (paper 2)")
     p.add_argument("--num-envs", type=int, default=None)
     p.add_argument("--workers", type=int, default=None,
                    help="processes to run the env loop across (default 0 = one "
@@ -91,6 +97,8 @@ def main(argv=None):
                 orientations=a.orientations, total_steps=a.total_steps,
                 max_hours=a.max_hours, seed=a.seed, lr=a.lr,
                 num_envs=a.num_envs, device=a.device, env_workers=a.workers,
+                hidden=a.hidden, cnn_channels=a.cnn_channels,
+                cnn_layers=a.cnn_layers,
                 seq_pool=a.seq_pool, epochs=a.epochs,
                 minibatches=a.minibatches)
     if a.no_mp: cfg.use_mask_prediction = False
