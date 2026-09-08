@@ -182,12 +182,31 @@ function kpis(l,d){
   document.getElementById('kpis').innerHTML=K.map(([k,v])=>
     `<div class="kpi"><div class="v">${v}</div><div class="k">${k}</div></div>`).join('');
 }
-function ema(a,w){let o=[],m=null;for(const v of a){m=m===null?v:m+(v-m)/w;o.push(m)}return o}
+// Centred moving average.  An EMA lags a rising curve by about a full window,
+// which at 1200 points spanning 100M steps is ~2.5M steps -- enough to draw the
+// first tenth of a run far below where it actually was (index 19 of bpp1_cut2_20
+// read 9.6% where the run was at 20.9%).  A centred mean has no phase lag, and
+// its window shrinks at both ends so the first and last points stay honest.
+function smooth(a,w){
+  w=Math.max(1,Math.round(w)); const h=(w-1)>>1, n=a.length;
+  const c=new Array(n+1); c[0]=0;
+  for(let i=0;i<n;i++) c[i+1]=c[i]+a[i];
+  const o=new Array(n);
+  for(let i=0;i<n;i++){
+    // shrink the half-width symmetrically near the edges: a one-sided window on
+    // a steep rise would report the mean of what comes NEXT, so index 0 read
+    // 15.8% where the run actually started at 2.1%.  hh=0 at both ends keeps the
+    // first and last points exactly as logged, with no phase lag in between.
+    const hh=Math.min(h, i, n-1-i);
+    o[i]=(c[i+hh+1]-c[i-hh])/(2*hh+1);
+  }
+  return o;
+}
 function seriesFor(ci){
   const c=CHARTS[ci], series=[];
   SEL.forEach((r,ri)=>c.k.forEach((k,ki)=>{
     const d=DATA[r]||[]; if(!d.length||d[0][k]===undefined)return;
-    const ys=ema(d.map(x=>x[k]??0), Math.max(2,Math.min(30,d.length/12)));
+    const ys=smooth(d.map(x=>x[k]??0), Math.max(2,Math.min(30,d.length/12)));
     series.push({xs:d.map(x=>x.step), ys, c:COLORS[(SEL.length>1?ri:ki)%6],
       n:(SEL.length>1?r+' ':'')+k, raw:d.map(x=>x[k]??0)});
   }));
@@ -277,7 +296,9 @@ document.getElementById('msvg').addEventListener('mousemove',e=>{
     s.xs.forEach((x,i)=>{const dd=Math.abs(x-step);if(dd<bd){bd=dd;j=i}});
     g+=`<circle cx="${MGEO.X(s.xs[j])}" cy="${MGEO.Y(s.ys[j])}" r="8"
          fill="var(${s.c})" stroke="var(--panel)" stroke-width="3"/>`;
-    read+=`<span style="color:var(${s.c})">${s.n}</span> <b>${c.fmt(s.raw[j])}</b> &nbsp; `;
+    // the dot sits on the drawn (smoothed) curve, so report that same value --
+    // reporting s.raw[j] here is what made the number disagree with the dot
+    read+=`<span style="color:var(${s.c})">${s.n}</span> <b>${c.fmt(s.ys[j])}</b> &nbsp; `;
   });
   document.getElementById('mcross').innerHTML=g;
   document.getElementById('mread').innerHTML=read;
