@@ -6,7 +6,7 @@ Zhao, She, Zhu, Yang, Xu (AAAI 2021).  arXiv:2006.14978
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field, asdict, fields
 
 
 @dataclass
@@ -47,15 +47,18 @@ class Config:
     w_entropy: float = 0.01     # psi
 
     # ---- network ------------------------------------------------------------
-    cnn_channels: int = 64
-    cnn_layers: int = 2          # 3x3 conv layers before the 1x1 bottleneck.
-                                 # 2 = the paper's Figure 9 stack. Each layer
-                                 # adds 2 cells of receptive field (k layers ->
-                                 # 1+2k), which is why a bigger bin may want
-                                 # more: 5x5 covers 25% of a 10x10 height map
-                                 # but only 6% of a 20x20 one.
-    cnn_out_channels: int = 4   # -> 4*L*W = 400 features, matches paper Fig. 9
-    hidden: int = 256
+    # NOT the paper's Figure 9 stack any more.  The paper sizes its network for
+    # a 10x10x10 bin (cnn_channels=64, cnn_layers=2, hidden=256 -> 1.07M params,
+    # 5x5 receptive field); at 20^3 that has to drive 4x the actions through the
+    # same 256-wide trunk, and 5x5 sees 6% of a 20x20 height map against 25% of
+    # a 10x10 one.  Defaults below are the wider/deeper net.  For the paper's
+    # own architecture pass --cnn-layers 2 --cnn-channels 64 --hidden 256.
+    cnn_channels: int = 128
+    cnn_layers: int = 4          # 3x3 conv layers before the 1x1 bottleneck;
+                                 # each adds 2 cells of receptive field
+                                 # (k layers -> 1+2k), so 4 -> 9x9
+    cnn_out_channels: int = 4   # -> 4*L*W features, as in paper Fig. 9
+    hidden: int = 1024
 
     # ---- PPO ----------------------------------------------------------------
     num_envs: int = 32
@@ -115,7 +118,15 @@ class Config:
     @staticmethod
     def from_json(path) -> "Config":
         with open(path) as f:
-            return Config(**json.load(f))
+            d = json.load(f)
+        # A config written before a field existed has to keep the value that
+        # field effectively had, NOT today's default -- otherwise the network we
+        # rebuild stops matching the checkpoint saved next to it. cnn_layers was
+        # added after the 10^3/15^3/20^3 runs were trained, and every checkpoint
+        # written without it has the paper's 2 conv layers.
+        d.setdefault("cnn_layers", 2)
+        known = {f.name for f in fields(Config)}
+        return Config(**{k: v for k, v in d.items() if k in known})
 
 
 # ---------------------------------------------------------------------------
