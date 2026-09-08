@@ -53,6 +53,10 @@ class Config:
 
     # ---- PPO ----------------------------------------------------------------
     num_envs: int = 32
+    env_workers: int = 0         # 0/1 = the serial env loop (one core, the
+                                 # default); >1 spreads it over that many
+                                 # processes -- identical gradients, just not
+                                 # pinned to one core
     num_steps: int = 40          # rollout length per env (episodes are ~20 long)
     total_steps: int = 20_000_000
     max_hours: float = 16.0

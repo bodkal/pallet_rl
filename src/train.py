@@ -15,7 +15,7 @@ import numpy as np
 import torch
 
 from .config import build, Config
-from .env import VecPackingEnv
+from .env import make_vec_env
 from .items import make_testset
 from .model import PackNet
 from .ppo import PPOTrainer
@@ -50,6 +50,10 @@ def main(argv=None):
     p.add_argument("--seed", type=int, default=None)
     p.add_argument("--lr", type=float, default=None)
     p.add_argument("--num-envs", type=int, default=None)
+    p.add_argument("--workers", type=int, default=None,
+                   help="processes to run the env loop across (default 0 = one "
+                        "core, as before). Gradients are identical either way; "
+                        "this only stops env.step being pinned to a single core")
     p.add_argument("--seq-pool", type=int, default=None,
                    help="pre-generate N training sequences and cycle them "
                         "instead of generating one per episode reset (0 = off)")
@@ -86,7 +90,7 @@ def main(argv=None):
                 item_min=a.item_min, item_max=a.item_max,
                 orientations=a.orientations, total_steps=a.total_steps,
                 max_hours=a.max_hours, seed=a.seed, lr=a.lr,
-                num_envs=a.num_envs, device=a.device,
+                num_envs=a.num_envs, device=a.device, env_workers=a.workers,
                 seq_pool=a.seq_pool, epochs=a.epochs,
                 minibatches=a.minibatches)
     if a.no_mp: cfg.use_mask_prediction = False
@@ -107,7 +111,12 @@ def main(argv=None):
         pool = make_testset(cfg.seq_pool, cfg.L, cfg.W, cfg.H, cfg.item_min,
                             cfg.item_max, cfg.dataset, seed=100_000 + cfg.seed)
         print(f"training on a pre-generated pool of {cfg.seq_pool:,} sequences")
-    envs = VecPackingEnv(cfg, cfg.num_envs, seed=cfg.seed, sequences=pool)
+    # built before the net moves to the GPU: the workers are forked, and they
+    # must not inherit an initialised CUDA context
+    envs = make_vec_env(cfg, cfg.num_envs, seed=cfg.seed, sequences=pool,
+                        workers=cfg.env_workers)
+    if cfg.env_workers > 1:
+        print(f"env loop split over {cfg.env_workers} worker processes")
     net = PackNet(cfg).to(device)
     tr = PPOTrainer(cfg, net, envs, device)
 
