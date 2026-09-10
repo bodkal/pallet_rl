@@ -76,6 +76,11 @@ def main(argv=None):
     p.add_argument("--use-true-mask", action="store_true",
                    help="DEVIATES from the paper: project with the ground-truth "
                         "mask instead of the predicted one")
+    p.add_argument("--mask-eps", type=float, default=None,
+                   help="infeasible actions keep prob * eps (paper 1e-3). 0 is "
+                        "a hard projection; combined with --use-true-mask it "
+                        "removes the last source of illegal moves, since eps is "
+                        "then the only one left")
     p.add_argument("--epochs", type=int, default=None,
                    help="PPO epochs per update (paper/default 4). Lowering this "
                         "raises steps/s but takes fewer gradient steps per sample")
@@ -114,13 +119,29 @@ def main(argv=None):
                 cnn_layers=a.cnn_layers, target_kl=a.target_kl,
                 invalid_action_mode=a.invalid_action_mode, w_mask=a.w_mask,
                 seq_pool=a.seq_pool, epochs=a.epochs,
-                minibatches=a.minibatches)
+                minibatches=a.minibatches, mask_eps=a.mask_eps)
     if a.no_mp: cfg.use_mask_prediction = False
     if a.no_mc: cfg.use_mask_constraint = False
     if a.no_fe: cfg.use_feasibility_entropy = False
     if a.use_true_mask: cfg.use_true_mask_for_policy = True
 
     torch.manual_seed(cfg.seed); np.random.seed(cfg.seed)
+    # Fail loudly rather than silently dropping to CPU. A wedged driver makes
+    # torch.cuda.is_available() return False ("CUDA unknown error" from
+    # cuda_getDeviceCount), and the old fallback quietly restarted a 10M-step
+    # run on CPU at ~5 cores and a fraction of the speed -- it looked like it
+    # had resumed fine. Pass --device cpu to ask for CPU on purpose.
+    if cfg.device.startswith("cuda") and not torch.cuda.is_available():
+        raise SystemExit(
+            f"--device {cfg.device} was requested but torch.cuda.is_available() "
+            f"is False, so this run would silently train on CPU.\n"
+            f"  If nvidia-smi works, the driver's compute stack is usually "
+            f"wedged after a GPU fault; reloading the UVM module normally "
+            f"clears it without a reboot:\n"
+            f"      sudo rmmod nvidia_uvm && sudo modprobe nvidia_uvm\n"
+            f"  Re-check with: python3 -c 'import torch; "
+            f"print(torch.cuda.is_available())'\n"
+            f"  Or pass --device cpu to train on CPU deliberately.")
     device = torch.device(cfg.device if torch.cuda.is_available() else "cpu")
 
     d = run_dir(cfg.run_name)

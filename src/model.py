@@ -61,6 +61,17 @@ class PackNet(nn.Module):
         cfg = self.cfg
         if not cfg.use_mask_constraint:
             return logits
+        if cfg.mask_eps <= 0.0:
+            # The paper's eps = 1e-3 leaks a little probability onto infeasible
+            # LPs on purpose.  eps = 0 is the hard projection it describes
+            # first, and is only interesting alongside use_true_mask_for_policy,
+            # where that leak is the ONLY remaining source of illegal moves.
+            # log(0) = -inf would do it, but the feasibility-restricted entropy
+            # forms p * log(p) * mask and 0 * -inf is NaN, which poisons the
+            # loss.  A large finite penalty underflows to p = 0 in the softmax
+            # and keeps every product finite -- including an all-infeasible row,
+            # which stays uniform instead of becoming NaN.
+            return logits.masked_fill(mask <= 0.5, -1e9)
         return logits + torch.log(
             torch.where(mask > 0.5,
                         torch.ones_like(mask),
