@@ -98,11 +98,12 @@ class PPOTrainer:
                 ("loss", "actor", "critic", "mask", "einf", "entropy",
                  "approx_kl", "clipfrac", "mask_acc", "mask_rec", "mask_fpr")}
         nb = 0
-        logs["kl_stop"] = 0.0      # epochs abandoned for exceeding target_kl
-        stop = False
+        # fraction of minibatches in this update whose ACTOR step was skipped
+        # for exceeding target_kl (0 when target_kl is off).  This used to be
+        # 1/nb on the update that aborted, which was not readable as a rate.
+        logs["kl_stop"] = 0.0
+        actor_frozen = False
         for _ in range(cfg.epochs):
-            if stop:
-                break
             np.random.shuffle(idx)
             for s in range(0, B, mb):
                 j = idx[s:s + mb]
@@ -111,6 +112,14 @@ class PPOTrainer:
                 a = adv[j]
                 a = (a - a.mean()) / (a.std() + 1e-8)
                 ratio = (logp - old_logp[j]).exp()
+                with torch.no_grad():
+                    kl_mb = ((ratio - 1) - (logp - old_logp[j])).mean().item()
+                # Checked BEFORE the step, not after: `ratio` measures the drift
+                # already accumulated at the top of this minibatch, so once it
+                # is over target the actor step we are about to take is the one
+                # that leaves the trust region.
+                if cfg.target_kl and kl_mb > cfg.target_kl:
+                    actor_frozen = True
                 l_actor = -torch.min(
                     ratio * a,
                     torch.clamp(ratio, 1 - cfg.clip_range, 1 + cfg.clip_range) * a
@@ -129,9 +138,18 @@ class PPOTrainer:
                     else torch.zeros((), device=obs.device)
 
                 e_inf, e_ent = einf.mean(), ent.mean()
-                loss = (cfg.w_actor * l_actor + cfg.w_critic * l_critic
-                        + cfg.w_mask * l_mask + cfg.w_einf * e_inf
-                        - cfg.w_entropy * e_ent)
+                # Freezing the actor must NOT freeze the critic and the mask
+                # head.  Both are supervised objectives on the shared trunk with
+                # no trust region to respect, and abandoning the whole update
+                # starved them: target_kl=0.02 at 20^3 tripped on 99-100% of
+                # updates after ~3 of 32 minibatches, so those runs took ~10% of
+                # the intended gradient steps and mask_fpr went 2.0% -> 4.8%.
+                # E_inf and the entropy bonus shape the action distribution, so
+                # they belong with the actor and are frozen alongside it.
+                loss = cfg.w_critic * l_critic + cfg.w_mask * l_mask
+                if not actor_frozen:
+                    loss = (loss + cfg.w_actor * l_actor + cfg.w_einf * e_inf
+                            - cfg.w_entropy * e_ent)
 
                 self.opt.zero_grad(set_to_none=True)
                 loss.backward()
@@ -140,8 +158,8 @@ class PPOTrainer:
 
                 with torch.no_grad():
                     pm = (pmask > 0.5).float()
-                    kl_mb = ((ratio - 1) - (logp - old_logp[j])).mean().item()
                     logs["approx_kl"] += kl_mb
+                    logs["kl_stop"] += 1.0 if actor_frozen else 0.0
                     logs["clipfrac"] += ((ratio - 1).abs() > cfg.clip_range).float().mean().item()
                     logs["mask_acc"] += (pm == mask[j]).float().mean().item()
                     denom = mask[j].sum().clamp(min=1)
@@ -159,12 +177,8 @@ class PPOTrainer:
                 # bigger action space drifts further per update at the same
                 # clip_range (20^3 measured approx_kl 0.174 early, peaking at
                 # 2.92 against a ~0.02 target, with 60% of the batch clipped).
-                # Stop as soon as the policy has moved far enough -- the cheap
+                # Freezing the actor once it has moved far enough is the cheap
                 # first-order stand-in for ACKTR's KL trust region.
-                if cfg.target_kl and kl_mb > cfg.target_kl:
-                    logs["kl_stop"] = 1.0
-                    stop = True
-                    break
         return {k: v / nb for k, v in logs.items()}
 
     def set_lr(self, lr):
