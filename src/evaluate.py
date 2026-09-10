@@ -36,7 +36,14 @@ def load_run(run, ckpt="best.pt", device="cuda"):
 
 
 class NetPolicy:
-    """Greedy BPP-1 policy using the *predicted* feasibility mask (as deployed)."""
+    """Greedy BPP-1 policy.
+
+    Projects with the *predicted* feasibility mask -- what a deployed agent has
+    -- unless ``cfg.use_true_mask_for_policy`` asks for the ground truth, which
+    measures the ceiling rather than a comparable result.  ``--use-true-mask``
+    sets that flag; before this it was set and then ignored here, so both
+    settings silently scored the predicted mask.
+    """
     name = "BPP-1 (ours)"
 
     def __init__(self, cfg, net, device, deterministic=True):
@@ -49,7 +56,11 @@ class NetPolicy:
             return None
         x = build_obs_tensor(obs["hmap"][None], obs["item"][None], cfg)
         logits, _, mask_logits = self.net(torch.as_tensor(x, device=self.device))
-        used = (torch.sigmoid(mask_logits) > 0.5).float()
+        if cfg.use_true_mask_for_policy:
+            used = torch.as_tensor(obs["mask"].reshape(1, -1), device=self.device
+                                   ).float()
+        else:
+            used = (torch.sigmoid(mask_logits) > 0.5).float()
         pl = self.net.projected_logits(logits, used)
         if self.det:
             return int(pl.argmax(-1).item())
