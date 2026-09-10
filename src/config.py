@@ -4,12 +4,27 @@ Paper: "Online 3D Bin Packing with Constrained Deep Reinforcement Learning",
 Zhao, She, Zhu, Yang, Xu (AAAI 2021).  arXiv:2006.14978
 
 NEXT: markers below record what to try next and why, from measurements taken
-2026-09-08 on a 20^3 bin.  Where we stand: 100M steps gives 41.4% on CUT-2
+2026-09-08/09 on a 20^3 bin.  Where we stand: 100M steps gives 41.4% on CUT-2
 against the paper's Size-20 figure of 65.4%, the learning curve is still
 log-linear (so extrapolating says billions of steps -- the budget is not the
-limit), and 55-69% of episodes end on an ILLEGAL PLACEMENT rather than on a
-full bin.  That last number is the dominant loss and most NEXT notes point at
-it.  Flags marked DEVIATES make the result incomparable to the paper.
+limit), and 49-72% of episodes end on an ILLEGAL PLACEMENT rather than on a
+full bin.  Flags marked DEVIATES make the result incomparable to the paper.
+
+The 2026-09-08 lever sweep (7 runs, 10M steps each, 20^3 CUT-2, paper-sized
+net, held out on 500 CUT-2 episodes) priced that illegal-move rate, and the
+answer is that it is worth about a THIRD of the gap, not the whole of it:
+
+  perfect mask, given to the trained control at test time      +4.2 pp
+  perfect mask, trained under as well                          +7.4 pp more
+  ------------------------------------------------------------ ----------
+  all mask error                                              ~+11.6 pp
+  remaining gap to the paper's 65.4%                            ~24 pp
+
+So the mask levers are worth taking (--w-mask 5.0, +2.1 pp, faithful) and are
+NOT where the reproduction is hiding.  The remaining ~24 pp is packing quality,
+which points at the optimiser (ACKTR, TODO.md C.1) and the network, not at the
+constrained-DRL scheme.  Read the note on use_true_mask_for_policy before
+using it: a net trained that way is WORSE than the control when deployed.
 """
 from __future__ import annotations
 
@@ -62,30 +77,64 @@ class Config:
     use_mask_prediction: bool = True     # MP  - train the mask predictor
     use_mask_constraint: bool = True     # MC  - project action probs with mask
     use_feasibility_entropy: bool = True  # FE - entropy over feasible actions only
-    # NEXT: low priority. Lowering to 1e-5 only shrinks the probability that
-    # LEAKS onto LPs the predictor already knows are infeasible. Most illegal
-    # moves come from false-feasible PREDICTIONS instead (invalid_rate 5.2% vs
-    # mask_fpr 1.9% at 6M), which eps cannot touch -- fix w_mask first.
+    # MEASURED 2026-09-09: still low priority ON ITS OWN, for the reason below
+    # -- most illegal moves come from false-feasible PREDICTIONS, which eps
+    # cannot touch. But it is NOT negligible once the mask is exact: scored with
+    # the ground-truth mask, 3.0% of held-out episodes STILL ended on an illegal
+    # placement, and with an exact mask the eps leak is the only thing that can
+    # cause that. So eps=0 belongs with use_true_mask_for_policy (run
+    # `true_eps0`) and nowhere else. eps=0 is now supported: it takes the hard
+    # -inf-equivalent path in PackNet.projected_logits.
     mask_eps: float = 1e-3               # infeasible actions get prob * eps
-    # NEXT (DEVIATES): the biggest single lever, and worth one run purely as a
-    # CEILING measurement. The true mask is computable from the height map and
-    # current item, both observed, so projecting with it removes essentially
-    # every illegal move (only the mask_eps residual survives) and episodes run
-    # to a full bin. The paper deliberately projects with the PREDICTED mask, so
-    # a number from this is not a reproduction -- but it splits the 24 pp gap
-    # into "mask error" and "bad packing", which nothing else does.
+    # MEASURED 2026-09-08/09 (run `mask_true`, 10M steps, 20^3 CUT-2). It did
+    # its job as a ceiling and produced one trap. Held out, 500 CUT-2 episodes:
+    #
+    #   control (kl_base), own predictor              29.91%
+    #   control, handed the TRUE mask at test time    34.13%   +4.2 pp
+    #   trained AND tested with the true mask         41.54%   +7.4 pp more
+    #   trained with the true mask, own predictor     23.57%   -6.3 pp !!
+    #
+    # So mask error is worth about +11.6 pp in total -- roughly a third of the
+    # 35 pp gap from the control to the paper's Size-20 65.4%. The other ~24 pp
+    # is genuinely bad packing, and no mask lever will find it.
+    #
+    # THE TRAP: a net trained this way is WORSE THAN THE CONTROL when deployed
+    # on its own predictor -- 23.57% against 29.91%, with 79.6% of episodes
+    # dying on an illegal placement against the control's 48.6%. It never had to
+    # hedge against a predictor mistake, so it does not. A common-state probe
+    # says the policy is most of that, not the predictor: on kl_base's own
+    # states mask_true's false-feasible rate is 6.9% against 4.1%, which is
+    # worse but nowhere near enough to explain 6.3 pp.
+    #
+    # Therefore: DIAGNOSTIC ONLY. Never train a net you intend to deploy with
+    # this, and never quote the TRAINING utilisation of such a run -- it is
+    # measured with the mask in the loop and read 36.7% against a real 23.6%.
+    # (Unlike invalid_action_mode="resample", this one IS physically deployable
+    # -- the mask is a known function of the observed height map -- so 41.54% is
+    # the number that matters for the UR20 cell. It is still not a reproduction.)
     use_true_mask_for_policy: bool = False  # if True, project with ground truth
 
     # ---- loss weights (paper Eq. 1) ----------------------------------------
     w_actor: float = 1.0        # alpha
     w_critic: float = 0.5       # beta
-    # NEXT: try 2.0 -- the best faithful lever. It only re-weights the existing
-    # loss, so the result stays comparable to the paper. The mask head is what
-    # is failing at 20^3: false-feasible rate 1.9% against ~0.2% at 10^3, and
-    # with 400 actions that is ~3 wrong cells per state, which over a ~15-step
-    # episode is what kills half of them. The deep net's whole +1.5 pp came
-    # through a better mask (fpr 2.36% -> 1.90%), not better packing.
-    w_mask: float = 0.5         # lambda
+    # MEASURED 2026-09-08/09: 5.0 is the best DEPLOYABLE lever found so far, and
+    # it stays faithful to the paper -- it only re-weights the existing loss.
+    # Held out on CUT-2, 500 episodes: 0.5 -> 29.91%, 2.0 -> 31.03%,
+    # 5.0 -> 31.98% (+2.1 pp), and episodes ending illegal fall 48.6% -> 42.4%.
+    # A common-state probe also makes mask_w5's predictor the best of the three
+    # on every state distribution tested (false-feasible 2.6-4.1%).
+    #
+    # But the gain is much smaller than the mask-head improvement suggests, and
+    # that is the useful finding: w_mask=5 HALVED the training false-feasible
+    # rate (1.98% -> 1.01%) and moved invalid_rate only 4.51% -> 4.00%. Per-cell
+    # mask accuracy has stopped being the binding constraint -- the policy
+    # concentrates on whatever false-feasible cells survive. Take 5.0 and stop
+    # tuning it; the remaining ~24 pp is packing quality, not mask quality.
+    #
+    # Left at the paper's 0.5 deliberately: Eq. 1 specifies 0.5, and this repo's
+    # headline numbers are reproduction numbers. Pass --w-mask 5.0 for the best
+    # net, and say so when reporting it.
+    w_mask: float = 0.5         # lambda (paper's value; --w-mask 5.0 scores +2.1 pp)
     w_einf: float = 0.01        # omega
     w_entropy: float = 0.01     # psi
 
@@ -102,12 +151,26 @@ class Config:
                                  # (k layers -> 1+2k), so 4 -> 9x9
     cnn_out_channels: int = 4   # -> 4*L*W features, as in paper Fig. 9
     hidden: int = 1024
-    # NEXT: unresolved, and expensive. 4/128/1024 beats the paper's 2/64/256 by
-    # ~1.5 pp at matched steps (20^3 CUT-2) but costs 3.8x the compute per step,
-    # so per GPU-HOUR it is currently behind. Nobody has separated depth from
-    # width: run 2/64/256, 4/64/256 (depth only), 2/64/1024 (width only) and
-    # 4/128/1024 at ~20M steps each and compare SLOPES. If depth alone carries
-    # it, the cheap 1.14M net wins.
+    # MEASURED 2026-09-09, the four-cell grid at 10M steps each on 20^3 CUT-2,
+    # BPP-1 on 500 held-out episodes. The default is right, and DEPTH is why:
+    #
+    #   2/64/256   control     1,065,125 par   29.91%     --
+    #   4/64/256   depth only  1,138,981 par   33.04%   +3.12 pp   (+7% params!)
+    #   2/64/1024  width only  4,139,429 par   30.44%   +0.52 pp   (+289% params)
+    #   4/128/1024 default     4,547,877 par   36.94%   +7.03 pp
+    #
+    # Depth is nearly free and width alone is nearly worthless. The mechanism is
+    # the receptive field: 4 layers sees 9x9, i.e. 20% of a 20x20 height map,
+    # against 5x5's 6%. The default adds another +3.9 pp over depth alone, but it
+    # moves conv channels AND trunk width together, so that increment belongs to
+    # neither -- a 4/128/256 cell would separate them, and is the only cell of
+    # this grid still missing.
+    #
+    # It is also the biggest faithful lever found anywhere in the sweep, ahead of
+    # w_mask (+2.1) and target_kl (+1.2). Sample efficiency: 36.94% at 10M steps
+    # against the paper-sized net's 39.49% at 100M -- ~10x for under 2x the
+    # per-step cost. CAVEAT: that ratio only holds with an ANNEALED lr; see the
+    # lr note below, which is now the most important open item in this file.
 
     # ---- PPO ----------------------------------------------------------------
     # NEXT: leave at 32. Raising it is a trap: 128 measured +71% steps/s for
@@ -133,11 +196,28 @@ class Config:
     # the ceiling is the setup. Fix the illegal-move rate before buying steps.
     total_steps: int = 20_000_000
     max_hours: float = 16.0
-    # NEXT: untested for the current network. 3e-4 was the paper's value for a
-    # 1.07M-param net; the default here is 4.55M with 128-channel convs and
-    # nobody has swept it. Note lr_schedule="linear" anneals to a 5% floor AT
-    # total_steps, so every run flattens at its horizon by construction -- the
-    # 15^3 runs all ended at exactly 1.50e-05 while still improving.
+    # MEASURED 2026-09-10 (run `deep_lr1e4`): KEEP 3e-4. Lowering the base lr to
+    # 1e-4 on the default 4.55M-param net scored 35.36% held out against 3e-4's
+    # 36.94% -- it is 1.59 pp WORSE, not better.
+    #
+    # This corrects a wrong reading recorded here on 09-09. Comparing the deep
+    # net on a 100M horizon against the same net on a 10M horizon showed the 10M
+    # one ahead by +3.98 -> +8.59 pp at 5.8M -> 9.0M, and that was mis-read as
+    # "3e-4 is too high". What it actually shows is that the deep net's advantage
+    # only materialises as the lr ANNEALS -- a 100M-horizon run is still near
+    # 2.8e-4 at 9M, i.e. mid-flight, not crippled. A lower STARTING point does
+    # not substitute for the anneal; it just learns more slowly the whole way.
+    #
+    # Consequences, both of which contradict the earlier note:
+    #   - bpp1_cut2_20's 39.49% at a fully-annealed 100M was a fair number. The
+    #     100M runs were never "LR-crippled".
+    #   - The 100M deep run should use lr 3e-4, NOT 1e-4.
+    # Comparing two architectures at matched steps is only meaningful when both
+    # are at the same POINT IN THEIR ANNEAL; mid-flight comparisons across
+    # different horizons mislead, which is what happened here.
+    #
+    # lr_schedule="linear" anneals to a 5% floor AT total_steps, so every run
+    # flattens at its horizon by construction.
     lr: float = 3e-4
     lr_schedule: str = "linear"  # linear | constant
     gamma: float = 1.0           # paper sets gamma = 1
@@ -149,15 +229,32 @@ class Config:
     # for a problem that is already learning too slowly per sample.
     epochs: int = 4
     minibatches: int = 8
-    # NEXT: try 0.02. PPO's clip_range bounds the per-action probability RATIO
-    # and knows nothing about how many actions there are, so the same parameter
-    # step moves a 400-action distribution (20^3) much further in KL than a
-    # 100-action one (10^3). Measured on 20^3 CUT-2: approx_kl 0.174 at 1M with
-    # peaks of 2.92, and clipfrac 0.258 rising to 0.60 -- against the usual
-    # targets of ~0.01-0.02 and 0.1-0.2. At the peak 60% of the batch was being
-    # clipped, i.e. mostly truncated noise. 0 = off (unbounded, as before).
-    # This is the cheap first-order stand-in for what ACKTR does properly; see
-    # the NEXT note on the optimiser below.
+    # The reasoning still holds: PPO's clip_range bounds the per-action
+    # probability RATIO and knows nothing about how many actions there are, so
+    # the same parameter step moves a 400-action distribution (20^3) much
+    # further in KL than a 100-action one (10^3). Measured on 20^3 CUT-2:
+    # approx_kl 0.174 at 1M with peaks of 2.92, and clipfrac 0.258 rising to
+    # 0.60 -- against the usual targets of ~0.01-0.02 and 0.1-0.2.
+    #
+    # But 0.02 WAS TRIED (runs `kl_tkl`, `kl_both`) and the result was worthless
+    # for two reasons, both now fixed in ppo.py:
+    #   1. 0.02 is an order of magnitude below the operating point, so it
+    #      tripped on 99-100% of updates after a mean of ~3 of 32 minibatches.
+    #   2. The trip did `break` on the WHOLE update, which also stopped the
+    #      critic and the mask head -- supervised objectives with no trust
+    #      region to respect. Those runs therefore took ~10% of the intended
+    #      gradient steps, and mask_fpr went 2.0% -> 4.8%.
+    # kl_tkl scored 22.87% held out against the control's 29.91%: that measures
+    # "10x fewer gradient steps", not a trust region. ppo.py now freezes only
+    # the actor (plus E_inf and the entropy bonus) and keeps training the heads,
+    # and `kl_stop` is logged as the fraction of minibatches frozen rather than
+    # the old unreadable 1/nb.
+    #
+    # NEXT: 0.2, which is where the measured approx_kl actually lives (run
+    # `tkl_fixed`). At 0.02 the fixed code still freezes the actor on 89% of
+    # minibatches, which is a learning-rate cut in disguise.
+    # Still the cheap first-order stand-in for what ACKTR does properly; see the
+    # NEXT note on the optimiser below.
     target_kl: float = 0.0
     max_grad_norm: float = 0.5
     clip_value_loss: bool = True

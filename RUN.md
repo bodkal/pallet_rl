@@ -249,7 +249,16 @@ runs/<name>/eval.json       test results
 runs/<name>/report.html     self-contained report, open it in a browser
 runs/<name>/replays/        GIFs, MP4s, PNGs
 runs/duel_log.jsonl         one line per human-vs-agent game
+runs/old_test/<name>/       retired runs - see runs/old_test/README.md
 ```
+
+`runs/old_test/` is where a run goes to be forgotten without being deleted. The
+dashboard and the duel game list only top-level `runs/*/` entries holding a
+`metrics.jsonl` / `config.json` and neither recurses, so anything parked one
+level down vanishes from both with no code change — and `mv` back restores it.
+The six 15³ runs live there: 15 is neither the paper's 10³ headline size nor the
+20³ of its resolution study, so nothing from them can be checked against the
+paper.
 
 ## What's running right now
 
