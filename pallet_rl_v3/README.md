@@ -340,10 +340,34 @@ the attacker prefers smaller items as `N_B` grows.
   runs a Lai & Chan difference process with inscribed-EMS elimination. Because
   every item here is dropped, the reachable free volume is exactly the region
   above the height map, so an EMS is a footprint whose floor cannot be lowered
-  by widening it. At `S = 10` there are only 55 × 55 footprints per bin, so we
-  score all of them with running window maxima and keep the maximal ones. That
-  is the *exact* same set, with none of the bookkeeping or ordering artefacts —
-  and `tests/test_env.py::test_ems_list_is_exact` checks it against brute force.
+  by widening it. At `S = 10` there are only 55 × 55 footprints per bin, so
+  `_ems_exhaustive` scores all of them with running window maxima and keeps the
+  maximal ones. That is the *exact* same set, with none of the bookkeeping or
+  ordering artefacts — and `tests/test_env.py::test_ems_list_is_exact` checks it
+  against brute force.
+
+  Scoring every footprint is `O(S⁴)` per bin, which is 6.2M rectangles at
+  `S = 70` to find ~18 spaces. `_ems_pruned` is a second exact enumeration for
+  large bins: a space needs `left > floor`, and `floor` is at least the height
+  of column `x0` anywhere in the y-interval, so some `y` in that interval has
+  `hmap[x0-1, y] > hmap[x0, y]` — a left edge can only sit where the height map
+  steps down going right. The other three sides give the same condition, so only
+  those `O(items)` rows and columns can bound a space: 2.9k candidate footprints
+  at `S = 70` instead of 6.2M. `EMS_PRUNE_S = 25` picks whichever is cheaper
+  (measured crossover; see the constant's comment). Both read only the height
+  map, so neither can carry stale spaces across an episode boundary, and
+  `test_pruned_ems_matches_the_exhaustive_scan` pins them to the same set over
+  bins packed full at seven bin sizes.
+
+  The pruning is an optimisation, not an approximation, and this was measured
+  rather than assumed: forcing the pruned path at `S = 10` leaves **every
+  observation array bit-identical** over 2000 steps × 64 envs for all six
+  heuristics, and reproduces the held-out `Uti./Std./Num.` of six trained
+  checkpoints — nominal and attacked — to `max|diff| = 0`. What it buys is
+  speed, and only on large bins: a whole env step at `S = 70, n_env = 64` drops
+  from **4693 ms to 255 ms (18×)**, or ~115 → ~2100 PPO iterations in six hours.
+  At `S = 10` it is 6× *slower* than the batched sweep, which is why it is
+  behind a size dispatch rather than a replacement.
 * **Reward** — AR2L defines a single terminal reward equal to the final space
   utilisation with `γ = 1`. We give the item's volume fraction at each step,
   which sums to exactly the same return with far lower variance.

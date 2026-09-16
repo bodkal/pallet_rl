@@ -80,12 +80,25 @@ network sees the footprint it would actually get.
 volume is exactly `{(x, y, z) : z >= hmap[x, y]}`, so an empty maximal space is
 a footprint `[x0, x0+wx) x [y0, y0+wy)` whose floor — the window max of the
 height map — cannot be lowered by widening it, stacked to the lid. At `S = 10`
-there are only 55 x 55 candidate footprints per bin, so `env._ems_list` scores
+there are only 55 x 55 candidate footprints per bin, so `_ems_exhaustive` scores
 all of them with running window maxima and keeps the maximal ones. That gives
 the *exact* EMS list, with none of the bookkeeping or ordering artefacts of an
 incremental difference process, and it is checked against brute force in
 `tests/test_env.py::test_ems_list_is_exact`. Candidates are then the four bottom
 corners of every space wide and tall enough to take the item.
+
+Scoring every footprint is `O(S^4)` per bin — 6.2M rectangles at `S = 70` to
+find ~18 spaces — so `_ems_pruned` is a second exact enumeration for large
+bins. A left edge can only sit where the height map steps down going right
+(else the footprint widens for free), and likewise on the other three sides, so
+only `O(items)` rows and columns can bound a space: 2.9k candidates at `S = 70`
+instead of 6.2M. `EMS_PRUNE_S = 25` picks the cheaper path. Both are stateless,
+so neither can carry stale spaces across an episode boundary. Forcing the
+pruned path at `S = 10` leaves every observation bit-identical over 2000 steps
+x 64 envs for all six heuristics, and reproduces six trained checkpoints'
+held-out scores at `max|diff| = 0`; a whole env step at `S = 70, n_env = 64`
+goes from **4693 ms to 255 ms (18x)**, ~115 -> ~2100 PPO iterations in six
+hours. It is 6x *slower* at `S = 10`, hence the dispatch.
 
 Measured without any learning — the heuristics never train, so they isolate the
 action space from the policy (`scripts/ablate_env.py`, 512 instances):

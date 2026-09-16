@@ -42,6 +42,15 @@ MAX_SIDE = 5  # item sides are <= S/2 = 5 in the discrete setting
 # unsupported placements, so refuse the bin rather than report nonsense.
 MAX_HEIGHT = 63 // 5
 
+# Bin side at which pruning the EMS footprint edges starts to pay for its
+# per-bin Python loop.  Whole-step times on bins packed full by DBL, sides up
+# to S/2, relative to the batched sweep: 0.2x at S=10 and 0.6x at S=20 -- with
+# small bins the height map steps down almost everywhere, so there is nothing
+# to prune -- then 1.0x at S=24, 1.2x at S=26, 3.5x at S=40 and 18x at S=70
+# (4693 ms -> 255 ms at n_env=64).  The ratio barely moves with n_env, both
+# paths being linear in it.  They return the same set; see tests/test_env.py.
+EMS_PRUNE_S = 25
+
 
 def sample_items(rng, shape, lo=1, hi=5):
     """Item sizes, i.i.d. uniform on {lo..hi} per axis (125 types for 1..5)."""
@@ -176,15 +185,83 @@ class BPPBatch:
         `{(x, y, z) : z >= hmap[x, y]}`.  Its maximal boxes are therefore the
         footprints `[x0, x0+wx) x [y0, y0+wy)` whose floor `h` -- the window
         max of the height map -- cannot be lowered by widening the footprint,
-        each stacked up to the lid.  At `S = 10` there are only 55 x 55
-        candidate footprints per bin, so scoring them all and keeping the
-        maximal ones gives the exact EMS list with none of the bookkeeping
-        (or the ordering artefacts) of an incremental difference process.
+        each stacked up to the lid.
+
+        Two exact enumerations compute exactly this set; `EMS_PRUNE_S` picks
+        the cheaper one.  Both are stateless -- they read only the height map
+        -- so neither can carry stale spaces across an episode boundary the
+        way an incremental difference process can, and neither imposes an
+        order on the result.
 
         Returns `(env, x0, y0, wx, wy, floor)`, one entry per space.
         """
         if self._ems_cache is not None:
             return self._ems_cache
+        self._ems_cache = (self._ems_pruned() if self.S >= EMS_PRUNE_S
+                           else self._ems_exhaustive())
+        return self._ems_cache
+
+    def _ems_pruned(self):
+        """`_ems_exhaustive` restricted to footprint edges that can be maximal.
+
+        A space needs `left > floor`, and `floor` is at least the height of
+        column `x0` anywhere in the y-interval, so some `y` in that interval
+        has `hmap[x0-1, y] > hmap[x0, y]`: a left edge can only sit where the
+        height map steps down going right.  The other three sides give the
+        same condition, so only those rows and columns -- O(items) of them,
+        not O(S) -- can bound a space.  At S = 70 that is 2.9k candidate
+        footprints per bin instead of 6.2M.
+        """
+        S, H = self.S, self.hmap
+        big = np.int16(S + 1)
+        cols = []
+        for e in range(self.n_env):
+            h = H[e]
+            x0c = np.flatnonzero(np.r_[True, (h[:-1] > h[1:]).any(1)])
+            x1c = np.flatnonzero(np.r_[(h[1:] > h[:-1]).any(1), True])
+            y0c = np.flatnonzero(np.r_[True, (h[:, :-1] > h[:, 1:]).any(0)])
+            y1c = np.flatnonzero(np.r_[(h[:, 1:] > h[:, :-1]).any(0), True])
+            ax = _win_max(h[None], 1, S)[:, 0]        # ax[wx-1, x0, y]
+            ay = _win_max(h[None], 2, S)[:, 0]        # ay[wy-1, x, y0]
+            yy0, yy1 = np.meshgrid(y0c, y1c, indexing="ij")
+            m = yy1 >= yy0
+            yy0, yy1, wy = yy0[m], yy1[m], (yy1 - yy0 + 1)[m]
+            for x0 in x0c:
+                x1 = x1c[x1c >= x0]
+                if not x1.size:
+                    continue
+                wx = x1 - x0 + 1                      # (K,)
+                a = ax[wx - 1, x0]                    # (K, S) max over the x-span
+                wa = _win_max(a[None], 2, S)[:, 0]    # wa[wy-1, k, y0]
+                k = np.arange(wx.size)
+                flr = wa[wy[:, None] - 1, k[None, :], yy0[:, None]]        # (M, K)
+                # the same four one-cell extensions as the exhaustive sweep;
+                # `back`/`front` are the x-span max one row outside, which is
+                # what `a` already holds
+                lo = (np.full(wy.size, big) if x0 == 0
+                      else ay[wy - 1, x0 - 1, yy0])[:, None]
+                hi = np.where(x1 + 1 < S,
+                              ay[wy[:, None] - 1, np.minimum(x1 + 1, S - 1)[None, :],
+                                 yy0[:, None]], big)
+                bk = np.where(yy0[:, None] > 0,
+                              a[k[None, :], np.maximum(yy0 - 1, 0)[:, None]], big)
+                ft = np.where(yy1[:, None] + 1 < S,
+                              a[k[None, :], np.minimum(yy1 + 1, S - 1)[:, None]], big)
+                f = np.flatnonzero((lo > flr) & (hi > flr) & (bk > flr) & (ft > flr))
+                if f.size:
+                    im, ik = np.unravel_index(f, flr.shape)
+                    cols.append((np.full(f.size, e), np.full(f.size, x0), yy0[im],
+                                 wx[ik], wy[im],
+                                 flr.reshape(-1)[f].astype(np.int32)))
+        if not cols:
+            z = np.zeros(0, np.int64)
+            return (z,) * 6
+        return tuple(np.concatenate(c) for c in zip(*cols))
+
+    def _ems_exhaustive(self):
+        """Score every one of the `(S(S+1)/2)**2` footprints and keep the
+        maximal ones.  Fully batched, and the reference the pruned
+        enumeration is tested against."""
         S, h = self.S, self.hmap
         big = np.int16(S + 1)                 # a wall is taller than anything
         ax = _win_max(h, 1, S)                # ax[wx-1, n, x0, y]  max over x
@@ -213,8 +290,7 @@ class BPPBatch:
                 iwy, env, x0, y0 = np.unravel_index(f, keep.shape)
                 parts.append((env, x0, y0, np.full(f.size, wx, np.int32),
                               iwy + 1, flr.reshape(-1)[f].astype(np.int32)))
-        self._ems_cache = tuple(np.concatenate(c) for c in zip(*parts))
-        return self._ems_cache
+        return tuple(np.concatenate(c) for c in zip(*parts))
 
     def _ems_corners(self, dims):
         """(n, S, S): the item fits flush into a bottom corner of some EMS.

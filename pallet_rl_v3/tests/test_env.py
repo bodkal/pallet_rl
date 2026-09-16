@@ -212,3 +212,44 @@ def test_ems_candidates_are_a_subset_of_the_full_grid():
             break
         a.step(random_action(a, rng))
         a.reset_done()
+
+
+def test_pruned_ems_matches_the_exhaustive_scan():
+    """The edge-pruned enumeration must return the same *set* of spaces.
+
+    Covers bin sides either side of `EMS_PRUNE_S`, and drives the bins to
+    full with a real heuristic so the height maps have as many step edges as
+    packing ever produces.
+    """
+    from ar2l.heuristics import scores
+
+    def as_set(cols):
+        return set(map(tuple, np.stack([np.asarray(c, np.int64) for c in cols], 1)))
+
+    for S, hi in ((6, 3), (10, 5), (16, 8), (20, 10), (26, 13), (32, 16), (40, 20)):
+        env = BPPBatch(4, S=S, nb=1, size_lo=1, size_hi=hi, seed=S, n_items=400)
+        for _ in range(60):
+            assert as_set(env._ems_pruned()) == as_set(env._ems_exhaustive()), S
+            m = env.obs()["l_mask"]
+            if not m.any():
+                break
+            s = np.where(m, scores(env, "dbl"), -np.inf)
+            env.step(np.where(m.any(1), s.argmax(1), 0))
+            env.reset_done()
+            env._invalidate()
+
+
+def test_pruned_ems_survives_episode_boundaries():
+    """A finished bin must not inherit spaces -- the failure mode a stateful
+    incremental EMS would have.  Both paths are stateless, so this is a
+    regression pin, not a fix."""
+    env = BPPBatch(8, S=10, nb=1, seed=4, n_items=12)
+    rng = np.random.default_rng(0)
+    for _ in range(80):
+        env.step(random_action(env, rng))
+        env.reset_done()
+        cols = env._ems_pruned()
+        for b in np.nonzero(env.n_packed == 0)[0]:
+            got = {tuple(int(v) for v in r)
+                   for r in zip(*[c[cols[0] == b] for c in cols[1:]])}
+            assert got == {(0, 0, env.S, env.S, 0)}, (b, got)
