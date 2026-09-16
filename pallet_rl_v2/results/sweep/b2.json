@@ -1,0 +1,24 @@
+{
+  "ckpt": "runs/sw_b2/last.pt",
+  "data": "cut2",
+  "split": "val",
+  "b": 2,
+  "k": 0,
+  "n": 200,
+  "sims": 100,
+  "c_puct": 4.0,
+  "reps": 2,
+  "mcts_items": 20.6575,
+  "mcts_util": 77.05399624109268,
+  "mcts_util_std": 0.12250014543533183,
+  "greedy_util": 69.04850006103516,
+  "arm": "b2",
+  "change": {
+    "b": 2
+  },
+  "question": "buffer of two",
+  "sp_util_last3": 76.74,
+  "kept_last3": 212.3,
+  "mins": 52.4,
+  "iters_done": 30
+}

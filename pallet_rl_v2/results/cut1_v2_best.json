@@ -1,0 +1,11 @@
+{
+  "name": "cut1_v2",
+  "data": "cut1",
+  "b": 1,
+  "k": 0,
+  "iter": 99,
+  "episodes": 51200,
+  "mcts_items": 23.63,
+  "mcts_util": 90.7869963645935,
+  "greedy_util": 77.08699226379395
+}

@@ -1,0 +1,11 @@
+{
+  "name": "sw_per_unif",
+  "data": "cut2",
+  "b": 1,
+  "k": 0,
+  "iter": 29,
+  "episodes": 7680,
+  "mcts_items": 20.44,
+  "mcts_util": 76.29099640846252,
+  "greedy_util": 65.97499370574951
+}

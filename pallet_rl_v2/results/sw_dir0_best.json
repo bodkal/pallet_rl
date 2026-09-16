@@ -1,0 +1,11 @@
+{
+  "name": "sw_dir0",
+  "data": "cut2",
+  "b": 1,
+  "k": 0,
+  "iter": 29,
+  "episodes": 7680,
+  "mcts_items": 20.37,
+  "mcts_util": 75.6489967107773,
+  "greedy_util": 65.61299324035645
+}

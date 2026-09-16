@@ -1,0 +1,24 @@
+{
+  "ckpt": "runs/sw_noval/last.pt",
+  "data": "cut2",
+  "split": "val",
+  "b": 1,
+  "k": 0,
+  "n": 200,
+  "sims": 100,
+  "c_puct": 4.0,
+  "reps": 2,
+  "mcts_items": 19.805,
+  "mcts_util": 74.98749710917473,
+  "mcts_util_std": 0.16999998688697815,
+  "greedy_util": 66.76949501037598,
+  "arm": "noval",
+  "change": {
+    "value": 0
+  },
+  "question": "drop the value head and its loss term",
+  "sp_util_last3": 74.92,
+  "kept_last3": 231.3,
+  "mins": 43.8,
+  "iters_done": 30
+}

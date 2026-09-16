@@ -1,0 +1,11 @@
+{
+  "name": "_cal",
+  "data": "cut2",
+  "b": 1,
+  "k": 0,
+  "iter": 1,
+  "episodes": 512,
+  "mcts_items": 17.6,
+  "mcts_util": 65.6639978647232,
+  "greedy_util": 55.52999973297119
+}

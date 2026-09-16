@@ -1,0 +1,24 @@
+{
+  "ckpt": "runs/sw_sims50/last.pt",
+  "data": "cut2",
+  "split": "val",
+  "b": 1,
+  "k": 0,
+  "n": 200,
+  "sims": 100,
+  "c_puct": 4.0,
+  "reps": 2,
+  "mcts_items": 18.8825,
+  "mcts_util": 71.40399745106697,
+  "mcts_util_std": 0.08150002360343933,
+  "greedy_util": 63.5194969177246,
+  "arm": "sims50",
+  "change": {
+    "sims": 50
+  },
+  "question": "half the search per move during self-play",
+  "sp_util_last3": 69.88,
+  "kept_last3": 217.0,
+  "mins": 24.2,
+  "iters_done": 30
+}

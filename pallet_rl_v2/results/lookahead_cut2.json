@@ -1,0 +1,17 @@
+{
+  "ckpt": "runs/cut2_v2/last.pt",
+  "data": "cut2",
+  "split": "test",
+  "n": 100,
+  "sims": 100,
+  "c_puct": 4.0,
+  "policy_only": 67.94000148773193,
+  "mcts_true": 80.60599651336669,
+  "items_true": 21.02,
+  "mcts_shuffled": 70.37299767136575,
+  "items_shuffled": 18.42,
+  "mcts_independent": 67.72299793958666,
+  "items_independent": 17.77,
+  "oracle_bonus": 12.882998573780029,
+  "search_gain": -0.21700354814527145
+}

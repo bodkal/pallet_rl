@@ -1,0 +1,24 @@
+{
+  "ckpt": "runs/sw_b5/last.pt",
+  "data": "cut2",
+  "split": "val",
+  "b": 5,
+  "k": 0,
+  "n": 200,
+  "sims": 100,
+  "c_puct": 4.0,
+  "reps": 2,
+  "mcts_items": 21.0425,
+  "mcts_util": 77.1439950466156,
+  "mcts_util_std": 0.24949998855590394,
+  "greedy_util": 68.71300220489502,
+  "arm": "b5",
+  "change": {
+    "b": 5
+  },
+  "question": "buffer of five - past the paper",
+  "sp_util_last3": 76.51,
+  "kept_last3": 223.0,
+  "mins": 79.8,
+  "iters_done": 30
+}

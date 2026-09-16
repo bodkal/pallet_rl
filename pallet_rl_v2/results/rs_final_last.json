@@ -1,0 +1,18 @@
+{
+  "ckpt": "runs/rs_v2/last.pt",
+  "data": "rs",
+  "b": 1,
+  "k": 0,
+  "n": 100,
+  "sims": 100,
+  "c_puct": 4.0,
+  "reps": 3,
+  "mcts_items": 15.42,
+  "mcts_util": 63.91533223787943,
+  "mcts_util_std": 0.4416229887210316,
+  "greedy_util": 52.19299793243408,
+  "bench_items": 13.1,
+  "bench_util": 53.1,
+  "gap_util": 10.82,
+  "pct_of_bench": 120.4
+}

@@ -1,0 +1,11 @@
+{
+  "name": "sw_scale0p5",
+  "data": "cut2",
+  "b": 1,
+  "k": 0,
+  "iter": 29,
+  "episodes": 7680,
+  "mcts_items": 18.99,
+  "mcts_util": 71.02599756717682,
+  "greedy_util": 58.21999549865723
+}

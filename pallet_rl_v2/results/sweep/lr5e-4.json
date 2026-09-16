@@ -1,0 +1,25 @@
+{
+  "ckpt": "runs/sw_lr5e_4/last.pt",
+  "data": "cut2",
+  "split": "val",
+  "b": 1,
+  "k": 0,
+  "n": 200,
+  "sims": 100,
+  "c_puct": 4.0,
+  "reps": 2,
+  "mcts_items": 19.8425,
+  "mcts_util": 74.94099708199502,
+  "mcts_util_std": 0.7119999229907918,
+  "greedy_util": 66.24199867248535,
+  "arm": "lr5e-4",
+  "change": {
+    "lr": 0.0005,
+    "lr_min": 5e-05
+  },
+  "question": "half the learning rate",
+  "sp_util_last3": 75.04,
+  "kept_last3": 231.0,
+  "mins": 46.2,
+  "iters_done": 30
+}

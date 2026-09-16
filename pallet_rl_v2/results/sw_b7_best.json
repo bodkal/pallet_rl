@@ -1,0 +1,11 @@
+{
+  "name": "sw_b7",
+  "data": "cut2",
+  "b": 7,
+  "k": 0,
+  "iter": 29,
+  "episodes": 7680,
+  "mcts_items": 21.53,
+  "mcts_util": 76.47699480056764,
+  "greedy_util": 70.0529956817627
+}

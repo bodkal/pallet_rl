@@ -1,0 +1,11 @@
+{
+  "name": "sw_best_combo",
+  "data": "cut2",
+  "b": 1,
+  "k": 0,
+  "iter": 29,
+  "episodes": 7680,
+  "mcts_items": 20.52,
+  "mcts_util": 76.57599663734436,
+  "greedy_util": 62.78799533843994
+}

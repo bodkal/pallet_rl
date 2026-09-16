@@ -1,0 +1,25 @@
+{
+  "ckpt": "runs/sw_lr2e_3/last.pt",
+  "data": "cut2",
+  "split": "val",
+  "b": 1,
+  "k": 0,
+  "n": 200,
+  "sims": 100,
+  "c_puct": 4.0,
+  "reps": 2,
+  "mcts_items": 19.505,
+  "mcts_util": 73.96099739670754,
+  "mcts_util_std": 0.14900005459785604,
+  "greedy_util": 65.80049991607666,
+  "arm": "lr2e-3",
+  "change": {
+    "lr": 0.002,
+    "lr_min": 0.0002
+  },
+  "question": "double the learning rate",
+  "sp_util_last3": 74.28,
+  "kept_last3": 232.3,
+  "mins": 45.0,
+  "iters_done": 30
+}

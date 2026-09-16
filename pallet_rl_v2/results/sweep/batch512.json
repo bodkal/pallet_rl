@@ -1,0 +1,24 @@
+{
+  "ckpt": "runs/sw_batch512/last.pt",
+  "data": "cut2",
+  "split": "val",
+  "b": 1,
+  "k": 0,
+  "n": 200,
+  "sims": 100,
+  "c_puct": 4.0,
+  "reps": 2,
+  "mcts_items": 18.97,
+  "mcts_util": 71.6787474066019,
+  "mcts_util_std": 0.033249917626385184,
+  "greedy_util": 58.61149787902832,
+  "arm": "batch512",
+  "change": {
+    "batch": 512
+  },
+  "question": "double the minibatch",
+  "sp_util_last3": 72.19,
+  "kept_last3": 240.3,
+  "mins": 48.6,
+  "iters_done": 30
+}

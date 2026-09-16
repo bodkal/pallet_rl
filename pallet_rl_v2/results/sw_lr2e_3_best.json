@@ -1,0 +1,11 @@
+{
+  "name": "sw_lr2e_3",
+  "data": "cut2",
+  "b": 1,
+  "k": 0,
+  "iter": 29,
+  "episodes": 7680,
+  "mcts_items": 19.86,
+  "mcts_util": 73.78699703216554,
+  "greedy_util": 65.5109977722168
+}

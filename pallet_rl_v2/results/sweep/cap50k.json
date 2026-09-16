@@ -1,0 +1,24 @@
+{
+  "ckpt": "runs/sw_cap50k/last.pt",
+  "data": "cut2",
+  "split": "val",
+  "b": 1,
+  "k": 0,
+  "n": 200,
+  "sims": 100,
+  "c_puct": 4.0,
+  "reps": 2,
+  "mcts_items": 20.2325,
+  "mcts_util": 76.79524698853493,
+  "mcts_util_std": 0.6947500646114406,
+  "greedy_util": 66.91600322723389,
+  "arm": "cap50k",
+  "change": {
+    "cap": 50000
+  },
+  "question": "quarter the replay buffer",
+  "sp_util_last3": 76.65,
+  "kept_last3": 238.3,
+  "mins": 48.1,
+  "iters_done": 30
+}

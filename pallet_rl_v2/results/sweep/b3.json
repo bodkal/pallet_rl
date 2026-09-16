@@ -1,0 +1,24 @@
+{
+  "ckpt": "runs/sw_b3/last.pt",
+  "data": "cut2",
+  "split": "val",
+  "b": 3,
+  "k": 0,
+  "n": 200,
+  "sims": 100,
+  "c_puct": 4.0,
+  "reps": 2,
+  "mcts_items": 20.735,
+  "mcts_util": 76.97724546194075,
+  "mcts_util_std": 0.2457498431205707,
+  "greedy_util": 69.4379997253418,
+  "arm": "b3",
+  "change": {
+    "b": 3
+  },
+  "question": "buffer of three - the paper stops here",
+  "sp_util_last3": 77.3,
+  "kept_last3": 215.3,
+  "mins": 63.3,
+  "iters_done": 30
+}

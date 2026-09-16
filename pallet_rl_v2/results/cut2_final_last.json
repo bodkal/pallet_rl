@@ -1,0 +1,18 @@
+{
+  "ckpt": "runs/cut2_v2/last.pt",
+  "data": "cut2",
+  "b": 1,
+  "k": 0,
+  "n": 100,
+  "sims": 100,
+  "c_puct": 4.0,
+  "reps": 3,
+  "mcts_items": 21.096666666666664,
+  "mcts_util": 81.0613300005595,
+  "mcts_util_std": 0.46254104995149203,
+  "greedy_util": 67.94000148773193,
+  "bench_items": 18.0,
+  "bench_util": 69.9,
+  "gap_util": 11.16,
+  "pct_of_bench": 116.0
+}

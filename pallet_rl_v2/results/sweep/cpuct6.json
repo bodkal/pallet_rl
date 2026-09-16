@@ -1,0 +1,24 @@
+{
+  "ckpt": "runs/sw_cpuct6/last.pt",
+  "data": "cut2",
+  "split": "val",
+  "b": 1,
+  "k": 0,
+  "n": 200,
+  "sims": 100,
+  "c_puct": 4.0,
+  "reps": 2,
+  "mcts_items": 19.625,
+  "mcts_util": 73.90224705934526,
+  "mcts_util_std": 0.20124994516373107,
+  "greedy_util": 66.52400016784668,
+  "arm": "cpuct6",
+  "change": {
+    "c_puct": 6.0
+  },
+  "question": "more exploration inside the tree",
+  "sp_util_last3": 72.14,
+  "kept_last3": 217.3,
+  "mins": 39.9,
+  "iters_done": 30
+}

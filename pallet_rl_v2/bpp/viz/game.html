@@ -1,0 +1,864 @@
+<!doctype html>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Online 3D-BPP with buffer &mdash; you vs. the agent</title>
+<style>
+:root{--bg:#0f1115;--panel:#171a21;--line:#262b36;--fg:#e6e9ef;--dim:#8b93a7;
+      --c0:#4cc9f0;--c1:#f7b32b;--c2:#57cc99;--c3:#ef476f;--c4:#b892ff;--c5:#ff9770;}
+@media(prefers-color-scheme:light){:root{--bg:#f6f7f9;--panel:#fff;--line:#e2e5ea;--fg:#1a1d23;--dim:#6b7280;}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:13px/1.45 ui-sans-serif,-apple-system,Segoe UI,Roboto,sans-serif}
+header{display:flex;gap:14px;align-items:baseline;flex-wrap:wrap;padding:13px 20px;
+  border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg);z-index:5}
+h1{font-size:15px;margin:0;font-weight:650;letter-spacing:.2px}
+.sub{color:var(--dim);font-size:12px}
+.spacer{margin-left:auto}
+button{font:inherit;border:1px solid var(--line);background:var(--panel);color:var(--fg);
+  border-radius:8px;padding:7px 14px;cursor:pointer}
+button:hover:not(:disabled){border-color:var(--c0);color:var(--c0)}
+button:disabled{opacity:.45;cursor:default}
+button.go{background:var(--c0);border-color:var(--c0);color:#06121a;font-weight:640}
+button.go:hover:not(:disabled){filter:brightness(1.08);color:#06121a}
+select,input{font:inherit;background:var(--panel);color:var(--fg);border:1px solid var(--line);
+  border-radius:8px;padding:7px 10px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+.card h2{font-size:11px;margin:0 0 10px;font-weight:600;color:var(--dim);
+  letter-spacing:.6px;text-transform:uppercase}
+.pill{border:1px solid var(--line);border-radius:999px;padding:5px 13px;cursor:pointer;
+  user-select:none;font-size:12px;background:var(--panel)}
+.pill.on{background:var(--fg);color:var(--bg);border-color:var(--fg);font-weight:600}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+label.f{display:block;color:var(--dim);font-size:11px;text-transform:uppercase;
+  letter-spacing:.5px;margin:0 0 6px}
+.field{margin-bottom:16px}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:9px 13px;flex:1;min-width:96px}
+.kpi .v{font-size:21px;font-weight:640;font-variant-numeric:tabular-nums;line-height:1.15}
+.kpi .k{color:var(--dim);font-size:10px;text-transform:uppercase;letter-spacing:.5px}
+main{padding:16px 20px 48px;max-width:1400px;margin:0 auto}
+[hidden]{display:none!important}
+
+/* setup */
+#setup{max-width:760px;margin:26px auto}
+.opt{color:var(--dim);font-size:12px;margin-top:6px}
+table.hist{width:100%;border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums}
+table.hist th{text-align:left;color:var(--dim);font-weight:500;font-size:10px;
+  text-transform:uppercase;letter-spacing:.5px;padding:0 10px 6px 0}
+table.hist td{padding:4px 10px 4px 0;border-top:1px solid var(--line)}
+.win-human{color:var(--c2);font-weight:640}
+.win-agent{color:var(--c3);font-weight:640}
+.win-draw{color:var(--dim)}
+
+/* play */
+#play{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:14px;align-items:start}
+@media(max-width:980px){#play{grid-template-columns:1fr}}
+#board{display:grid;grid-template-columns:auto minmax(250px,1fr);gap:14px;align-items:start}
+@media(max-width:1180px){#board{grid-template-columns:1fr}}
+#pallet{display:block;cursor:crosshair;border-radius:8px;touch-action:none}
+.qb{display:flex;flex-direction:column;align-items:center;gap:3px}
+.qb canvas{border-radius:2px}
+.qb span{font-size:10.5px;color:var(--dim);font-variant-numeric:tabular-nums}
+.dims{font-size:21px;font-weight:660;font-variant-numeric:tabular-nums;letter-spacing:-.3px}
+.qrow{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+#msg{min-height:19px;font-size:12px;color:var(--c1)}
+.lg{display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--dim);padding-top:8px}
+.lg i{width:11px;height:11px;border-radius:3px;display:inline-block;vertical-align:-1px;margin-right:5px}
+.hint{color:var(--dim);font-size:11.5px;line-height:1.6}
+kbd{border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:1px 5px;
+  font:11px ui-monospace,monospace;color:var(--fg)}
+/* the buffer - the thing that makes this paper's game different */
+#slots{display:flex;gap:9px;flex-wrap:wrap}
+.slot{border:1px solid var(--line);border-radius:10px;padding:9px 10px 7px;cursor:pointer;
+  background:var(--bg);flex:1;min-width:92px;text-align:center;position:relative}
+.slot:hover{border-color:var(--c0)}
+.slot.on{border-color:var(--c0);box-shadow:0 0 0 1px var(--c0) inset}
+.slot.dead{opacity:.42;cursor:not-allowed}
+.slot .n{position:absolute;top:5px;left:7px;font:10px ui-monospace,monospace;color:var(--dim)}
+.slot .d{font-size:14px;font-weight:640;font-variant-numeric:tabular-nums;margin-top:2px}
+.slot .s{font-size:10px;color:var(--dim)}
+.slot canvas{display:block;margin:4px auto 3px;border-radius:2px}
+
+/* result */
+#result{max-width:1180px;margin:0 auto}
+.duel{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:820px){.duel{grid-template-columns:1fr}}
+.big{font-size:40px;font-weight:680;letter-spacing:-1px;font-variant-numeric:tabular-nums;line-height:1}
+.verdict{font-size:26px;font-weight:680;letter-spacing:-.4px;margin:0 0 4px}
+.bar{height:9px;background:var(--line);border-radius:99px;overflow:hidden;margin:8px 0 4px}
+.bar>i{display:block;height:100%;border-radius:99px;transition:width .5s ease}
+.side{border:1px solid var(--line);border-radius:12px;padding:14px 16px;background:var(--panel)}
+.side.win.h{border-color:var(--c2);color:var(--c2);box-shadow:0 0 0 1px currentColor inset}
+.side.win.a{border-color:var(--c1);color:var(--c1);box-shadow:0 0 0 1px currentColor inset}
+.side h2 .crown{float:right;font-size:11px;letter-spacing:.6px}
+.stat{display:flex;justify-content:space-between;padding:3px 0;font-variant-numeric:tabular-nums}
+.stat span{color:var(--dim)}
+input[type=range]{width:100%;accent-color:var(--c0)}
+.spin{display:inline-block;width:13px;height:13px;border:2px solid var(--line);
+  border-top-color:var(--c0);border-radius:50%;animation:sp .7s linear infinite;vertical-align:-2px}
+@keyframes sp{to{transform:rotate(360deg)}}
+</style>
+
+<header>
+  <h1>Online 3D-BPP with buffer &mdash; you vs. the agent</h1>
+  <span class="sub" id="hsub">pack the stream by hand, then watch the agent try the same boxes</span>
+  <span class="spacer"></span>
+  <button id="btn-new" hidden>&larr; Back to setup</button>
+</header>
+
+<main>
+<!-- ===================== SETUP ===================== -->
+<section id="setup">
+  <div class="card">
+    <h2>Set up the duel</h2>
+
+    <div class="field">
+      <label class="f">Box stream &mdash; how the sequence is generated (Sec. IV)</label>
+      <div class="row" id="ds"></div>
+      <div class="opt" id="ds-note"></div>
+    </div>
+
+    <div class="field">
+      <label class="f">Action space &mdash; this filters the opponents below</label>
+      <div class="row" style="gap:18px;align-items:flex-end">
+        <div>
+          <label class="f" style="font-size:10px;margin-bottom:4px">Buffer b &mdash; boxes you may pick from</label>
+          <select id="bsel"></select>
+        </div>
+        <div>
+          <label class="f" style="font-size:10px;margin-bottom:4px">Orientations</label>
+          <select id="ksel">
+            <option value="0">1 &mdash; no turning (k = 0)</option>
+            <option value="1">2 &mdash; 90&deg; turns allowed (k = 1)</option>
+          </select>
+        </div>
+      </div>
+      <div class="opt" id="bnote"></div>
+    </div>
+
+    <div class="field">
+      <label class="f">Your opponent</label>
+      <select id="opp" style="width:100%"></select>
+      <label class="row" style="cursor:pointer;margin-top:8px">
+        <input type="checkbox" id="allagents">
+        <span class="opt" style="margin:0">show every agent, including ones trained on another stream</span>
+      </label>
+      <div class="opt" id="opp-note"></div>
+      <div class="opt" id="nonehere" hidden
+           style="color:var(--c1);margin-top:6px;line-height:1.6"></div>
+    </div>
+
+    <div class="field">
+      <label class="f">Lookahead &mdash; boxes you may see but not place</label>
+      <div class="row" id="nsel"></div>
+      <div class="opt">Pure information: it tells you what is coming so you can
+        leave room for it, but you still have to place whatever is in the buffer.</div>
+    </div>
+
+    <div class="row" style="align-items:flex-end;gap:16px">
+      <div>
+        <label class="f">Seed</label>
+        <input id="seed" size="9" placeholder="random">
+      </div>
+      <button class="go" id="start" style="margin-left:auto">Start packing &rarr;</button>
+    </div>
+    <div class="opt" id="fair"></div>
+  </div>
+
+  <div class="card" style="margin-top:14px" id="histcard" hidden>
+    <h2>Past duels</h2>
+    <div id="hist"></div>
+  </div>
+</section>
+
+<!-- ===================== PLAY ===================== -->
+<section id="play" hidden>
+  <div>
+    <div class="row" id="kpis" style="margin-bottom:12px"></div>
+    <div id="board">
+    <div class="card">
+      <h2>The bin floor &mdash; top view <span id="palsub" style="text-transform:none;letter-spacing:0"></span></h2>
+      <canvas id="pallet"></canvas>
+      <div class="lg">
+        <span><i style="background:var(--c2)"></i>legal here</span>
+        <span><i style="background:var(--c3)"></i>illegal here</span>
+        <span><i style="background:var(--c0);opacity:.45"></i>legal loading position</span>
+        <span>cell number = stacked height</span>
+      </div>
+      <div id="msg"></div>
+    </div>
+    <div class="card">
+      <h2>Your bin <span style="text-transform:none;letter-spacing:0;font-weight:400"
+          class="sub">&mdash; drag to rotate, double-click to reset</span></h2>
+      <canvas id="iso3d"></canvas>
+    </div>
+    </div>
+  </div>
+
+  <div>
+    <div class="card">
+      <h2>Buffer &mdash; pick any of these <span id="bufsub" style="text-transform:none;letter-spacing:0;font-weight:400"></span></h2>
+      <div id="slots"></div>
+      <div class="sub" id="curinfo" style="margin-top:9px"></div>
+      <div id="hoverinfo" class="sub" style="margin-top:8px;min-height:34px"></div>
+      <button id="rot" hidden style="width:100%">Turn 90&deg; <kbd>R</kbd></button>
+    </div>
+
+    <div class="card" style="margin-top:12px" id="qcard">
+      <h2>Lookahead &mdash; you cannot place these <span id="qsub" style="text-transform:none;letter-spacing:0;font-weight:400"></span></h2>
+      <div class="qrow" id="q"></div>
+    </div>
+
+    <div class="card" style="margin-top:12px">
+      <h2>Controls</h2>
+      <label class="row" style="cursor:pointer;margin-bottom:10px">
+        <input type="checkbox" id="hint" checked> <span>show every legal position</span>
+      </label>
+      <button id="resign" style="width:100%;margin-bottom:8px">I'm stuck &mdash; stop here</button>
+      <button class="go" id="tourn" style="width:100%;margin-bottom:8px" hidden>Let the agent try &rarr;</button>
+      <button id="tosetup" style="width:100%">&larr; Back to setup</button>
+      <div class="hint" style="margin-top:10px">
+        Pick any box out of the buffer, then click a cell to drop it with its
+        front-left-bottom corner there. It lands on whatever is underneath and
+        must be stable &mdash; the paper's three support rules &mdash; so illegal
+        spots are refused. Every box you take is replaced from the stream.
+        The game ends when no box in the buffer fits anywhere.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== RESULT ===================== -->
+<section id="result" hidden>
+  <div class="card" style="margin-bottom:14px">
+    <h2>Result</h2>
+    <div class="verdict" id="verdict">&mdash;</div>
+    <div class="sub" id="vsub"></div>
+    <div style="margin-top:14px">
+      <div class="row" style="justify-content:space-between"><b>You</b><b id="hu"></b></div>
+      <div class="bar"><i id="hbar" style="background:var(--c2)"></i></div>
+      <div class="row" style="justify-content:space-between;margin-top:10px"><b id="alab">Agent</b><b id="au"></b></div>
+      <div class="bar"><i id="abar" style="background:var(--c1)"></i></div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:14px">
+    <h2>Replay &mdash; same boxes, same stream</h2>
+    <input type="range" id="scrub" min="0" max="1" value="1">
+    <div class="sub" id="scrublab" style="font-variant-numeric:tabular-nums"></div>
+    <div class="sub" style="margin-top:6px;opacity:.8">Drag either bin to rotate both together
+      &mdash; same angle, fair comparison. Double-click resets.</div>
+  </div>
+
+  <div class="duel">
+    <div class="side" id="side-h">
+      <h2 style="font-size:11px;color:var(--dim);letter-spacing:.6px;text-transform:uppercase;margin:0 0 8px">You<span class="crown" id="crown-h"></span></h2>
+      <canvas id="iso-h"></canvas>
+      <div id="stat-h" style="margin-top:10px"></div>
+    </div>
+    <div class="side" id="side-a">
+      <h2 style="font-size:11px;color:var(--dim);letter-spacing:.6px;text-transform:uppercase;margin:0 0 8px"><span id="alab2">Agent</span><span class="crown" id="crown-a"></span></h2>
+      <canvas id="iso-a"></canvas>
+      <div id="stat-a" style="margin-top:10px"></div>
+    </div>
+  </div>
+
+  <div class="row" style="margin-top:16px">
+    <button class="go" id="again">Rematch &mdash; new boxes</button>
+    <button id="samesame">Replay this exact sequence</button>
+    <button id="tomenu">Back to setup</button>
+  </div>
+</section>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const DPR = () => Math.min(2, window.devicePixelRatio || 1);
+async function api(path, body){
+  const r = await fetch(path, body ? {method:'POST', headers:{'Content-Type':'application/json'},
+                                      body:JSON.stringify(body)} : undefined);
+  return r.json();
+}
+
+let SETUP=null, S=null, SLOT=0, ORIENT=0, HOVER=null, DS='cut2';
+let BUF=1, KK=0, LA=0;                       // buffer size, orientations, lookahead
+const BUF_CHOICES = [1,2,3], LA_CHOICES = [0,1,2,3,5];
+const DS_NOTE = {
+ 'rs':'Random sampling: 80 boxes with each side drawn uniformly from [2,5]. No perfect packing is guaranteed.',
+ 'cut1':'The bin is cut recursively into boxes, then sorted by the height of their bottom face. 100% is always achievable.',
+ 'cut2':'Same cutting, ordered so a box only arrives once everything it rests on has arrived. 100% is always achievable.'};
+
+/* ================= colours ================= */
+function boxColor(i, light){
+  const h = (i*137.508 + 28) % 360;
+  return `hsl(${h.toFixed(0)} 62% ${light}%)`;
+}
+const RAMP = [[27,42,74],[31,95,139],[32,144,141],[92,178,112],[200,195,63],[224,138,46],[208,73,47]];
+function heightColor(h, H){
+  if(h<=0) return css('--panel');
+  const t = Math.min(1, h/H) * (RAMP.length-1);
+  const i = Math.min(RAMP.length-2, Math.floor(t)), f = t-i;
+  const c = RAMP[i].map((v,k)=>Math.round(v + f*(RAMP[i+1][k]-v)));
+  return `rgb(${c[0]} ${c[1]} ${c[2]})`;
+}
+
+/* ================= isometric 3D =================
+   boxes are [x,y,z,w,l,h]: x runs along the W axis, y along L, z up.  */
+const VIEW  = {th: -Math.PI/4, ph: 35*Math.PI/180};
+const VIEW0 = {th: VIEW.th, ph: VIEW.ph};
+
+function drawIso(cv, boxes, EX, EY, EZ, opts){
+  opts = opts || {};
+  const dpr = DPR();
+  cv.style.width = '100%';                       // measure the container, not the attribute
+  const cw = Math.max(200, cv.clientWidth), ch = opts.height || Math.round(cw*0.72);
+  cv.style.height = ch+'px';
+  cv.width = cw*dpr; cv.height = ch*dpr;
+  const g = cv.getContext('2d');
+  g.setTransform(dpr,0,0,dpr,0,0);
+  g.clearRect(0,0,cw,ch);
+
+  // free axonometric camera: spin about the vertical axis (th), tilt down (ph)
+  const st=Math.sin(VIEW.th), ct=Math.cos(VIEW.th), sp=Math.sin(VIEW.ph), cp=Math.cos(VIEW.ph);
+  const raw   = (x,y,z)=>[x*ct - y*st, (x*st + y*ct)*sp - z*cp];
+  const depth = (x,y,z)=>(x*st + y*ct)*cp + z*sp;      // bigger = nearer the camera
+  const AX = -0.9, EXT = 1.6;                          // axes sit just outside the bin
+
+  // fit the bin *and* its axes into the canvas at this angle
+  let mnx=1e9,mxx=-1e9,mny=1e9,mxy=-1e9;
+  const fit = (x,y,z)=>{const [a,b]=raw(x,y,z);
+    mnx=Math.min(mnx,a);mxx=Math.max(mxx,a);mny=Math.min(mny,b);mxy=Math.max(mxy,b);};
+  for(const x of [0,EX]) for(const y of [0,EY]) for(const z of [0,EZ]) fit(x,y,z);
+  fit(AX-1.6, AX-1.6, 0); fit(EX+EXT, AX, 0); fit(AX, EY+EXT, 0); fit(AX, AX, EZ+EXT);
+  const pad=10, s=Math.min((cw-2*pad)/(mxx-mnx),(ch-2*pad)/(mxy-mny));
+  const ox=pad-mnx*s + ((cw-2*pad)-(mxx-mnx)*s)/2, oy=pad-mny*s + ((ch-2*pad)-(mxy-mny)*s)/2;
+  const P=(x,y,z)=>{const [a,b]=raw(x,y,z); return [ox+a*s, oy+b*s];};
+
+  // GHOST > 0 while painting the pass that goes *over* the boxes
+  let GHOST = 0;
+  const line=(p,q,col,lw,halo)=>{
+    const seg=()=>{g.beginPath();g.moveTo(p[0],p[1]);g.lineTo(q[0],q[1]);g.stroke();};
+    if(halo && !GHOST){ g.strokeStyle=css('--bg'); g.lineWidth=(lw||1)+3.5;
+                        g.globalAlpha=.85; seg(); }
+    g.globalAlpha = GHOST || 1;
+    g.strokeStyle=col; g.lineWidth=lw||1; seg();
+    g.globalAlpha = 1;
+  };
+  const label=(t,p,col,px)=>{
+    g.font = `700 ${px}px ui-sans-serif,system-ui,sans-serif`;
+    if(!GHOST){ g.lineWidth=3.5; g.strokeStyle=css('--bg'); g.globalAlpha=.85;
+                g.strokeText(t, p[0], p[1]); }
+    g.globalAlpha = GHOST || 1;
+    g.fillStyle=col; g.fillText(t, p[0], p[1]);
+    g.globalAlpha = 1;
+  };
+  const poly=(pts,fill,stroke,lw)=>{
+    g.beginPath(); pts.forEach((p,i)=>i?g.lineTo(p[0],p[1]):g.moveTo(p[0],p[1])); g.closePath();
+    if(fill){g.fillStyle=fill;g.fill();}
+    if(stroke){g.strokeStyle=stroke;g.lineWidth=lw||1;g.stroke();}
+  };
+
+  // ---- bin: floor grid + the eight edges ----
+  for(let i=0;i<=EX;i++) line(P(i,0,0), P(i,EY,0), css('--line'));
+  for(let j=0;j<=EY;j++) line(P(0,j,0), P(EX,j,0), css('--line'));
+  for(const x of [0,EX]) for(const y of [0,EY]) line(P(x,y,0), P(x,y,EZ), css('--line'));
+  for(const [a,b] of [[[0,0],[EX,0]],[[EX,0],[EX,EY]],[[EX,EY],[0,EY]],[[0,EY],[0,0]]])
+    line(P(a[0],a[1],EZ), P(b[0],b[1],EZ), css('--line'));
+
+  // ---- axes ----
+  const O = P(AX,AX,0), fs = Math.max(8, Math.min(12, s*0.55));
+  const nums = s >= 11;                                  // too tight to number on small canvases
+  const axis = (end, tick, col, lab, n) => {
+    const c = css(col);
+    line(O, P(...end), c, 1.5, true);
+    for(let i=0;i<=n;i++){
+      line(P(...tick(i)), P(...tick(i, true)), c, i%5===0 ? 1.4 : 0.7, true);
+      if(nums && i%2===0 && i<n) label(i, P(...tick(i,true,true)), c, fs);
+    }
+    label(lab, P(...end), c, fs*1.2);
+  };
+  const paintAxes = () => {
+    g.textAlign='center'; g.textBaseline='middle';
+    axis([EX+EXT, AX, 0], (i,o,t)=>[i, AX-(t?1.15:o?0.45:0), 0], '--c3', 'x', EX);
+    axis([AX, EY+EXT, 0], (i,o,t)=>[AX-(t?1.15:o?0.45:0), i, 0], '--c2', 'y', EY);
+    axis([AX, AX, EZ+EXT], (i,o,t)=>[AX-(t?1.0:o?0.4:0), AX-(t?1.0:o?0.4:0), i], '--c0', 'z', EZ);
+    g.globalAlpha = GHOST || 1;
+    g.beginPath(); g.arc(O[0], O[1], Math.max(2.5, s*0.11), 0, 7);
+    g.fillStyle = css('--fg'); g.fill();
+    if(!GHOST){ g.strokeStyle = css('--bg'); g.lineWidth=1.5; g.stroke(); }
+    g.globalAlpha = 1;
+    label('0', P(AX-1.2, AX-1.2, 0), css('--fg'), fs*1.1);
+  };
+  paintAxes();                                   // solid, so boxes can bury it
+
+  // ---- boxes, far to near ----
+  const idx = boxes.map((b,i)=>i)
+    .sort((i,j)=>depth(boxes[i][0],boxes[i][1],boxes[i][2])
+                -depth(boxes[j][0],boxes[j][1],boxes[j][2]));
+  for(const i of idx){
+    const [x,y,z,w,l,h]=boxes[i];
+    const xf = st>=0 ? x+w : x, yf = ct>=0 ? y+l : y;   // the faces turned toward us
+    const top =[P(x,y,z+h),P(x+w,y,z+h),P(x+w,y+l,z+h),P(x,y+l,z+h)];
+    const fx  =[P(xf,y,z),P(xf,y+l,z),P(xf,y+l,z+h),P(xf,y,z+h)];
+    const fy  =[P(x,yf,z),P(x+w,yf,z),P(x+w,yf,z+h),P(x,yf,z+h)];
+    poly(top, boxColor(i,64), 'rgba(0,0,0,.35)');
+    poly(fx,  boxColor(i,44), 'rgba(0,0,0,.35)');
+    poly(fy,  boxColor(i,32), 'rgba(0,0,0,.35)');
+    if(opts.highlight===i) for(const f of [top,fx,fy]) poly(f, null, '#fff', 2);
+  }
+
+  // Second pass at low alpha.  Over open space it lands on the identical colour
+  // already there and changes nothing; where a box now covers the axis it shows
+  // through faintly, so hidden stretches read as hidden instead of floating.
+  GHOST = 0.3; paintAxes(); GHOST = 0;
+}
+
+/* drag any bin to spin them all; double-click puts the camera back */
+let DRAG = null;
+function redrawIsos(){
+  if(!$('#play').hidden && S)
+    drawIso($('#iso3d'), S.placed, S.W, S.L, S.H, {highlight:S.placed.length-1, height:300});
+  if(!$('#result').hidden && RES) drawReplay(parseInt($('#scrub').value,10));
+}
+function bindRotate(sel){
+  const cv = $(sel); if(!cv) return;
+  cv.style.cursor = 'grab'; cv.style.touchAction = 'none';
+  cv.addEventListener('pointerdown', e=>{
+    DRAG = {x:e.clientX, y:e.clientY, th:VIEW.th, ph:VIEW.ph};
+    cv.setPointerCapture(e.pointerId); cv.style.cursor='grabbing'; e.preventDefault();
+  });
+  cv.addEventListener('pointermove', e=>{
+    if(!DRAG) return;
+    VIEW.th = DRAG.th + (e.clientX-DRAG.x)*0.011;
+    VIEW.ph = Math.max(0.10, Math.min(1.50, DRAG.ph - (e.clientY-DRAG.y)*0.009));
+    redrawIsos();
+  });
+  const stop = e=>{ if(DRAG){ DRAG=null; cv.style.cursor='grab'; } };
+  cv.addEventListener('pointerup', stop);
+  cv.addEventListener('pointercancel', stop);
+  cv.addEventListener('dblclick', ()=>{ VIEW.th=VIEW0.th; VIEW.ph=VIEW0.ph; redrawIsos(); });
+}
+
+/* a box drawn to scale: w x l real bin cells, height written on it */
+function drawFootprint(cv, dims, u, idx, faded){
+  const [w,l,h]=dims, dpr=DPR();
+  cv.style.width=(w*u)+'px'; cv.style.height=(l*u)+'px';
+  cv.width=w*u*dpr; cv.height=l*u*dpr;
+  const g=cv.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0);
+  g.clearRect(0,0,w*u,l*u);
+  g.globalAlpha = faded ? .38 : 1;
+  g.fillStyle=boxColor(idx,56); g.fillRect(0,0,w*u,l*u);
+  g.strokeStyle='rgba(0,0,0,.22)'; g.lineWidth=1;                 // one line per unit cell
+  for(let i=1;i<w;i++){ g.beginPath(); g.moveTo(i*u+.5,0); g.lineTo(i*u+.5,l*u); g.stroke(); }
+  for(let j=1;j<l;j++){ g.beginPath(); g.moveTo(0,j*u+.5); g.lineTo(w*u,j*u+.5); g.stroke(); }
+  g.globalAlpha = 1;
+  if(faded){ g.setLineDash([4,3]); g.strokeStyle=css('--dim'); }
+  else     { g.strokeStyle='rgba(0,0,0,.55)'; }
+  g.lineWidth=2; g.strokeRect(1,1,w*u-2,l*u-2); g.setLineDash([]);
+  g.fillStyle = faded ? css('--dim') : 'rgba(0,0,0,.8)';
+  g.textAlign='center'; g.textBaseline='middle';
+  g.font=`700 ${Math.max(9,Math.round(Math.min(u*0.62,Math.min(w,l)*u*0.42)))}px ui-sans-serif,system-ui,sans-serif`;
+  g.fillText('↕'+h, w*u/2, l*u/2);
+}
+
+/* ================= the action space ================= */
+function alive(j){ const d=S.buf[j]; return d && d[0]>0 && d[1]>0 && d[2]>0; }
+function poseDims(j, o){
+  const [w,l,h]=S.buf[j===undefined?SLOT:j];
+  return (o===undefined?ORIENT:o)===1 ? [l,w,h] : [w,l,h];
+}
+function planeOf(j, o){ return (j*(S.k+1) + o) * S.W * S.L; }
+function legal(x,y,j,o){
+  j = j===undefined?SLOT:j; o = o===undefined?ORIENT:o;
+  return S.mask[planeOf(j,o) + x*S.L + y] === 1;
+}
+/* how many legal loading positions this slot still has, over all its poses */
+function spots(j){
+  let n=0;
+  for(let o=0;o<=S.k;o++){ const base=planeOf(j,o);
+    for(let i=0;i<S.W*S.L;i++) n += S.mask[base+i]; }
+  return n;
+}
+function restZ(x,y){
+  const [w,l]=poseDims(); let z=0;
+  for(let i=x;i<Math.min(S.W,x+w);i++) for(let j=y;j<Math.min(S.L,y+l);j++) z=Math.max(z,S.hmap[j][i]);
+  return z;
+}
+
+/* ================= the bin floor (top view) ================= */
+function cellSize(W){
+  const avail = ($('#board').clientWidth||700) - 300;         // leave room for the 3D bin
+  return Math.max(22, Math.min(42, Math.floor(Math.max(260, Math.min(460, avail))/W)));
+}
+function drawPallet(){
+  const cv=$('#pallet'), W=S.W, L=S.L, C=cellSize(W), dpr=DPR();
+  cv.style.width=(W*C)+'px'; cv.style.height=(L*C)+'px';
+  cv.width=W*C*dpr; cv.height=L*C*dpr;
+  const g=cv.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0);
+  g.clearRect(0,0,W*C,L*C);
+
+  const live = !S.done && alive(SLOT);
+  for(let y=0;y<L;y++) for(let x=0;x<W;x++){
+    const h=S.hmap[y][x];
+    g.fillStyle=heightColor(h,S.H); g.fillRect(x*C,y*C,C,C);
+    g.strokeStyle=css('--line'); g.lineWidth=1; g.strokeRect(x*C+.5,y*C+.5,C-1,C-1);
+    if(h>0){ g.fillStyle='rgba(255,255,255,.82)'; g.font=`600 ${Math.round(C*0.32)}px ui-monospace,monospace`;
+             g.textAlign='center'; g.textBaseline='middle'; g.fillText(h, x*C+C/2, y*C+C/2); }
+  }
+  // every legal loading position for the box you are holding
+  if($('#hint').checked && live){
+    g.fillStyle=css('--c0'); g.globalAlpha=.5;
+    for(let y=0;y<L;y++) for(let x=0;x<W;x++)
+      if(legal(x,y)){ g.beginPath(); g.arc(x*C+C/2,y*C+C/2,Math.max(2,C*0.09),0,7); g.fill(); }
+    g.globalAlpha=1;
+  }
+  // hovered footprint
+  if(HOVER && live){
+    const {x,y}=HOVER, ok=legal(x,y);
+    const [dw,dl]=poseDims();
+    const w=Math.min(dw, W-x), l=Math.min(dl, L-y);
+    g.fillStyle = ok ? css('--c2') : css('--c3'); g.globalAlpha=.34;
+    g.fillRect(x*C, y*C, w*C, l*C); g.globalAlpha=1;
+    g.strokeStyle = ok ? css('--c2') : css('--c3'); g.lineWidth=2;
+    g.strokeRect(x*C+1, y*C+1, w*C-2, l*C-2);
+  }
+}
+
+/* ================= play screen ================= */
+function renderPlay(){
+  $('#setup').hidden=true; $('#result').hidden=true; $('#play').hidden=false; $('#btn-new').hidden=false;
+  $('#hsub').textContent = `${S.dataset_label} · ${S.W}×${S.L}×${S.H} · b=${S.b}, k=${S.k}`
+    + ` · vs ${S.opponent_label} · seed ${S.seed}`;
+  const pct = (S.utilization*100).toFixed(1);
+  $('#kpis').innerHTML = [
+    ['space filled', pct+'%'], ['boxes packed', S.n_items],
+    ['still to come', S.to_come], ['stream length', S.seq_len]
+  ].map(([k,v])=>`<div class="kpi"><div class="v">${v}</div><div class="k">${k}</div></div>`).join('');
+  $('#palsub').innerHTML = `<span class="sub">&nbsp;x &rarr; right (W), y &darr; down (L)</span>`;
+
+  const C = cellSize(S.W);
+  if(!alive(SLOT)) for(let j=0;j<S.b;j++) if(alive(j)){ SLOT=j; ORIENT=0; break; }
+
+  // ---- the buffer: b slots, any of which you may take ----
+  $('#bufsub').innerHTML = S.b>1
+    ? `<span class="sub">&mdash; take any of the ${S.b}</span>`
+    : `<span class="sub">&mdash; b=1, so only the box in front</span>`;
+  const su = Math.max(8, Math.round(C*0.52));
+  $('#slots').innerHTML = S.buf.map((d,j)=>{
+    const ok = d[0]>0 && d[1]>0 && d[2]>0;
+    const n = ok && !S.done ? spots(j) : 0;
+    return `<div class="slot${j===SLOT?' on':''}${ok&&n?'':' dead'}" data-j="${j}">
+      <span class="n">${j+1}</span><canvas data-c="${j}"></canvas>
+      <div class="d">${ok?`${d[0]}×${d[1]}×${d[2]}`:'—'}</div>
+      <div class="s">${!ok?'empty':S.done?'':n?`${n} spot${n===1?'':'s'}`:'no room'}</div></div>`;
+  }).join('');
+  $('#slots').querySelectorAll('canvas').forEach(cv=>{
+    const j=+cv.dataset.c, d=S.buf[j];
+    if(d[0]>0) drawFootprint(cv, j===SLOT?poseDims(j,ORIENT):[d[0],d[1],d[2]],
+                             su, S.n_items+j, j!==SLOT);
+    else { cv.width=0; cv.style.width='0px'; }
+  });
+  $('#slots').querySelectorAll('.slot').forEach(el=>el.onclick=()=>{
+    const j=+el.dataset.j;
+    if(!alive(j)) return;
+    SLOT=j; ORIENT=0; HOVER=null; renderPlay();
+  });
+
+  if(alive(SLOT)){
+    const [w,l,h]=poseDims();
+    $('#curinfo').innerHTML = `holding <b>${w} × ${l} × ${h}</b> from slot ${SLOT+1}`
+      + ` · volume ${w*l*h} of ${S.W*S.L*S.H}` + (ORIENT? ' · turned 90°' : '');
+  } else $('#curinfo').textContent = '';
+  // a square footprint has no distinct second pose - its mask plane is all zero
+  const square = alive(SLOT) && S.buf[SLOT][0]===S.buf[SLOT][1];
+  $('#rot').hidden = S.k<1 || S.done || !alive(SLOT) || square;
+
+  // ---- the lookahead window: seen, never placed ----
+  const qu = Math.max(9, Math.round(C*0.42));
+  $('#qsub').innerHTML = S.lookahead
+    ? `<span class="sub">&mdash; next ${S.lookahead}, ${S.to_come} still in the stream</span>`
+    : '';
+  if(!S.lookahead){
+    $('#q').innerHTML = `<span class="sub">Lookahead is off, so you see only the buffer &mdash;
+      exactly what the network sees. ${S.to_come} box${S.to_come===1?'':'es'} left in the stream,
+      hidden. Turn it on back at setup to look further ahead.</span>`;
+  } else if(!S.ahead.length){
+    $('#q').innerHTML = `<span class="sub">the stream is empty &mdash; only the buffer is left</span>`;
+  } else {
+    $('#q').innerHTML = S.ahead.map((d,i)=>
+      `<div class="qb"><canvas data-i="${i}"></canvas>`+
+      `<span>${d[0]}×${d[1]}×${d[2]}</span></div>`).join('')
+      + (S.to_come > S.ahead.length
+         ? `<span class="sub" style="align-self:center">+${S.to_come-S.ahead.length} hidden</span>`
+         : '');
+    $('#q').querySelectorAll('canvas').forEach(cv=>{
+      const i=+cv.dataset.i;
+      drawFootprint(cv, S.ahead[i], qu, S.n_items+S.b+i, true);   // faded: not yours to place
+    });
+    $('#q').insertAdjacentHTML('beforeend',
+      `<div class="pknote">${S.searches
+        ? 'Your opponent searches the whole remaining stream, so it sees at least this far.'
+        : 'Your opponent cannot see these at all &mdash; its input is the bin and the buffer.'}</div>`);
+  }
+
+  drawPallet();
+  drawIso($('#iso3d'), S.placed, S.W, S.L, S.H, {highlight:S.placed.length-1, height:300});
+
+  $('#resign').disabled = S.done;
+  $('#tourn').hidden = !S.done;
+  if(S.done){
+    const why = {sequence_end:'you packed the entire stream!',
+                 no_feasible:'nothing in the buffer fits anywhere any more',
+                 resigned:'you stopped here'}[S.reason] || S.reason;
+    $('#msg').innerHTML = `<b style="color:var(--c2)">Your packing is done</b> — ${why}
+      &nbsp; <span class="sub">${pct}% of the bin, ${S.n_items} boxes.</span>`;
+    $('#hoverinfo').textContent='';
+  }
+}
+
+function onMove(ev){
+  if(!S || S.done || !alive(SLOT)){ HOVER=null; return; }
+  const r=$('#pallet').getBoundingClientRect(), C=cellSize(S.W);
+  const x=Math.floor((ev.clientX-r.left)/C), y=Math.floor((ev.clientY-r.top)/C);
+  const inside = x>=0&&x<S.W&&y>=0&&y<S.L;
+  const changed = inside ? (!HOVER||HOVER.x!==x||HOVER.y!==y) : !!HOVER;
+  HOVER = inside ? {x,y} : null;
+  if(changed){
+    drawPallet();
+    if(HOVER){
+      const [w,l,h]=poseDims(), z=restZ(x,y), ok=legal(x,y);
+      $('#hoverinfo').innerHTML =
+        `<b>(${x}, ${y})</b> → lands at z = ${z}, top at ${z+h}<br>` +
+        (ok ? `<span style="color:var(--c2)">legal — click to drop</span>`
+            : `<span style="color:var(--c3)">illegal — ${z+h>S.H ? 'it would poke through the ceiling'
+               : (x+w>S.W||y+l>S.L) ? 'it hangs over the wall' : 'not enough support underneath'}</span>`);
+    } else $('#hoverinfo').textContent='';
+  }
+}
+
+async function onClick(ev){
+  if(!S || S.done || !alive(SLOT)) return;
+  const r=$('#pallet').getBoundingClientRect(), C=cellSize(S.W);
+  const x=Math.floor((ev.clientX-r.left)/C), y=Math.floor((ev.clientY-r.top)/C);
+  if(x<0||x>=S.W||y<0||y>=S.L) return;
+  const st = await api('/api/place', {game:S.game, slot:SLOT, o:ORIENT, x, y});
+  if(st.error && st.game){ S=st; $('#msg').textContent = '⚠ '+st.error; renderPlay(); return; }
+  if(!st.ok){ $('#msg').textContent = '⚠ '+(st.error||'rejected'); return; }
+  S=st; ORIENT=0; HOVER=null; $('#msg').textContent=''; renderPlay();
+}
+
+/* ================= result screen ================= */
+let RES=null;
+function renderResult(){
+  $('#play').hidden=true; $('#setup').hidden=true; $('#result').hidden=false;
+  const h=RES.human, a=RES.agent;
+  const hp=h.utilization*100, ap=a.utilization*100;
+  const win = hp>ap+1e-9 ? 'human' : ap>hp+1e-9 ? 'agent' : 'draw';
+  $('#verdict').innerHTML = win==='human'
+      ? `You win by ${(hp-ap).toFixed(1)} points. 🏆`
+      : win==='agent' ? `${a.label} wins by ${(ap-hp).toFixed(1)} points.`
+      : `Dead heat — ${hp.toFixed(1)}% each.`;
+  $('#vsub').textContent = `${RES.dataset_label} · seed ${RES.seed} · ${RES.seq_len} boxes in the stream · `
+    + `buffer of ${RES.b} · ${RES.k?2:1} orientation${RES.k?'s':''}`
+    + (RES.searches ? ' · the agent searched the real upcoming stream, and so could you'
+                    : ' · neither of you saw past the buffer');
+  $('#hu').textContent = hp.toFixed(1)+'%'; $('#au').textContent = ap.toFixed(1)+'%';
+  $('#hbar').style.width = hp+'%'; $('#abar').style.width = ap+'%';
+  $('#alab').textContent = a.label; $('#alab2').textContent = a.label;
+  $('#side-h').className = 'side' + (win==='human' ? ' win h' : '');
+  $('#side-a').className = 'side' + (win==='agent' ? ' win a' : '');
+  $('#crown-h').textContent = win==='human' ? '⭐ WINNER' : '';
+  $('#crown-a').textContent = win==='agent' ? '⭐ WINNER' : '';
+  const why = r => ({sequence_end:'packed the whole stream', no_feasible:'ran out of room',
+                     resigned:'stopped early'}[r]||r);
+  const stat = (o,extra)=>`
+    <div class="big">${(o.utilization*100).toFixed(1)}<span style="font-size:18px">%</span></div>
+    <div class="sub" style="margin-bottom:8px">of the bin filled</div>
+    <div class="stat"><span>boxes packed</span><b>${o.n_items} / ${RES.seq_len}</b></div>
+    <div class="stat"><span>ended because</span><b>${why(o.reason)}</b></div>${extra||''}`;
+  $('#stat-h').innerHTML = stat(h, `<div class="stat"><span>time taken</span><b>${h.seconds.toFixed(0)} s</b></div>`);
+  $('#stat-a').innerHTML = stat(a, `<div class="stat"><span>time taken</span><b>${a.seconds.toFixed(2)} s</b></div>`);
+
+  const n = Math.max(h.placed.length, a.placed.length);
+  const sc=$('#scrub'); sc.max=n; sc.value=n; drawReplay(n);
+}
+function drawReplay(n){
+  const h=RES.human.placed.slice(0,n), a=RES.agent.placed.slice(0,n);
+  drawIso($('#iso-h'), h, RES.W, RES.L, RES.H, {highlight:h.length-1, height:290});
+  drawIso($('#iso-a'), a, RES.W, RES.L, RES.H, {highlight:a.length-1, height:290});
+  $('#scrublab').textContent = n===0 ? 'empty bins — drag to replay'
+    : `after box ${n}:  you ${h.length} placed`
+      + (h.length<n ? ' (you had already stopped)' : '')
+      + `,  agent ${a.length} placed` + (a.length<n ? ' (agent had already stopped)' : '');
+}
+
+/* ================= setup ================= */
+function renderSetup(){
+  $('#play').hidden=true; $('#result').hidden=true; $('#setup').hidden=false; $('#btn-new').hidden=true;
+  $('#hsub').textContent='pack the stream by hand, then watch the agent try the same boxes';
+  $('#ds').innerHTML = SETUP.datasets.map(d=>
+    `<span class="pill${d===DS?' on':''}" data-ds="${d}">${SETUP.labels[d]}</span>`).join('');
+  $('#ds').querySelectorAll('.pill').forEach(p=>p.onclick=()=>{DS=p.dataset.ds; renderSetup();});
+  $('#ds-note').textContent = DS_NOTE[DS]||'';
+  renderKnobs();
+  // a network is only meaningful on the stream it was trained on, so that is all
+  // we offer until you ask for the rest; the heuristics belong to every stream
+  const all = $('#allagents').checked;
+  const fit   = SETUP.opponents.filter(fitsSpace);
+  const here  = fit.filter(o=>o.run && o.dataset===DS && !isSweep(o));
+  const sweep = fit.filter(o=>o.run && o.dataset===DS && isSweep(o));
+  const other = fit.filter(o=>o.run && o.dataset!==DS);
+  const heur  = fit.filter(o=>!o.run);
+  const grp=(lab,list)=> list.length? `<optgroup label="${lab}">`+
+      list.map(o=>`<option value="${o.id}">${o.label}${trained(o)?` — ${trained(o)}`:''}</option>`).join('')
+      +`</optgroup>` : '';
+  const keep=$('#opp').value;
+  $('#opp').innerHTML = grp(`trained on ${SETUP.labels[DS]} — b=${BUF}, k=${KK}`, here)
+      + grp('hyperparameter sweep runs — short, 30 iterations', sweep)
+      + (all ? grp('trained on another stream', other) : '')
+      + grp('heuristics — any action space', heur);
+  const ids = [...$('#opp').options].map(o=>o.value);
+  $('#opp').value = ids.includes(keep) ? keep : ids[0];      // keep it if still offered
+  $('#allagents').parentElement.hidden = !other.length;
+  $('#nonehere').hidden = (here.length + sweep.length) > 0;
+  $('#nonehere').innerHTML = other.length
+      ? `No agent trained on <b>${SETUP.labels[DS]}</b> uses b = ${BUF}, k = ${KK}. Tick the box
+         above for one trained on another stream, change the action space, or play a heuristic.`
+      : `Nothing is trained for <b>${SETUP.labels[DS]}</b> at b = ${BUF}, k = ${KK} —
+         <code>python3 -m bpp.train --data ${DS} --b ${BUF} --k ${KK} --name ${DS}_b${BUF}k${KK}</code>
+         makes one. The heuristics need no checkpoint.`;
+  oppNote();
+  $('#hist').innerHTML = histTable(SETUP.history);
+  $('#histcard').hidden = !SETUP.history.length;
+}
+/* Buffer size and orientations ARE the action space: a trained net has exactly
+   W*L*b*(k+1) outputs, so it can only play the b and k it learned.  So these two
+   are chosen first and the opponent list is filtered to what fits.  The
+   heuristics read the feasibility mask, so they play any action space. */
+function fitsSpace(o){ return !o.run || (o.b === BUF && o.k === KK); }
+function isSweep(o){ return !!o.run && o.run.startsWith('sw_'); }
+
+function renderKnobs(){
+  // offer every b that some checkpoint actually has, plus the usual small ones
+  const have = [...new Set(SETUP.opponents.filter(o=>o.run).map(o=>o.b))];
+  const opts = [...new Set(BUF_CHOICES.concat(have))].sort((a,b)=>a-b);
+  if(!opts.includes(BUF)) BUF = opts[0];
+  $('#bsel').innerHTML = opts.map(v=>{
+    const n = SETUP.opponents.filter(o=>o.run && o.b===v && o.k===KK).length;
+    return `<option value="${v}"${v===BUF?' selected':''}>b = ${v}`
+         + `${n ? ` — ${n} agent${n===1?'':'s'}` : ' — heuristics only'}</option>`;
+  }).join('');
+  $('#ksel').value = String(KK);
+  const n = SETUP.opponents.filter(o=>o.run && fitsSpace(o)).length;
+  const hidden = SETUP.opponents.filter(o=>o.run && !fitsSpace(o)).length;
+  $('#bnote').innerHTML =
+    `${n} trained agent${n===1?'':'s'} match b = ${BUF}, k = ${KK}`
+    + (hidden ? `; ${hidden} hidden because ${hidden===1?'it uses':'they use'} a different
+        action space.` : '.')
+    + (n ? '' : ` <b style="color:var(--c1)">No network was trained for this action space</b>
+        — play a heuristic, or train one with <code>--b ${BUF} --k ${KK}</code>.`);
+
+  $('#nsel').innerHTML = LA_CHOICES.map(v=>
+    `<span class="pill${v===LA?' on':''}" data-n="${v}">${v===0?'none':'N = '+v}</span>`).join('');
+  $('#nsel').querySelectorAll('.pill').forEach(p=>p.onclick=()=>{
+    LA = +p.dataset.n; renderKnobs(); oppNote();
+  });
+}
+
+function trained(o){
+  if(!o.run || !o.iters) return '';
+  return `iter ${o.it}/${o.iters}`;
+}
+function done(o){ return o.iters && o.it >= o.iters }
+function oppNote(){
+  const o = SETUP.opponents.find(o=>o.id===$('#opp').value);
+  if(!o) return;
+  const tr = trained(o);
+  $('#opp-note').innerHTML = o.note
+    + ` · bin ${o.W}×${o.L}×${o.H}, buffer b=${o.b}, k=${o.k}`
+    + (o.run ? ' (set by the checkpoint)' : '')
+    + (tr ? ` · trained to <b>${tr}</b>${done(o)?'':' (still short of its target)'},
+             ${(o.ep/1000).toFixed(1)}k self-play episodes` : '')
+    + (o.run && o.dataset !== DS
+        ? `<br><b style="color:var(--c1)">Trained on ${SETUP.labels[o.dataset]||o.dataset},
+           playing ${SETUP.labels[DS]}</b> — off-distribution, so it will pack below its own numbers.` : '');
+  const nb = o.run ? o.b : BUF;
+  $('#fair').innerHTML = `You both play the same stream with a buffer of <b>${nb}</b>. ` + (
+    o.searches
+      ? `Its search rolls the <b>entire real remaining sequence</b> out at every leaf, so it
+         already knows what is coming — further ahead than any N you can pick here.
+         ${LA ? `Lookahead <b>N = ${LA}</b> claws some of that back.`
+              : `With no lookahead you are the one at a disadvantage.`}`
+      : LA
+        ? `<b style="color:var(--c1)">Lookahead N = ${LA} is yours alone</b> — the network input
+           is the height map plus the buffer and nothing else, so the agent cannot see these
+           boxes. Set it to none for a fair game.`
+        : `Neither of you sees past the buffer. Same boxes, same rules, same information.`);
+}
+function histTable(rows){
+  if(!rows.length) return '<span class="sub">none yet</span>';
+  return `<table class="hist"><tr><th>when</th><th>stream</th><th>opponent</th>
+    <th>you</th><th>agent</th><th>winner</th></tr>` + rows.map(r=>`<tr>
+    <td class="sub">${r.t.slice(5,16)}</td><td>${(SETUP.labels||{})[r.dataset]||r.dataset}</td>
+    <td>${r.opponent_label}</td>
+    <td>${(r.human_util*100).toFixed(1)}%</td><td>${(r.agent_util*100).toFixed(1)}%</td>
+    <td class="win-${r.winner}">${r.winner}</td></tr>`).join('') + '</table>';
+}
+
+/* ================= wiring ================= */
+async function newGame(seed){
+  const body = {dataset:DS, opponent:$('#opp').value, b:BUF, k:KK, lookahead:LA,
+                seed: seed!==undefined ? seed : ($('#seed').value.trim()||null)};
+  const st = await api('/api/new', body);
+  if(!st.ok){ alert(st.error); return; }
+  S=st; SLOT=0; ORIENT=0; HOVER=null; RES=null; $('#msg').textContent=''; renderPlay();
+}
+
+$('#start').onclick = ()=>newGame();
+$('#opp').onchange = ()=>{ renderKnobs(); oppNote(); };
+$('#allagents').onchange = renderSetup;
+$('#bsel').onchange = ()=>{ BUF = +$('#bsel').value; renderSetup(); };
+$('#ksel').onchange = ()=>{ KK  = +$('#ksel').value; renderSetup(); };
+$('#hint').onchange = drawPallet;
+$('#rot').onclick = ()=>{ if(S.k>0){ ORIENT=1-ORIENT; HOVER=null; renderPlay(); } };
+$('#pallet').addEventListener('mousemove', onMove);
+$('#pallet').addEventListener('mouseleave', ()=>{HOVER=null; drawPallet(); $('#hoverinfo').textContent='';});
+$('#pallet').addEventListener('click', onClick);
+window.addEventListener('keydown', e=>{
+  if(!S || S.done || $('#play').hidden) return;
+  if(e.key==='r'||e.key==='R'){ if(S.k>0){ ORIENT=1-ORIENT; HOVER=null; renderPlay(); } }
+  const n = parseInt(e.key,10);                     // 1..b picks a buffer slot
+  if(n>=1 && n<=S.b && alive(n-1)){ SLOT=n-1; ORIENT=0; HOVER=null; renderPlay(); }
+});
+$('#resign').onclick = async ()=>{
+  if(!confirm('Stop packing here and hand the sequence to the agent?')) return;
+  S = await api('/api/resign', {game:S.game}); renderPlay();
+};
+$('#tourn').onclick = async ()=>{
+  $('#tourn').disabled=true;
+  $('#tourn').innerHTML = '<span class="spin"></span> the agent is packing…';
+  const st = await api('/api/agent', {game:S.game});
+  $('#tourn').disabled=false; $('#tourn').textContent='Let the agent try →';
+  if(!st.ok){ alert(st.error); return; }
+  RES = {human:st.human, agent:st.agent, dataset:st.dataset, dataset_label:st.dataset_label,
+         seed:st.seed, seq_len:st.seq_len, b:st.b, k:st.k, searches:st.searches,
+         W:st.W, L:st.L, H:st.H};
+  renderResult();
+};
+$('#scrub').oninput = e=>drawReplay(parseInt(e.target.value,10));
+$('#again').onclick = ()=>newGame(null);
+$('#samesame').onclick = ()=>newGame(RES.seed);
+async function goSetup(){
+  if(S && !S.done && S.n_items > 0 &&
+     !confirm(`Leave this game? Your ${S.n_items} placed box${S.n_items===1?'':'es'} will be lost.`))
+    return;
+  S = null; RES = null;
+  SETUP = await api('/api/setup'); renderSetup();
+}
+$('#tomenu').onclick = goSetup;
+$('#tosetup').onclick = goSetup;
+$('#btn-new').onclick = goSetup;
+window.addEventListener('resize', ()=>{ if(!$('#play').hidden && S) renderPlay(); else redrawIsos(); });
+
+['#iso3d','#iso-h','#iso-a'].forEach(bindRotate);
+
+(async()=>{ SETUP = await api('/api/setup'); renderSetup(); })();
+</script>

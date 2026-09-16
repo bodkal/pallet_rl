@@ -1,0 +1,24 @@
+{
+  "ckpt": "runs/sw_cpuct1/last.pt",
+  "data": "cut2",
+  "split": "val",
+  "b": 1,
+  "k": 0,
+  "n": 200,
+  "sims": 100,
+  "c_puct": 4.0,
+  "reps": 2,
+  "mcts_items": 19.880000000000003,
+  "mcts_util": 75.05699709951878,
+  "mcts_util_std": 0.38949989974499033,
+  "greedy_util": 62.8594970703125,
+  "arm": "cpuct1",
+  "change": {
+    "c_puct": 1.0
+  },
+  "question": "is even less tree exploration better still?",
+  "sp_util_last3": 75.89,
+  "kept_last3": 245.7,
+  "mins": 49.1,
+  "iters_done": 30
+}

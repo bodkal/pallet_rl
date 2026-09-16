@@ -1,0 +1,25 @@
+{
+  "ckpt": "runs/sw_best_combo/last.pt",
+  "data": "cut2",
+  "split": "val",
+  "b": 1,
+  "k": 0,
+  "n": 200,
+  "sims": 100,
+  "c_puct": 4.0,
+  "reps": 2,
+  "mcts_items": 19.880000000000003,
+  "mcts_util": 75.31699721217156,
+  "mcts_util_std": 0.40899981856345846,
+  "greedy_util": 63.68349552154541,
+  "arm": "best_combo",
+  "change": {
+    "updates": 240,
+    "c_puct": 2.0
+  },
+  "question": "the two winning changes together",
+  "sp_util_last3": 77.44,
+  "kept_last3": 244.0,
+  "mins": 38.0,
+  "iters_done": 30
+}

@@ -1,0 +1,24 @@
+{
+  "ckpt": "runs/sw_upd60/last.pt",
+  "data": "cut2",
+  "split": "val",
+  "b": 1,
+  "k": 0,
+  "n": 200,
+  "sims": 100,
+  "c_puct": 4.0,
+  "reps": 2,
+  "mcts_items": 19.372500000000002,
+  "mcts_util": 73.35974740982056,
+  "mcts_util_std": 0.3412499547004728,
+  "greedy_util": 64.05449390411377,
+  "arm": "upd60",
+  "change": {
+    "updates": 60
+  },
+  "question": "half the gradient steps per iteration",
+  "sp_util_last3": 73.6,
+  "kept_last3": 231.0,
+  "mins": 43.5,
+  "iters_done": 30
+}

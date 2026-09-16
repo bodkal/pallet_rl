@@ -1,0 +1,281 @@
+<!doctype html>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AR2L training dashboard</title>
+<style>
+:root{--bg:#0f1115;--panel:#171a21;--line:#262b36;--fg:#e6e9ef;--dim:#8b93a7;
+      --c0:#4cc9f0;--c1:#f7b32b;--c2:#57cc99;--c3:#ef476f;--c4:#b892ff;--c5:#ff9770;
+      --ok:#57cc99;--bad:#ef476f}
+@media(prefers-color-scheme:light){:root{--bg:#f6f7f9;--panel:#fff;--line:#e2e5ea;--fg:#1a1d23;--dim:#6b7280}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:13px/1.45 ui-sans-serif,-apple-system,Segoe UI,Roboto,sans-serif}
+header{display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:12px 20px;
+  border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg);z-index:5}
+h1{font-size:15px;margin:0;font-weight:650}
+.sub{color:var(--dim);font-size:12px}
+.spacer{margin-left:auto}
+.pill{border:1px solid var(--line);border-radius:999px;padding:4px 12px;cursor:pointer;
+  user-select:none;font-size:12px;background:var(--panel)}
+.pill.on{background:var(--fg);color:var(--bg);border-color:var(--fg);font-weight:600}
+.pill.att{opacity:.62}
+main{padding:16px 20px 40px;max-width:1500px;margin:0 auto}
+[hidden]{display:none!important}   /* #modal sets display:flex, which would otherwise win */
+.kpis{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:9px 13px;flex:1;min-width:120px}
+.kpi .v{font-size:20px;font-weight:640;font-variant-numeric:tabular-nums;line-height:1.2}
+.kpi .k{color:var(--dim);font-size:10px;text-transform:uppercase;letter-spacing:.5px}
+#grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:12px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;cursor:pointer}
+.card h2{font-size:11px;margin:0 0 6px;font-weight:600;color:var(--dim);letter-spacing:.6px;text-transform:uppercase}
+.lg{display:flex;gap:10px;flex-wrap:wrap;font-size:10.5px;color:var(--dim);margin-bottom:4px;min-height:15px}
+.lg i{width:9px;height:9px;border-radius:2px;display:inline-block;margin-right:4px}
+svg{width:100%;height:auto;display:block;overflow:visible}
+.ax{stroke:var(--line);stroke-width:1}
+.tk{fill:var(--dim);font-size:9px}
+.bench{stroke:var(--c1);stroke-width:1.4;stroke-dasharray:5 4}
+#ms{cursor:crosshair}
+#mcross{pointer-events:none}   /* the dots must not steal the svg's mousemove */
+#mread{font-size:14px;color:var(--dim);min-height:22px;padding-top:9px;
+  font-variant-numeric:tabular-nums;display:flex;gap:16px;flex-wrap:wrap;align-items:baseline}
+#mread b{color:var(--fg);font-weight:640}
+#mread i{width:9px;height:9px;border-radius:2px;display:inline-block;margin-right:5px}
+#mhint{color:var(--dim);font-size:11px;opacity:.75;padding-top:6px}
+#modal{position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:20;display:flex;
+  align-items:center;justify-content:center;padding:26px}
+#modal .card{width:min(1100px,96vw);cursor:default}
+table.sum{width:100%;border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums}
+table.sum th{text-align:left;color:var(--dim);font-weight:500;font-size:10px;
+  text-transform:uppercase;letter-spacing:.5px;padding:0 10px 6px 0}
+table.sum td{padding:4px 10px 4px 0;border-top:1px solid var(--line)}
+.good{color:var(--ok);font-weight:640}
+.bad{color:var(--bad)}
+</style>
+
+<header>
+  <h1>AR2L training</h1>
+  <span class="sub" id="hs">arXiv:2310.04323 &mdash; adjustable robust RL for online 3D bin packing</span>
+  <span class="spacer"></span>
+  <div class="pill" id="showatt" onclick="toggleAtt()">+ attackers</div>
+  <div class="row" id="runs" style="display:flex;gap:7px;flex-wrap:wrap"></div>
+</header>
+
+<main>
+  <div class="kpis" id="kpis"></div>
+  <div class="card" id="sumcard" style="margin-bottom:14px;cursor:default" hidden>
+    <h2>Held-out evaluation vs. the paper &mdash; space utilisation, &beta; = 0 / 100</h2>
+    <div id="sum"></div>
+  </div>
+  <div id="grid"></div>
+</main>
+
+<div id="modal" hidden onclick="closeM()">
+  <div class="card" onclick="event.stopPropagation()">
+    <h2 id="mt"></h2><div class="lg" id="ml"></div>
+    <svg id="ms" viewBox="0 0 900 420" preserveAspectRatio="none"></svg>
+    <div id="mread"></div>
+    <div id="mhint">hover to read every series at one x &nbsp;&middot;&nbsp;
+      &larr; &rarr; to move between plots &nbsp;&middot;&nbsp;
+      esc or click outside to close &nbsp;&middot;&nbsp; updates live</div>
+  </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const COLORS = ['--c0','--c2','--c1','--c4','--c3','--c5'];
+const cvar = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+// series: key in log.jsonl -> [title, scale, formatter]
+const PLOTS = [
+  ['nom_util',  'held-out nominal utilisation (%)', 100, v => v.toFixed(1)],
+  ['util',      'training utilisation, each algorithm’s own dynamics (%)', 100, v => v.toFixed(1)],
+  ['nom_items', 'held-out items packed', 1, v => v.toFixed(1)],
+  ['pack_vf',   'packer value loss', 1, v => v.toExponential(1)],
+  ['pack_ent',  'packer entropy', 1, v => v.toFixed(2)],
+  ['att_pg',    'attacker policy loss', 1, v => v.toFixed(4)],
+  ['mix_pg',    'mixture policy loss', 1, v => v.toFixed(4)],
+  ['mix_aux',   'mixture distance loss (Eq. 6)', 1, v => v.toFixed(2)],
+];
+
+let META = [], SEL = new Set(), LOGS = {}, SUM = null, MODAL = -1, ATT = false;
+
+// 16 policies plus their 16 attackers plus 12 heuristic attackers is far too
+// many pills to leave in the header at once
+const isAtt = m => m.algo === 'attack';
+
+async function jget(u){ const r = await fetch(u); return r.json(); }
+
+function series(run, key, scale){
+  const rows = LOGS[run] || [];
+  // nom_util is logged as 0 until the first held-out evaluation
+  return rows.filter(r => r[key] != null && !(key.startsWith('nom') && r[key] === 0))
+             .map(r => [r.it, r[key] * scale]);
+}
+
+function plotData(key, scale){
+  const out = [];
+  [...SEL].forEach(run => {
+    const pts = series(run, key, scale);
+    if (pts.length) out.push({run, pts});
+  });
+  return out;
+}
+
+function draw(svg, key, scale, fmt, big){
+  const W = big ? 900 : 460, H = big ? 420 : 190;
+  const P = big ? [16, 14, 30, 56] : [10, 8, 20, 44];   // top right bottom left
+  const data = plotData(key, scale);
+  const bench = key === 'nom_util'
+    ? [...SEL].map(r => (META.find(m => m.run === r) || {}).target).filter(v => v != null)
+    : [];
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  if (!data.length){ svg.innerHTML = ''; return; }
+
+  let xs = [], ys = [];
+  data.forEach(s => s.pts.forEach(p => { xs.push(p[0]); ys.push(p[1]); }));
+  bench.forEach(v => ys.push(v));
+  const x0 = Math.min(...xs), x1 = Math.max(...xs) || 1;
+  let y0 = Math.min(...ys), y1 = Math.max(...ys);
+  const pad = (y1 - y0 || 1) * 0.12; y0 -= pad; y1 += pad;
+  const X = v => P[3] + (v - x0) / ((x1 - x0) || 1) * (W - P[3] - P[1]);
+  const Y = v => P[0] + (1 - (v - y0) / ((y1 - y0) || 1)) * (H - P[0] - P[2]);
+
+  let g = '';
+  for (let i = 0; i <= 4; i++){
+    const v = y0 + (y1 - y0) * i / 4, y = Y(v);
+    g += `<line class="ax" x1="${P[3]}" x2="${W - P[1]}" y1="${y}" y2="${y}" />`;
+    g += `<text class="tk" x="${P[3] - 6}" y="${y + 3}" text-anchor="end">${fmt(v)}</text>`;
+  }
+  bench.forEach(v => { g += `<line class="bench" x1="${P[3]}" x2="${W - P[1]}"
+      y1="${Y(v)}" y2="${Y(v)}" />`; });
+  data.forEach((s, i) => {
+    g += `<path fill="none" stroke="${cvar(COLORS[i % COLORS.length])}"
+      stroke-width="${big ? 2 : 1.6}" d="` +
+      s.pts.map((p, j) => (j ? 'L' : 'M') + X(p[0]).toFixed(1) + ' ' + Y(p[1]).toFixed(1)).join(' ') +
+      '" />';
+  });
+  g += `<text class="tk" x="${P[3]}" y="${H - 6}">${x0}</text>`;
+  g += `<text class="tk" x="${W - P[1]}" y="${H - 6}" text-anchor="end">${x1} iterations</text>`;
+  if (big) g += '<g id="mcross"></g>';
+  svg.innerHTML = g;
+  return {X, Y, x0, x1, data};
+}
+
+function legend(el, key, scale){
+  el.innerHTML = plotData(key, scale).map((s, i) =>
+    `<span><i style="background:${cvar(COLORS[i % COLORS.length])}"></i>${s.run}</span>`).join('');
+}
+
+function cards(){
+  $('#grid').innerHTML = PLOTS.map((p, i) =>
+    `<div class="card" onclick="openM(${i})"><h2>${p[1]}</h2>
+     <div class="lg" id="lg${i}"></div><svg id="sv${i}"></svg></div>`).join('');
+  PLOTS.forEach((p, i) => { legend($('#lg' + i), p[0], p[2]); draw($('#sv' + i), p[0], p[2], p[3], false); });
+}
+
+function kpis(){
+  const sel = [...SEL].map(r => META.find(m => m.run === r)).filter(Boolean);
+  const done = META.filter(m => m.algo !== 'attack' && m.has_ckpt).length;
+  const att = META.filter(m => m.algo === 'attack').length;
+  const best = sel.reduce((b, m) => m.nom_util > (b ? b.nom_util : -1) ? m : b, null);
+  const rows = [
+    ['runs on disk', META.length],
+    ['policies with a checkpoint', done],
+    ['attackers trained', att],
+    ['best nominal, selected', best ? (best.nom_util * 100).toFixed(1) + '%' : '—'],
+    ['paper, same cell', best && best.target ? best.target.toFixed(1) + '%' : '—'],
+  ];
+  $('#kpis').innerHTML = rows.map(([k, v]) =>
+    `<div class="kpi"><div class="v">${v}</div><div class="k">${k}</div></div>`).join('');
+}
+
+function summary(){
+  if (!SUM || !Object.keys(SUM).length){ $('#sumcard').hidden = true; return; }
+  $('#sumcard').hidden = false;
+  const nbs = [...new Set(Object.values(SUM).map(v => v.nb))].sort((a, b) => a - b);
+  let h = '<table class="sum"><tr><th>method</th>' +
+    nbs.map(nb => `<th>N<sub>B</sub>=${nb} &beta;=0</th><th>&beta;=100</th>`).join('') + '</tr>';
+  const order = ['pct', 'cppo', 'rarl', 'rfmdp', 'ex05', 'ex10', 'ap05', 'ap10'];
+  order.forEach(m => {
+    const cells = nbs.map(nb => {
+      const v = SUM[`${m}_nb${nb}`];
+      if (!v) return '<td>—</td><td>—</td>';
+      const p = v.paper || {};
+      const cls = (o, q) => q == null ? '' : (o >= q ? ' class="good"' : ' class="bad"');
+      return `<td${cls(v['0'].uti, p.b0)}>${v['0'].uti.toFixed(1)}</td>` +
+             `<td${cls(v['100'].uti, p.b100)}>${v['100'].uti.toFixed(1)}</td>`;
+    }).join('');
+    if (cells.includes('—') && !SUM[`${m}_nb${nbs[0]}`]) return;
+    h += `<tr><td>${m}</td>${cells}</tr>`;
+  });
+  $('#sum').innerHTML = h + '</table><div class="sub" style="padding-top:6px">'
+    + 'green where we are at or above the paper for that cell</div>';
+}
+
+function toggleAtt(){
+  ATT = !ATT;
+  $('#showatt').classList.toggle('on', ATT);
+  $('#showatt').textContent = ATT ? '\u2212 attackers' : '+ attackers';
+  pills();
+}
+
+function pills(){
+  $('#runs').innerHTML = META.filter(m => ATT || !isAtt(m) || SEL.has(m.run)).map(m =>
+    `<div class="pill${SEL.has(m.run) ? ' on' : ''}${m.algo === 'attack' ? ' att' : ''}"
+      onclick="toggle('${m.run}')" title="${m.algo} N_B=${m.nb} alpha=${m.alpha}">${m.run}</div>`).join('');
+}
+
+function toggle(run){
+  SEL.has(run) ? SEL.delete(run) : SEL.add(run);
+  pills(); refresh();
+}
+
+async function refresh(){
+  await Promise.all([...SEL].map(async r => { LOGS[r] = await jget('/log?run=' + encodeURIComponent(r)); }));
+  kpis(); cards(); if (MODAL >= 0) drawM();
+}
+
+// ---- modal ---------------------------------------------------------------
+let MG = null;
+function openM(i){ MODAL = i; $('#modal').hidden = false; drawM(); }
+function closeM(){ MODAL = -1; $('#modal').hidden = true; }
+function drawM(){
+  const p = PLOTS[MODAL];
+  $('#mt').textContent = p[1];
+  legend($('#ml'), p[0], p[2]);
+  MG = draw($('#ms'), p[0], p[2], p[3], true);
+  $('#mread').innerHTML = '';
+}
+$('#ms').addEventListener('mousemove', e => {
+  if (!MG) return;
+  const r = e.currentTarget.getBoundingClientRect();
+  const vx = (e.clientX - r.left) / r.width * 900;
+  const it = MG.x0 + (vx - 56) / (900 - 56 - 14) * (MG.x1 - MG.x0);
+  const fmt = PLOTS[MODAL][3];
+  let dots = '', read = '';
+  MG.data.forEach((s, i) => {
+    let best = null, bd = 1e18;
+    s.pts.forEach(q => { const d = Math.abs(q[0] - it); if (d < bd){ bd = d; best = q; } });
+    if (!best) return;
+    const c = cvar(COLORS[i % COLORS.length]);
+    dots += `<circle cx="${MG.X(best[0])}" cy="${MG.Y(best[1])}" r="3.5" fill="${c}" />`;
+    read += `<span><i style="background:${c}"></i>${s.run} <b>${fmt(best[1])}</b></span>`;
+  });
+  const q = document.getElementById('mcross');
+  if (q) q.innerHTML = `<line class="ax" x1="${MG.X(it)}" x2="${MG.X(it)}" y1="16" y2="390" />` + dots;
+  $('#mread').innerHTML = `<span>iteration <b>${Math.round(it)}</b></span>` + read;
+});
+document.addEventListener('keydown', e => {
+  if (MODAL < 0) return;
+  if (e.key === 'Escape') closeM();
+  if (e.key === 'ArrowRight'){ MODAL = (MODAL + 1) % PLOTS.length; drawM(); }
+  if (e.key === 'ArrowLeft'){ MODAL = (MODAL + PLOTS.length - 1) % PLOTS.length; drawM(); }
+});
+
+// ---- boot ----------------------------------------------------------------
+async function poll(){
+  META = await jget('/runs');
+  SUM = await jget('/summary');
+  if (!SEL.size) META.filter(m => !isAtt(m)).slice(0, 6).forEach(m => SEL.add(m.run));
+  pills(); summary(); await refresh();
+}
+poll(); setInterval(poll, 4000);
+</script>

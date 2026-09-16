@@ -1,0 +1,11 @@
+{
+  "name": "sw_sims50_2x",
+  "data": "cut2",
+  "b": 1,
+  "k": 0,
+  "iter": 59,
+  "episodes": 15360,
+  "mcts_items": 19.77,
+  "mcts_util": 73.3839972257614,
+  "greedy_util": 65.65499782562256
+}
