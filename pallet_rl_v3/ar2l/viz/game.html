@@ -222,7 +222,7 @@ const $ = s => document.querySelector(s);
 const cvar = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 const DPR = () => Math.min(2, window.devicePixelRatio || 1);
 const css = cvar;                       // the v1 renderer's name for it
-let S = 10, G = null, B = null, OPP = null, ORIENT = 0, HOVER = null;
+let LX = 10, LY = 10, LZ = 10, G = null, B = null, OPP = null, ORIENT = 0, HOVER = null;
 let SEED = null, T0 = 0, REASON = null, RES = null, BUSY = false;
 
 function boxColor(i, light){
@@ -232,7 +232,7 @@ function boxColor(i, light){
 const RAMP = [[27,42,74],[31,95,139],[32,144,141],[92,178,112],[200,195,63],[224,138,46],[208,73,47]];
 function heightColor(h){
   if (h <= 0) return cvar('--panel');
-  const t = Math.min(1, h / S) * (RAMP.length - 1);
+  const t = Math.min(1, h / LZ) * (RAMP.length - 1);
   const i = Math.min(RAMP.length - 2, Math.floor(t)), f = t - i;
   const c = RAMP[i].map((v, k) => Math.round(v + f * (RAMP[i + 1][k] - v)));
   return `rgb(${c[0]} ${c[1]} ${c[2]})`;
@@ -353,7 +353,7 @@ function drawIso(cv, boxes, L, W, H, opts){
 let DRAG = null;
 function redrawIsos(){
   if(!$('#play').hidden && B)
-    drawIso($('#iso3d'), B.placed, S, S, S, {highlight:B.placed.length-1, height:300});
+    drawIso($('#iso3d'), B.placed, LX, LY, LZ, {highlight:B.placed.length-1, height:300});
   if(!$('#result').hidden && RES) drawReplay(parseInt($('#scrub').value,10));
 }
 function bindRotate(sel){
@@ -406,17 +406,18 @@ function drawFootprint(cv, dims, u, idx, peek){
 // ---- top view -----------------------------------------------------------
 function cellSize(){
   const avail = ($('#board').clientWidth || 700) - 300;   // leave room for the 3D bin
-  return Math.max(22, Math.min(42, Math.floor(Math.max(260, Math.min(460, avail)) / S)));
+  const box = Math.max(260, Math.min(460, avail));
+  return Math.max(14, Math.min(42, Math.floor(box / Math.max(LX, LY))));
 }
 
 function drawTop(){
   const cv = $('#pallet'), C = cellSize(), dpr = DPR();
-  cv.style.width = (S * C) + 'px'; cv.style.height = (S * C) + 'px';
-  cv.width = S * C * dpr; cv.height = S * C * dpr;
+  cv.style.width = (LX * C) + 'px'; cv.style.height = (LY * C) + 'px';
+  cv.width = LX * C * dpr; cv.height = LY * C * dpr;
   const g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0);
-  g.clearRect(0, 0, S * C, S * C);
+  g.clearRect(0, 0, LX * C, LY * C);
 
-  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++){
+  for (let y = 0; y < LY; y++) for (let x = 0; x < LX; x++){
     const h = B.hmap[x][y];
     g.fillStyle = heightColor(h); g.fillRect(x * C, y * C, C, C);
     g.strokeStyle = cvar('--line'); g.lineWidth = 1;
@@ -436,7 +437,7 @@ function drawTop(){
     // can reach - which is most of the board once the bin has some relief.
     const split = $('#showems').checked, r = Math.max(2, C * .09);
     g.globalAlpha = .55;
-    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++)
+    for (let y = 0; y < LY; y++) for (let x = 0; x < LX; x++)
       if (legal(x, y)){
         g.fillStyle = (!split || cand(x, y)) ? cvar('--c0') : cvar('--c4');
         g.beginPath(); g.arc(x * C + C / 2, y * C + C / 2, r, 0, 7); g.fill();
@@ -446,7 +447,7 @@ function drawTop(){
 
   if (HOVER){
     const {x, y} = HOVER, ok = legal(x, y), [l, w] = poseDims();
-    const cl = Math.min(l, S - x), cw = Math.min(w, S - y);
+    const cl = Math.min(l, LX - x), cw = Math.min(w, LY - y);
     g.fillStyle = ok ? cvar('--c2') : cvar('--c3'); g.globalAlpha = .34;
     g.fillRect(x * C, y * C, cl * C, cw * C); g.globalAlpha = 1;
     g.strokeStyle = ok ? cvar('--c2') : cvar('--c3'); g.lineWidth = 2;
@@ -469,7 +470,7 @@ function render(){
   if (!B.done){
     const [l, w, h] = poseDims();
     $('#cur').textContent = `${l} × ${w} × ${h}`;
-    $('#curinfo').textContent = `box ${B.items + 1} · volume ${l * w * h} of ${S * S * S}`
+    $('#curinfo').textContent = `box ${B.items + 1} · volume ${l * w * h} of ${LX * LY * LZ}`
       + (ORIENT ? ' · turned 90°' : '');
     drawFootprint($('#curbox'), poseDims(), C, B.items);       // 1:1 with the grid
   } else {
@@ -480,7 +481,7 @@ function render(){
   $('#rot').hidden = B.done || B.rot < 2 || square();
 
   drawTop();
-  drawIso($('#iso3d'), B.placed, S, S, S, {highlight:B.placed.length-1, height:300});
+  drawIso($('#iso3d'), B.placed, LX, LY, LZ, {highlight:B.placed.length-1, height:300});
   $('#palsub').innerHTML = B.done ? ''
     : `&mdash; x &rarr; right, y &darr; down &middot; ${B.ncand} of your ${B.nfree}
        placements are ones the packer would also consider`;
@@ -512,7 +513,7 @@ function render(){
 function cellAt(ev){
   const r = $('#pallet').getBoundingClientRect(), C = cellSize();
   const x = Math.floor((ev.clientX - r.left) / C), y = Math.floor((ev.clientY - r.top) / C);
-  return (x >= 0 && x < S && y >= 0 && y < S) ? {x, y} : null;
+  return (x >= 0 && x < LX && y >= 0 && y < LY) ? {x, y} : null;
 }
 
 function onMove(ev){
@@ -524,8 +525,8 @@ function onMove(ev){
   drawTop();
   if (!HOVER){ $('#hoverinfo').textContent = ''; return; }
   const {x, y} = HOVER, [l, w, h] = poseDims(), z = landing(x, y);
-  const why = (x + l > S || y + w > S) ? 'it hangs off the pallet'
-            : (z + h > S) ? 'it would poke out through the lid'
+  const why = (x + l > LX || y + w > LY) ? 'it hangs off the pallet'
+            : (z + h > LZ) ? 'it would poke out through the lid'
             : 'not enough support underneath — the centre of mass would fall outside the contact patch';
   const ok = legal(x, y);
   $('#hoverinfo').innerHTML = `<b>(${x}, ${y})</b> → lands at z = ${z}, top at ${z + h}<br>`
@@ -601,7 +602,7 @@ function renderResult(){
       : `Dead heat — ${hp.toFixed(1)}% each.`;
   $('#verdict').style.color = win === 'human' ? css('--c2')
                             : win === 'agent' ? css('--c3') : css('--dim');
-  $('#vsub').textContent = `${S}×${S}×${S} bin · seed ${SEED} · attacker ${G.alabel}`
+  $('#vsub').textContent = `${LX}×${LY}×${LZ} bin · seed ${SEED} · attacker ${G.alabel}`
     + ` · same instance and same conveyor, but you could use any stable placement`
     + ` and ${a.label} only the corners of the empty maximal spaces`;
   $('#hu').textContent = hp.toFixed(1) + '%'; $('#au').textContent = ap.toFixed(1) + '%';
@@ -626,8 +627,8 @@ function renderResult(){
 
 function drawReplay(n){
   const h = RES.human.placed.slice(0, n), a = RES.agent.placed.slice(0, n);
-  drawIso($('#iso-h'), h, S, S, S, {highlight: h.length - 1, height: 290});
-  drawIso($('#iso-a'), a, S, S, S, {highlight: a.length - 1, height: 290});
+  drawIso($('#iso-h'), h, LX, LY, LZ, {highlight: h.length - 1, height: 290});
+  drawIso($('#iso-a'), a, LX, LY, LZ, {highlight: a.length - 1, height: 290});
   $('#scrublab').textContent = n === 0 ? 'empty bins — drag to replay'
     : `after box ${n}:  you ${h.length} placed`
       + (h.length < n ? ' (you had already stopped)' : '')
@@ -638,7 +639,7 @@ async function fresh(seed){
   $('#setupmsg').textContent = 'dealing...';
   SEED = (seed === undefined || seed === null) ? Date.now() % 100000 : seed;
   const r = await api('/api/new', {attacker: $('#att').value, seed: SEED});
-  G = r; B = r.board; S = r.board.S; ORIENT = 0; HOVER = null; OPP = $('#opp').value;
+  G = r; B = r.board; LX = B.Lx; LY = B.Ly; LZ = B.Lz; ORIENT = 0; HOVER = null; OPP = $('#opp').value;
   RES = null; REASON = null; BUSY = false; T0 = Date.now();
   VIEW.th = VIEW0.th; VIEW.ph = VIEW0.ph;
   $('#who').textContent = `attacker: ${r.alabel}  ·  opponent: ${OPP.replace('run:', '').replace('heur:', '')}`;

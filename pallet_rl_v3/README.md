@@ -332,6 +332,49 @@ the attacker prefers smaller items as `N_B` grows.
 
 ---
 
+## Non-cubic bins
+
+`S=` takes an int for a cube or an `(Lx, Ly, Lz)` triple, and `--bin 60x50x80`
+/ `--size_hi 6x4x5` parse on the command line (`--size_hi` may also be a plain
+int). Node features are divided by the single scale `max(Lx, Ly, Lz)` rather
+than per axis: per-axis normalisation would map the bin to a unit cube and
+distort item shape, which is exactly what the packer has to reason about.
+
+`tests/test_env.py` pins six deliberately lopsided bins — 7x5x9, 5x9x6,
+11x4x7, 6x6x13, 9x12x5, 4x13x11 — checking every feasibility cell and landing
+height against brute force, both EMS enumerations against each other, and all
+six heuristics for legal placement. They are never cubes, and `Lz` sits both
+above and below the footprint sides, because an x/y swap or a height/side
+confusion is silent on a square bin. That caught two real bugs: the EMS wall
+sentinel was `max(Lx, Ly) + 1` when columns can reach `Lz`, so on a tall thin
+bin a tall column was mistaken for a wall (40 wrong feasibility cells on
+7x5x9, no exception raised); and routing item sampling through per-axis bounds
+made `rng.integers` consume its stream in a different order, silently
+re-rolling every stored dataset. The isotropic draw is now kept bit-identical,
+and `scripts/ablate_env.py` reproduces the 10^3 table digit-for-digit.
+
+Non-cubic bins need `stability="com"` (the default); the `cdrl` area rule
+still counts contact area with a base-32 histogram that caps height at 12.
+
+`max_c` is an initial capacity, not a limit. It allocates `C_t`, the packer's
+memory of the bin; a 10^3 bin never holds more than ~30 boxes, but a large bin
+of small items holds hundreds. `step` used to clamp the write slot to
+`max_c - 1` while `n_packed` ran on, so box 81 silently overwrote box 80 --
+a wrong *state*, not just a wrong count -- and any caller that indexed
+`packed[n_packed - 1]` raised `index 80 is out of bounds for axis 1 with size
+80`. It now doubles the array instead and keeps the larger capacity. Nothing
+changes for any bin that stays under the capacity, so the 10^3 numbers are
+untouched.
+
+The viewers take the same extent. `ar2l.viz.agents.play` accepts an int or a
+triple and de-normalises boxes by `env.scale` (it used to multiply by `S`,
+which raised `operands could not be broadcast together with shapes (6,) (3,)`
+on a triple); it also defaults `size_hi` to the sequence's own per-axis maximum
+instead of the cube default, and takes `max_l` so the replay uses the leaf cap
+the policy was trained with. `python3 -m ar2l.viz.game --bin 60x50x80
+--size_hi 30x25x40 --max_l 256` therefore races you against a policy under its
+training configuration.
+
 ## Deviations from the paper
 
 * **Stability rule** — identified from the paper's own heuristic baselines, as

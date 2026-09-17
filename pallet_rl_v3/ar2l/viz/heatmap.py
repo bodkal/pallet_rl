@@ -22,14 +22,16 @@ from . import agents as A
 
 
 def panels(fig, rec, S, plabel, alabel):
+    """`S` is an int for a cube or an (Lx, Ly, Lz) triple."""
+    Lx, Ly, Lz = A.extent(S)
     fig.clf()
     gs = fig.add_gridspec(1, 5, width_ratios=[1, 1, 1, 1, 0.9], wspace=0.35)
     hm = rec["hmap"]
     sx, sy, sz = rec["item"]
 
-    zmap = np.full((S, S), np.nan)
-    fmap = np.zeros((S, S))
-    pmap = np.full((S, S), np.nan)
+    zmap = np.full((Lx, Ly), np.nan)
+    fmap = np.zeros((Lx, Ly))
+    pmap = np.full((Lx, Ly), np.nan)
     # two orientations can land on the same cell; keep the likelier one
     for (x, y, z, _a, _b, _c), p in zip(rec["cands"], rec["probs"]):
         zmap[x, y] = z; fmap[x, y] = 1.0
@@ -54,7 +56,7 @@ def panels(fig, rec, S, plabel, alabel):
 
     ax = fig.add_subplot(gs[0, 4])
     win = np.array(rec["window"])
-    vol = win.prod(1) / float(S ** 3)
+    vol = win.prod(1) / float(Lx * Ly * Lz)
     pr = rec["perm_probs"] or ([1.0] + [0.0] * (len(win) - 1))
     ax.barh(np.arange(len(win)), pr[: len(win)], color="#5b8ff9")
     ax.set_yticks(np.arange(len(win)))

@@ -38,6 +38,8 @@ def box_color(i):
 
 
 def draw(ax, placed, S, upto=None, title=""):
+    """`S` is an int for a cube or an (Lx, Ly, Lz) triple."""
+    Lx, Ly, Lz = A.extent(S)
     ax.clear()
     upto = len(placed) if upto is None else upto
     for i, (x, y, z, sx, sy, sz) in enumerate(placed[:upto]):
@@ -46,9 +48,9 @@ def draw(ax, placed, S, upto=None, title=""):
         p.set_edgecolor((0, 0, 0, 0.45))
         p.set_linewidth(0.5)
         ax.add_collection3d(p)
-    ax.set_xlim(0, S); ax.set_ylim(0, S); ax.set_zlim(0, S)
-    ax.set_box_aspect((1, 1, 1))
-    ax.set_xticks([0, S]); ax.set_yticks([0, S]); ax.set_zticks([0, S])
+    ax.set_xlim(0, Lx); ax.set_ylim(0, Ly); ax.set_zlim(0, Lz)
+    ax.set_box_aspect((Lx, Ly, Lz))
+    ax.set_xticks([0, Lx]); ax.set_yticks([0, Ly]); ax.set_zticks([0, Lz])
     ax.set_title(title, fontsize=10)
     ax.view_init(elev=22, azim=-58)
 

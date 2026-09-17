@@ -7,17 +7,18 @@ from ar2l.env import BPPBatch
 from ar2l import heuristics as H
 
 
-def brute(hmap, item, S, mode):
+def brute(hmap, item, L, mode):
     """Feasibility and landing height, one loading position at a time."""
+    Lx, Ly, Lz = L
     sx, sy, sz = item
-    ok = np.zeros((S, S), bool)
-    Z = np.zeros((S, S), np.int32)
-    for x in range(S - sx + 1):
-        for y in range(S - sy + 1):
+    ok = np.zeros((Lx, Ly), bool)
+    Z = np.zeros((Lx, Ly), np.int32)
+    for x in range(Lx - sx + 1):
+        for y in range(Ly - sy + 1):
             sub = hmap[x:x + sx, y:y + sy]
             z = int(sub.max())
             Z[x, y] = z
-            if z + sz > S:
+            if z + sz > Lz:
                 continue
             eq = sub == z
             if mode == "com":
@@ -32,32 +33,45 @@ def brute(hmap, item, S, mode):
     return ok, Z
 
 
-def brute_ems(hmap, S):
+def brute_ems(hmap, L):
     """Every maximal footprint, found by trying all of them."""
+    Lx, Ly, _ = L
     out = []
-    for x0 in range(S):
-        for wx in range(1, S - x0 + 1):
-            for y0 in range(S):
-                for wy in range(1, S - y0 + 1):
+    for x0 in range(Lx):
+        for wx in range(1, Lx - x0 + 1):
+            for y0 in range(Ly):
+                for wy in range(1, Ly - y0 + 1):
                     f = int(hmap[x0:x0 + wx, y0:y0 + wy].max())
                     grow = ((x0 - 1, wx + 1, y0, wy), (x0, wx + 1, y0, wy),
                             (x0, wx, y0 - 1, wy + 1), (x0, wx, y0, wy + 1))
                     if all(hmap[a:a + b, c:c + d].max() > f for a, b, c, d in grow
-                           if a >= 0 and c >= 0 and a + b <= S and c + d <= S):
+                           if a >= 0 and c >= 0 and a + b <= Lx and c + d <= Ly):
                         out.append((x0, y0, wx, wy, f))
     return out
 
 
-def brute_corners(ems, S, item):
+def brute_corners(ems, L, item):
     """The four bottom corners of every space that can take the item."""
+    Lx, Ly, Lz = L
     sx, sy, sz = item
-    m = np.zeros((S, S), bool)
+    m = np.zeros((Lx, Ly), bool)
     for x0, y0, wx, wy, f in ems:
-        if wx >= sx and wy >= sy and f + sz <= S:
+        if wx >= sx and wy >= sy and f + sz <= Lz:
             for px in (x0, x0 + wx - sx):
                 for py in (y0, y0 + wy - sy):
                     m[px, py] = True
     return m
+
+
+def extents(env):
+    return (env.Lx, env.Ly, env.Lz)
+
+
+# Deliberately lopsided, and never a cube: an x/y swap inside the sweeps is
+# silent on a square bin but wrong on these.  `Lz` above and below both
+# footprint sides catches anything that confuses height with a side.
+ODD_BINS = [((7, 5, 9), (3, 2, 4)), ((5, 9, 6), 3), ((11, 4, 7), (5, 2, 3)),
+            ((6, 6, 13), 3), ((9, 12, 5), (4, 5, 2)), ((4, 13, 11), (2, 6, 5))]
 
 
 def random_action(env, rng):
@@ -75,11 +89,11 @@ def test_feasibility_matches_brute_force(mode):
         for b in range(env.n_env):
             if env.done[b]:
                 continue
-            ems = brute_ems(env.hmap[b], env.S)
+            ems = brute_ems(env.hmap[b], extents(env))
             for r in range(odims.shape[1]):
                 item = odims[b, r]
-                ref, Zr = brute(env.hmap[b], item, env.S, mode)
-                ref = ref & brute_corners(ems, env.S, item)
+                ref, Zr = brute(env.hmap[b], item, extents(env), mode)
+                ref = ref & brute_corners(ems, extents(env), item)
                 if r and odims[b, 0, 0] == odims[b, 0, 1]:
                     ref = np.zeros_like(ref)   # a square turns into itself
                 assert (ref == feas[b, r]).all()
@@ -99,7 +113,8 @@ def test_ems_list_is_exact():
         for b in range(env.n_env):
             got = {tuple(int(v) for v in row)
                    for row in zip(*[c[cols[0] == b] for c in cols[1:]])}
-            ref = {(x0, y0, wx, wy, f) for x0, y0, wx, wy, f in brute_ems(env.hmap[b], env.S)}
+            ref = {(x0, y0, wx, wy, f)
+                   for x0, y0, wx, wy, f in brute_ems(env.hmap[b], extents(env))}
             assert got == ref, b
         if env.done.all():
             break
@@ -134,7 +149,7 @@ def test_placed_item_matches_the_chosen_candidate():
         before = env.n_packed.copy()
         env.step(a)
         for b in np.nonzero(alive & (env.n_packed > before))[0]:
-            got = (env.packed[b, env.n_packed[b] - 1] * env.S).round().astype(int)
+            got = (env.packed[b, env.n_packed[b] - 1] * env.scale).round().astype(int)
             assert (got[3:] == want[b]).all(), "placed a different box than chosen"
             assert sorted(got[3:]) == sorted(raw[b]), "item volume changed"
             turned += int(got[3] != raw[b][0])
@@ -147,9 +162,9 @@ def test_no_overlap_and_volume_bookkeeping():
     while not env.done.all():
         env.step(random_action(env, rng))
     for b in range(env.n_env):
-        vox = np.zeros((env.S,) * 3, np.int8)
+        vox = np.zeros((env.Lx, env.Ly, env.Lz), np.int8)
         for i in range(env.n_packed[b]):
-            x, y, z, sx, sy, sz = (env.packed[b, i] * env.S).round().astype(int)
+            x, y, z, sx, sy, sz = (env.packed[b, i] * env.scale).round().astype(int)
             vox[x:x + sx, y:y + sy, z:z + sz] += 1
         assert vox.max() <= 1, "two items occupy the same cell"
         assert abs(vox.sum() - env.volume[b]) < 1e-3
@@ -162,7 +177,7 @@ def test_items_rest_on_support():
     while not env.done.all():
         env.step(np.array([H.act(env, "dbl")]).reshape(-1))
     for b in range(env.n_env):
-        items = (env.packed[b, : env.n_packed[b]] * env.S).round().astype(int)
+        items = (env.packed[b, : env.n_packed[b]] * env.scale).round().astype(int)
         for x, y, z, sx, sy, sz in items:
             if z > 0:
                 assert any(zz + ss == z and not (x + sx <= xx or xx + sxx <= x)
@@ -252,4 +267,66 @@ def test_pruned_ems_survives_episode_boundaries():
         for b in np.nonzero(env.n_packed == 0)[0]:
             got = {tuple(int(v) for v in r)
                    for r in zip(*[c[cols[0] == b] for c in cols[1:]])}
-            assert got == {(0, 0, env.S, env.S, 0)}, (b, got)
+            assert got == {(0, 0, env.Lx, env.Ly, 0)}, (b, got)
+
+
+@pytest.mark.parametrize("L,hi", ODD_BINS)
+def test_non_cubic_feasibility_matches_brute_force(L, hi):
+    """Every claim the simulator makes about a lopsided bin, against brute force."""
+    rng = np.random.default_rng(0)
+    env = BPPBatch(6, S=L, nb=1, seed=11, size_hi=hi, n_items=200)
+    checked = 0
+    for _ in range(25):
+        feas, z, odims = env._positions()
+        for b in range(env.n_env):
+            if env.done[b]:
+                continue
+            ems = brute_ems(env.hmap[b], extents(env))
+            cols = env._ems_list()
+            got = {tuple(int(v) for v in r)
+                   for r in zip(*[c[cols[0] == b] for c in cols[1:]])}
+            assert got == set(ems), (L, b)
+            for r in range(odims.shape[1]):
+                item = odims[b, r]
+                ref, Zr = brute(env.hmap[b], item, extents(env), "com")
+                ref = ref & brute_corners(ems, extents(env), item)
+                if r and odims[b, 0, 0] == odims[b, 0, 1]:
+                    ref = np.zeros_like(ref)
+                assert (ref == feas[b, r]).all(), (L, b, r)
+                assert (Zr[ref] == z[b, r][ref]).all(), (L, b, r)
+            checked += 1
+        env.step(random_action(env, rng))
+        env.reset_done()
+    assert checked > 100
+
+
+@pytest.mark.parametrize("L,hi", ODD_BINS)
+def test_non_cubic_ems_paths_agree(L, hi):
+    def as_set(cols):
+        return set(map(tuple, np.stack([np.asarray(c, np.int64) for c in cols], 1)))
+
+    rng = np.random.default_rng(2)
+    env = BPPBatch(6, S=L, nb=1, seed=5, size_hi=hi, n_items=200)
+    for _ in range(25):
+        assert as_set(env._ems_pruned()) == as_set(env._ems_exhaustive()), L
+        env.step(random_action(env, rng))
+        env.reset_done()
+
+
+@pytest.mark.parametrize("L,hi", ODD_BINS)
+def test_non_cubic_heuristics_place_legally(L, hi):
+    """Every heuristic must run on a lopsided bin and pack inside it."""
+    for name in H.NAMES:
+        env = BPPBatch(4, S=L, nb=1, seed=7, size_hi=hi, n_items=200)
+        for _ in range(40):
+            m = env.obs()["l_mask"]
+            if not m.any():
+                break
+            s = np.where(m, H.scores(env, name), -np.inf)
+            env.step(np.where(m.any(1), s.argmax(1), 0))
+        for b in range(env.n_env):
+            it = (env.packed[b, : env.n_packed[b]] * env.scale).round().astype(int)
+            assert (it[:, 0] + it[:, 3] <= env.Lx).all(), (name, L)
+            assert (it[:, 1] + it[:, 4] <= env.Ly).all(), (name, L)
+            assert (it[:, 2] + it[:, 5] <= env.Lz).all(), (name, L)
+        assert env.utilization().mean() > 0

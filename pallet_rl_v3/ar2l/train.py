@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
 import time
 
 import warnings
@@ -22,6 +23,40 @@ import torch
 import torch.nn.functional as F
 
 warnings.filterwarnings("ignore")
+
+try:
+    from tqdm import tqdm
+except ImportError:                                  # optional dependency
+    tqdm = None
+
+
+class Progress:
+    """A progress bar on stderr, so stdout stays a clean pipeable log.
+
+    `write` routes the periodic log lines through the bar so they scroll
+    normally instead of being overwritten by it.
+    """
+
+    def __init__(self, total, start, mode="auto"):
+        on = (mode == "on" or (mode == "auto" and sys.stderr.isatty()))
+        self.bar = (tqdm(total=total, initial=start - 1, unit="it",
+                         dynamic_ncols=True, leave=True, file=sys.stderr)
+                    if on and tqdm is not None else None)
+
+    def step(self, **fields):
+        if self.bar is not None:
+            self.bar.set_postfix(fields, refresh=False)
+            self.bar.update(1)
+
+    def write(self, line):
+        if self.bar is None:
+            print(line, flush=True)
+        else:
+            self.bar.write(line, file=sys.stdout)
+
+    def close(self):
+        if self.bar is not None:
+            self.bar.close()
 
 from .env import BPPBatch
 from .evaluate import attack_score, nominal_score
@@ -167,7 +202,8 @@ def flat(x):
 def make_env(args, seed):
     return BPPBatch(args.n_env, S=args.bin, nb=args.nb, n_items=args.n_items,
                     size_lo=args.size_lo, size_hi=args.size_hi, seed=seed,
-                    stability=args.stability, ems=bool(args.ems), rot=args.rot)
+                    max_l=args.max_l, stability=args.stability,
+                    ems=bool(args.ems), rot=args.rot)
 
 
 def build(args, device):
@@ -189,13 +225,19 @@ def train(args):
     if args.compile:
         for net in (pack, attacker, mixer):
             net.forward = torch.compile(net.forward, dynamic=True)
-    start = 1
+    start, resumed, best = 1, None, -1.0
     if args.resume and os.path.exists(os.path.join(out, "last.pt")):
-        ck = torch.load(os.path.join(out, "last.pt"), map_location=device,
-                        weights_only=False)
-        pack.load_state_dict(ck["pack"]); attacker.load_state_dict(ck["attacker"])
-        mixer.load_state_dict(ck["mixer"]); start = ck["it"] + 1
-        print(f"[{args.name}] resuming at iteration {start}", flush=True)
+        resumed = torch.load(os.path.join(out, "last.pt"), map_location=device,
+                             weights_only=False)
+        pack.load_state_dict(resumed["pack"])
+        attacker.load_state_dict(resumed["attacker"])
+        mixer.load_state_dict(resumed["mixer"])
+        start = resumed["it"] + 1
+        # without the old high-water mark the first save after a resume always
+        # "wins" and overwrites a better best.pt
+        best = resumed.get("best", -1.0)
+        print(f"[{args.name}] resuming at iteration {start} "
+              f"(best so far {best:+.4f})", flush=True)
     if args.init:
         pack.load_state_dict(torch.load(args.init, map_location=device,
                                         weights_only=False)["pack"])
@@ -208,15 +250,22 @@ def train(args):
     ppo_pack = PPO(pack, **opt_kw)
     ppo_att = PPO(attacker, **opt_kw)
     ppo_mix = PPO(mixer, **opt_kw)
+    if resumed is not None and "opt" in resumed:
+        # Adam's moment estimates are part of the training state; dropping them
+        # costs a visible transient every time a run is restarted
+        for key, ppo in (("pack", ppo_pack), ("attacker", ppo_att),
+                         ("mixer", ppo_mix)):
+            ppo.opt.load_state_dict(resumed["opt"][key])
     runner = Runner(env, pack, device, heur=args.heur_pack,
                     greedy_pack=args.freeze_pack)
 
     log = open(os.path.join(out, "log.jsonl"), "a")
     nom = {"nom_util": 0.0, "nom_items": 0.0}
-    best = -1.0
-    t0 = time.time()
+    t0, done_it = time.time(), 0
+    prog = Progress(args.iters, start, args.progress)
 
     for it in range(start, args.iters + 1):
+        done_it += 1
         stats = {}
         if args.ent_final is not None:
             # the attacker is deployed greedily, so let it sharpen
@@ -307,9 +356,12 @@ def train(args):
 
         # ---- logging -------------------------------------------------------
         u, k = runner.tracker.stats()
+        prog.step(util=f"{u*100:.1f}%", items=f"{k:.1f}",
+                  **{("att" if args.algo == "attack" else "nom"):
+                     f"{nom.get('att_util', nom.get('nom_util', 0.0))*100:.1f}%"})
         if it % args.eval_every == 0 or it == args.iters:
             ev = dict(device=args.device, stability=args.stability, rot=args.rot,
-                      S=args.bin, size_hi=args.size_hi)
+                      S=args.bin, size_hi=args.size_hi, max_l=args.max_l)
             if args.algo == "attack":
                 au, ak = attack_score(args.heur_pack or pack, attacker, args.nb,
                                       args.eval_inst, **ev)
@@ -323,20 +375,37 @@ def train(args):
             log.write(json.dumps(rec) + "\n"); log.flush()
             held = nom.get("att_util", nom.get("nom_util", 0.0))
             tag = "attacked" if args.algo == "attack" else "nominal"
-            print(f"[{args.name}] it {it:6d}  util {u*100:5.2f}%  items {k:5.2f}"
-                  f"  {tag} {held*100:5.2f}%"
-                  f"  {(time.time()-t0)/it*1000:6.1f} ms/it", flush=True)
+            prog.write(
+                f"[{args.name}] it {it:6d}  util {u*100:5.2f}%  items {k:5.2f}"
+                f"  {tag} {held*100:5.2f}%"
+                f"  {(time.time()-t0)/max(done_it, 1)*1000:6.1f} ms/it")
         if it % args.save_every == 0 or it == args.iters:
-            ck = {"pack": pack.state_dict(), "attacker": attacker.state_dict(),
-                  "mixer": mixer.state_dict(), "args": vars(args), "it": it}
-            torch.save(ck, os.path.join(out, "last.pt"))
             # an attacker is best when the held-out packer does worst
             score = (-nom.get("att_util", 1.0) if args.algo == "attack"
                      else nom.get("nom_util", 0.0))
-            if score > best:
-                best = score
+            improved = score > best
+            best = max(best, score)
+            ck = {"pack": pack.state_dict(), "attacker": attacker.state_dict(),
+                  "mixer": mixer.state_dict(), "args": vars(args), "it": it,
+                  "best": best,
+                  "opt": {"pack": ppo_pack.opt.state_dict(),
+                          "attacker": ppo_att.opt.state_dict(),
+                          "mixer": ppo_mix.opt.state_dict()}}
+            torch.save(ck, os.path.join(out, "last.pt"))
+            if improved:
                 torch.save(ck, os.path.join(out, "best.pt"))
+    prog.close()
     log.close()
+
+
+def extent(v):
+    """`--bin 10` (a cube) or `--bin 60x50x80` (Lx, Ly, Lz)."""
+    parts = str(v).lower().split("x")
+    if len(parts) == 1:
+        return int(parts[0])
+    if len(parts) != 3:
+        raise argparse.ArgumentTypeError(f"expected an int or WxLxH, got {v!r}")
+    return tuple(int(q) for q in parts)
 
 
 def get_parser():
@@ -352,10 +421,14 @@ def get_parser():
     p.add_argument("--iters", type=int, default=8000)
     p.add_argument("--n_env", type=int, default=64)
     p.add_argument("--T", type=int, default=30)
-    p.add_argument("--bin", type=int, default=10)
+    p.add_argument("--bin", type=extent, default=10,
+                   help="bin extent; an int for a cube or WxLxH, e.g. 60x50x80")
     p.add_argument("--n_items", type=int, default=150)
     p.add_argument("--size_lo", type=int, default=1)
-    p.add_argument("--size_hi", type=int, default=5)
+    p.add_argument("--max_l", type=int, default=120,
+                   help="leaf-node cap; raise it if the EMS corners hit it")
+    p.add_argument("--size_hi", type=extent, default=5,
+                   help="item side cap; an int or WxLxH for per-axis caps")
     p.add_argument("--lr", type=float, default=3e-4)
     p.add_argument("--gamma", type=float, default=1.0)
     p.add_argument("--lam", type=float, default=0.95)
@@ -385,6 +458,9 @@ def get_parser():
     p.add_argument("--eval_every", type=int, default=200)
     p.add_argument("--eval_inst", type=int, default=256)
     p.add_argument("--log_every", type=int, default=50)
+    p.add_argument("--progress", choices=("auto", "on", "off"), default="auto",
+                   help="progress bar on stderr; auto = only when attached "
+                        "to a terminal")
     p.add_argument("--save_every", type=int, default=200)
     return p
 

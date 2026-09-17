@@ -21,8 +21,10 @@ from .ppo import to_torch
 
 
 def make_dataset(n_inst=3000, n_items=150, size_lo=1, size_hi=5, seed=12345):
-    rng = np.random.default_rng(seed)
-    return rng.integers(size_lo, size_hi + 1, (n_inst, n_items, 3), dtype=np.int16)
+    """`size_lo`/`size_hi` may be an int or a per-axis triple."""
+    from .env import sample_items
+    return sample_items(np.random.default_rng(seed), (n_inst, n_items),
+                        size_lo, size_hi)
 
 
 def load_nets(path, device, what=("pack", "attacker")):
@@ -43,7 +45,8 @@ def load_nets(path, device, what=("pack", "attacker")):
 
 @torch.no_grad()
 def run(seqs, policy, nb, attacker=None, attacked=None, batch=256, S=10,
-        device="cuda", greedy=True, stability="com", ems=True, rot=2):
+        device="cuda", greedy=True, stability="com", ems=True, rot=2,
+        max_l=120):
     """Play every instance once.  `policy` is a net or a heuristic name."""
     n = len(seqs)
     util = np.zeros(n, np.float32); items = np.zeros(n, np.float32)
@@ -51,8 +54,8 @@ def run(seqs, policy, nb, attacker=None, attacked=None, batch=256, S=10,
     for s in range(0, n, batch):
         chunk = seqs[s:s + batch]
         env = BPPBatch(len(chunk), S=S, nb=nb, n_items=seqs.shape[1],
-                       size_hi=int(seqs.max()), stability=stability, ems=ems,
-                       rot=rot)
+                       size_hi=seqs.reshape(-1, 3).max(0), stability=stability,
+                       ems=ems, rot=rot, max_l=max_l)
         env.reset(chunk)
         on = torch.as_tensor(attacked[s:s + batch]).to(device)
         while not env.done.all():
@@ -79,17 +82,18 @@ def metrics(util, items):
 
 @torch.no_grad()
 def nominal_score(pack, nb, n_inst=256, n_items=150, seed=999, device="cuda",
-                  stability="com", rot=2, S=10, size_hi=5):
+                  stability="com", rot=2, S=10, size_hi=5, max_l=120):
     """Quick greedy score on a fixed held-out slice, for training curves."""
     seqs = make_dataset(n_inst, n_items, size_hi=size_hi, seed=seed)
     u, k = run(seqs, pack, nb, batch=n_inst, device=device, stability=stability,
-               rot=rot, S=S)
+               rot=rot, S=S, max_l=max_l)
     return float(u.mean()), float(k.mean())
 
 
 @torch.no_grad()
 def attack_score(policy, attacker, nb, n_inst=256, n_items=150, seed=998,
-                 device="cuda", stability="com", rot=2, S=10, size_hi=5):
+                 device="cuda", stability="com", rot=2, S=10, size_hi=5,
+                 max_l=120):
     """Greedy utilisation of `policy` with every conveyor reordered.
 
     The attacker is selected and reported under the conditions it will be
@@ -99,7 +103,7 @@ def attack_score(policy, attacker, nb, n_inst=256, n_items=150, seed=998,
     seqs = make_dataset(n_inst, n_items, size_hi=size_hi, seed=seed)
     u, k = run(seqs, policy, nb, attacker=attacker,
                attacked=np.ones(n_inst, bool), batch=n_inst, device=device,
-               stability=stability, rot=rot, S=S)
+               stability=stability, rot=rot, S=S, max_l=max_l)
     return float(u.mean()), float(k.mean())
 
 

@@ -28,10 +28,11 @@ from urllib.parse import urlparse
 
 import numpy as np
 
-from ..env import BPPBatch
+from ..env import BPPBatch, sample_items
 from . import agents as A
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+ARGS_BIN = [10, 5, 120]  # (bin extent, item side cap, leaf cap); set from argv
 ROOT = A.ROOT
 _GAMES: dict = {}
 _LOCK = threading.Lock()
@@ -83,7 +84,7 @@ def place(env, r, x, y):
     """
     ems, max_l = env.ems, env.max_l
     env.ems = False
-    env.max_l = env.rot * env.S * env.S     # every (orientation, x, y), none dropped
+    env.max_l = env.rot * env.Lx * env.Ly   # every (orientation, x, y), none dropped
     env._invalidate(hmap=False)
     try:
         o = env.obs()
@@ -109,7 +110,7 @@ def board(env):
     win, wmask = env.window()
     nfree = int(free.sum())
     return {
-        'S': int(env.S),
+        'Lx': int(env.Lx), 'Ly': int(env.Ly), 'Lz': int(env.Lz),
         'rot': int(odims.shape[0]),
         'dims': odims.tolist(),                      # the footprint per orientation
         'hmap': env.hmap[0].tolist(),
@@ -120,7 +121,8 @@ def board(env):
         'ncand': k,
         'nfree': nfree,
         'window': win[0][wmask[0]].tolist(),
-        'placed': (env.packed[0, : env.n_packed[0]] * env.S).round().astype(int).tolist(),
+        'placed': (env.packed[0, : env.n_packed[0]] * env.scale)
+                  .round().astype(int).tolist(),
         'util': float(env.utilization()[0]),
         'items': int(env.n_packed[0]),
         'done': bool(env.done[0]) or nfree == 0,
@@ -138,14 +140,16 @@ def advance(st):
         st['promoted'] = None
 
 
-def new_game(nb, seed, attacker_spec):
+def new_game(nb, seed, attacker_spec, bin_size=10, size_hi=5, max_l=120):
+    """`bin_size` is an int for a cube or an (Lx, Ly, Lz) triple."""
     att, alabel, anb = A.load_attacker(attacker_spec, DEVICE)
     nb = anb or nb
-    rng = np.random.default_rng(seed)
-    seq = rng.integers(1, 6, (150, 3), dtype=np.int16)
-    env = BPPBatch(1, nb=nb, n_items=150)
+    seq = sample_items(np.random.default_rng(seed), (150,), 1, size_hi)
+    env = BPPBatch(1, S=bin_size, nb=nb, n_items=150, size_hi=size_hi,
+                   max_l=max_l)
     env.reset(seq[None])
     st = {'env': env, 'seq': seq, 'nb': nb, 'att': att, 'alabel': alabel,
+          'bin': bin_size, 'size_hi': size_hi, 'max_l': max_l,
           'promoted': None, 'opp_spec': None, 'opp': None}
     gid = uuid.uuid4().hex[:12]
     with _LOCK:
@@ -167,7 +171,8 @@ def opponent(st, spec):
         return st['opp']
     policy, label, _ = A.load_policy(spec, DEVICE)
     t0 = time.time()
-    ep = A.play(st['seq'], policy, st['att'], nb=st['nb'])
+    ep = A.play(st['seq'], policy, st['att'], nb=st['nb'], S=st['bin'],
+                size_hi=st['size_hi'], max_l=st['max_l'])
     out = {'label': label, 'util': ep['util'], 'items': ep['items'],
            'placed': ep['placed'], 'seconds': time.time() - t0,
            'reason': 'ran out of room'}
@@ -224,7 +229,8 @@ class Handler(BaseHTTPRequestHandler):
         p = urlparse(self.path).path.rstrip('/')
         if p == '/api/new':
             gid, st = new_game(body.get('nb', 10), body.get('seed', 0),
-                               body.get('attacker'))
+                               body.get('attacker'),
+                               ARGS_BIN[0], ARGS_BIN[1], ARGS_BIN[2])
             return self._json({'gid': gid, 'board': board(st['env']),
                                'promoted': st['promoted'], 'alabel': st['alabel']})
         st = _GAMES.get(body.get('gid'))
@@ -254,11 +260,23 @@ def main(argv=None):
     ap.add_argument('--port', type=int, default=8096)
     ap.add_argument('--host', default='127.0.0.1')
     ap.add_argument('--device', default='cuda')
+    ap.add_argument('--bin', default='10',
+                    help='bin extent: an int for a cube, or WxLxH')
+    ap.add_argument('--size_hi', default='5',
+                    help='item side cap: an int, or per-axis WxLxH')
+    ap.add_argument('--max_l', type=int, default=120,
+                    help='leaf cap; match the --max_l the opponent was trained with')
     a = ap.parse_args(argv)
     DEVICE = a.device
+
+    def extent(v):
+        q = str(v).lower().split('x')
+        return int(q[0]) if len(q) == 1 else tuple(int(t) for t in q)
+
+    ARGS_BIN[:] = [extent(a.bin), extent(a.size_hi), a.max_l]
     srv = QuietServer((a.host, a.port), Handler)
     runs = [r for r in A.list_runs() if not r.startswith(('att_', 'h'))]
-    print(f"game: http://{a.host}:{a.port}/   "
+    print(f"game: http://{a.host}:{a.port}/   bin {a.bin}   "
           f"(opponents: {', '.join(runs[:6]) or 'heuristics only'})")
     try:
         srv.serve_forever()

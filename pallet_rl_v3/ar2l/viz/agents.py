@@ -138,10 +138,27 @@ def load_attacker(spec, device="cuda"):
     return fn, f"{kind}({run})", info["nb"]
 
 
-def play(seq, policy, attacker=None, nb=1, S=10, stability="com", record=True):
-    """One episode; returns the trace the viewers draw."""
-    env = BPPBatch(1, S=S, nb=nb, n_items=len(seq), stability=stability)
-    env.reset(np.asarray(seq, np.int16)[None])
+def extent(S):
+    """A bin size -- an int for a cube, or an (Lx, Ly, Lz) triple -- as 3 ints."""
+    a = np.broadcast_to(np.asarray(S, np.int64), (3,))
+    return int(a[0]), int(a[1]), int(a[2])
+
+
+def play(seq, policy, attacker=None, nb=1, S=10, stability="com", record=True,
+         size_hi=None, max_l=None):
+    """One episode; returns the trace the viewers draw.
+
+    `S` is an int for a cube or an (Lx, Ly, Lz) triple.  `size_hi` bounds the
+    items the env draws for itself once this sequence runs out, so it defaults
+    to the sequence's own per-axis maximum rather than the env's cube default,
+    which a big bin's sequence would otherwise overshoot.
+    """
+    seq = np.asarray(seq, np.int16)
+    env = BPPBatch(1, S=S, nb=nb, n_items=len(seq), stability=stability,
+                   size_hi=seq.reshape(-1, 3).max(0) if size_hi is None else size_hi,
+                   **({} if max_l is None else {"max_l": max_l}))
+    env.reset(seq[None])
+    scale = env.scale        # one divisor for every axis, as in the env itself
     trace = []
     while not env.done[0]:
         win, wmask = env.window()
@@ -169,9 +186,10 @@ def play(seq, policy, attacker=None, nb=1, S=10, stability="com", record=True):
             }
         env.step(act)
         if record:
-            rec["placed"] = (env.packed[0, env.n_packed[0] - 1] * S).round().astype(int).tolist()
+            rec["placed"] = (env.packed[0, env.n_packed[0] - 1] * scale).round().astype(int).tolist()
             rec["util"] = float(env.utilization()[0])
             trace.append(rec)
     return {"trace": trace, "util": float(env.utilization()[0]),
-            "items": int(env.n_packed[0]), "S": S,
-            "placed": (env.packed[0, : env.n_packed[0]] * S).round().astype(int).tolist()}
+            "items": int(env.n_packed[0]), "S": (env.Lx, env.Ly, env.Lz),
+            "placed": (env.packed[0, : env.n_packed[0]] * scale)
+                      .round().astype(int).tolist()}

@@ -21,8 +21,9 @@ NEG = -1e18
 MACS_TOPK = 24  # MACS rescores only the most promising candidates (see README)
 
 
-def _run_all(m, axis, S):
-    """Running window max of every width 1..S along one axis."""
+def _run_all(m, axis, L):
+    """Running window max of every width 1..L along the axis of length `L`."""
+    S = L
     out = np.empty((S,) + m.shape, m.dtype)
     out[0] = m
     for k in range(1, S):
@@ -35,36 +36,39 @@ def _run_all(m, axis, S):
     return out
 
 
-def _free_extent(hmap, z, sx, sy, S, ar):
+def _free_extent(hmap, z, sx, sy, Lx, Ly, ar):
     """How far the item could grow in x and in y before hitting a taller column.
 
     Returns the pair stacked on a leading axis, so callers can hold one entry
     per orientation.
     """
-    ay = _run_all(hmap, 2, S)[sy - 1, ar]          # window of depth sy in y ...
-    mx = _run_all(ay, 1, S)                        # ... and of every width in x
-    ax = _run_all(hmap, 1, S)[sx - 1, ar]
-    my = _run_all(ax, 2, S)
-    w = np.arange(1, S + 1)[:, None, None, None]
-    gx = np.arange(S)[None, None, :, None]
-    gy = np.arange(S)[None, None, None, :]
-    ex = ((mx <= z[None]) & (gx + w <= S)).sum(0)
-    ey = ((my <= z[None]) & (gy + w <= S)).sum(0)
+    cx = np.minimum(sx, Lx)                        # an oversized item is masked
+    cy = np.minimum(sy, Ly)                        # out by the caller anyway
+    ay = _run_all(hmap, 2, Ly)[cy - 1, ar]         # window of depth sy in y ...
+    mx = _run_all(ay, 1, Lx)                       # ... and of every width in x
+    ax = _run_all(hmap, 1, Lx)[cx - 1, ar]
+    my = _run_all(ax, 2, Ly)
+    wx = np.arange(1, Lx + 1)[:, None, None, None]
+    wy = np.arange(1, Ly + 1)[:, None, None, None]
+    gx = np.arange(Lx)[None, None, :, None]
+    gy = np.arange(Ly)[None, None, None, :]
+    ex = ((mx <= z[None]) & (gx + wx <= Lx)).sum(0)
+    ey = ((my <= z[None]) & (gy + wy <= Ly)).sum(0)
     return np.stack([ex, ey], 0)
 
 
-def _largest_cuboid(hmap, S):
+def _largest_cuboid(hmap, Lx, Ly, Lz):
     """Volume of the biggest empty axis-aligned box above the height map."""
     M = hmap.shape[0]
-    ax = _run_all(hmap, 1, S)                              # (S, M, S, S)
-    w = np.arange(1, S + 1)
-    gx = np.arange(S)[None, None, :, None]
-    gy = np.arange(S)[None, None, None, :]
+    ax = _run_all(hmap, 1, Lx)                             # (Lx, M, Lx, Ly)
+    wx, wy = np.arange(1, Lx + 1), np.arange(1, Ly + 1)[:, None, None, None]
+    gx = np.arange(Lx)[None, None, :, None]
+    gy = np.arange(Ly)[None, None, None, :]
     best = np.zeros(M, np.int64)
-    for i in range(S):
-        axy = _run_all(ax[i], 2, S)                        # (S, M, S, S)
-        vol = (S - axy.astype(np.int64)) * (w[i] * w[:, None, None, None])
-        keep = (gx + w[i] <= S) & (gy + w[:, None, None, None] <= S)
+    for i in range(Lx):
+        axy = _run_all(ax[i], 2, Ly)                       # (Ly, M, Lx, Ly)
+        vol = (Lz - axy.astype(np.int64)) * (wx[i] * wy)
+        keep = (gx + wx[i] <= Lx) & (gy + wy <= Ly)
         best = np.maximum(best, np.where(keep, vol, 0).max(axis=(0, 2, 3)))
     return best
 
@@ -77,7 +81,8 @@ def scores(env, name):
     """
     mask = env.obs()["l_mask"]          # also refreshes the candidate table
     _, zgrid, odims = env._positions()
-    lxy, S, ar = env._lxy, env.S, env._ar
+    lxy, ar = env._lxy, env._ar
+    Lx, Ly, Lz = env.Lx, env.Ly, env.Lz
     n, NL = env.n_env, lxy.shape[1]
     x, y, r = lxy[..., 0], lxy[..., 1], lxy[..., 2]
     z = env._lz
@@ -91,14 +96,14 @@ def scores(env, name):
         # increase of the volume under the height map = item volume + sealed void
         cs = np.cumsum(np.cumsum(env.hmap.astype(np.int64), 1), 2)
         cs = np.pad(cs, ((0, 0), (1, 0), (1, 0)))
-        x2, y2 = np.minimum(x + sx, S), np.minimum(y + sy, S)
+        x2, y2 = np.minimum(x + sx, Lx), np.minimum(y + sy, Ly)
         tot = (cs[ar[:, None], x2, y2] - cs[ar[:, None], x, y2]
                - cs[ar[:, None], x2, y] + cs[ar[:, None], x, y])
         void = (sx * sy) * z - tot
         s = -void.astype(np.float64) * 1e7 + dbl
 
     elif name == "lsah":
-        pk = env.packed[:, : max(int(env.n_packed.max()), 1)] * S
+        pk = env.packed[:, : max(int(env.n_packed.max()), 1)] * env.scale
         m = (np.arange(pk.shape[1])[None, :] < env.n_packed[:, None])[..., None]
         lo = np.where(m, pk[..., :3], np.inf).min(1)
         hi = np.where(m, pk[..., :3] + pk[..., 3:], -np.inf).max(1)
@@ -113,11 +118,11 @@ def scores(env, name):
         # the free extent depends on the footprint, so it is swept once per
         # orientation and then read off at each candidate's own orientation
         ex = np.stack([_free_extent(env.hmap, zgrid[:, k], odims[:, k, 0],
-                                    odims[:, k, 1], S, ar)
+                                    odims[:, k, 1], Lx, Ly, ar)
                        for k in range(odims.shape[1])], 0)
         ey = ex[:, 1]; ex = ex[:, 0]
         ex = ex[r, ar[:, None], x, y]; ey = ey[r, ar[:, None], x, y]
-        ez = S - z
+        ez = Lz - z
         waste = (ex * ey * ez - sx * sy * sz).astype(np.float64)
         if name == "bmf":     # how many sides of the free space the item matches
             match = ((ex == sx).astype(np.float64) + (ey == sy) + (ez == sz))
@@ -131,13 +136,15 @@ def scores(env, name):
         top = np.argsort(-rank, 1)[:, :K]
         tx, ty, tz = (np.take_along_axis(v, top, 1) for v in (x, y, z))
         dx, dy, dz = (np.take_along_axis(v, top, 1) for v in (sx, sy, sz))
-        g = np.arange(S)[None, None, :]
-        inx = (g >= tx[..., None]) & (g < (tx + dx)[..., None])
-        iny = (g >= ty[..., None]) & (g < (ty + dy)[..., None])
+        gx = np.arange(Lx)[None, None, :]
+        gy = np.arange(Ly)[None, None, :]
+        inx = (gx >= tx[..., None]) & (gx < (tx + dx)[..., None])
+        iny = (gy >= ty[..., None]) & (gy < (ty + dy)[..., None])
         hm = np.where(inx[..., None] & iny[..., None, :],
                       (tz + dz)[..., None, None].astype(np.int16),
                       env.hmap[:, None])
-        vol = _largest_cuboid(np.ascontiguousarray(hm.reshape(-1, S, S)), S)
+        vol = _largest_cuboid(np.ascontiguousarray(hm.reshape(-1, Lx, Ly)),
+                              Lx, Ly, Lz)
         s = np.full((n, NL), NEG)
         np.put_along_axis(s, top, vol.reshape(n, K).astype(np.float64) * 1e7
                           + np.take_along_axis(dbl, top, 1), 1)
