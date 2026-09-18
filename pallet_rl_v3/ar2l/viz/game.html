@@ -52,7 +52,18 @@ kbd{border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;paddi
 @media(max-width:980px){#play{grid-template-columns:1fr}}
 #board{display:grid;grid-template-columns:auto minmax(250px,1fr);gap:14px;align-items:start}
 @media(max-width:1180px){#board{grid-template-columns:1fr}}
+/* the zoom may make the grid wider than its column; it has to scroll there
+   rather than widen the track and shove the 3D bin off the row again */
+#board>*{min-width:0}
+/* and it clips vertically too, or a zoomed 100-deep bin makes the page a
+   mile long and pushes the legend and the conveyor out of sight */
+#palwrap{overflow:auto;max-width:100%;max-height:min(70vh,760px);border-radius:8px}
 #pallet{display:block;cursor:crosshair;border-radius:8px;touch-action:none}
+.zoom{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--dim);
+  margin:0 0 9px;text-transform:none;letter-spacing:0}
+.zoom input[type=range]{width:132px;flex:none}
+.zoom b{font-variant-numeric:tabular-nums;color:var(--fg);font-weight:600;min-width:30px}
+.zoom button{padding:2px 8px;font-size:11px}
 #iso3d{display:block;border-radius:8px}
 .slot{display:flex;justify-content:space-between;align-items:center;padding:6px 10px;
   border:1px solid var(--line);border-radius:8px;margin-bottom:5px;
@@ -120,13 +131,19 @@ input[type=range]{width:100%;accent-color:var(--c0)}
     <div id="board">
       <div class="card">
         <h2>Bin floor &mdash; top view <span id="palsub" class="sub" style="text-transform:none;letter-spacing:0"></span></h2>
-        <canvas id="pallet" width="420" height="420"></canvas>
+        <div class="zoom">
+          <label for="zoom">cell size</label>
+          <input id="zoom" type="range" min="2" max="48" step="1">
+          <b><span id="zoomv"></span>px</b>
+          <button id="zoomfit" type="button">Fit</button>
+        </div>
+        <div id="palwrap"><canvas id="pallet" width="420" height="420"></canvas></div>
         <div class="lg">
           <span><i style="background:var(--c2)"></i>legal here</span>
           <span><i style="background:var(--c3)"></i>illegal here</span>
           <span><i style="background:var(--c0);opacity:.55"></i>the packer's candidates</span>
           <span><i style="background:var(--c4);opacity:.55"></i>stable, but never offered to it</span>
-          <span>cell number = stacked height</span>
+          <span id="lgnum">cell number = stacked height</span>
         </div>
         <div id="msg"></div>
       </div>
@@ -165,7 +182,8 @@ input[type=range]{width:100%;accent-color:var(--c0)}
       <button id="tosetup" style="width:100%">&larr; Back to setup</button>
       <div class="hint" style="margin-top:10px">Click a cell to drop the box with
         its near-left-bottom corner there. It falls onto whatever is underneath and
-        must be stable, so only placements that will not topple are refused
+        must rest on at least 80% of its own base, so only placements a palletiser
+        would not trust are refused
         &mdash; <b>any</b> stable cell is yours, not just the corners of the empty
         maximal spaces. The packer is confined to those corners, so the purple
         cells are placements it could never have played. The agent never sees more
@@ -390,24 +408,55 @@ function drawFootprint(cv, dims, u, idx, peek){
   const g=cv.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0);
   g.globalAlpha = peek ? .38 : 1;                                 // a peeked box is not yours to place
   g.fillStyle=boxColor(idx,56); g.fillRect(0,0,l*u,w*u);
-  g.strokeStyle='rgba(0,0,0,.22)'; g.lineWidth=1;                 // one line per unit cell
-  for(let i=1;i<l;i++){ g.beginPath(); g.moveTo(i*u+.5,0); g.lineTo(i*u+.5,w*u); g.stroke(); }
-  for(let j=1;j<w;j++){ g.beginPath(); g.moveTo(0,j*u+.5); g.lineTo(l*u,j*u+.5); g.stroke(); }
+  if(u>=5){                                                       // one line per unit cell,
+    g.strokeStyle='rgba(0,0,0,.22)'; g.lineWidth=1;               // but a 60-cell box at 1px
+    for(let i=1;i<l;i++){ g.beginPath(); g.moveTo(i*u+.5,0); g.lineTo(i*u+.5,w*u); g.stroke(); }
+    for(let j=1;j<w;j++){ g.beginPath(); g.moveTo(0,j*u+.5); g.lineTo(l*u,j*u+.5); g.stroke(); }
+  }                                                               // per cell is a black block
   g.globalAlpha = 1;
   if(peek){ g.setLineDash([4,3]); g.strokeStyle=css('--dim'); }
   else    { g.strokeStyle='rgba(0,0,0,.55)'; }
   g.lineWidth=2; g.strokeRect(1,1,l*u-2,w*u-2); g.setLineDash([]);
-  g.fillStyle = peek ? css('--dim') : 'rgba(0,0,0,.8)';
-  g.textAlign='center'; g.textBaseline='middle';
-  g.font=`700 ${Math.max(9,Math.round(Math.min(u*0.62,Math.min(l,w)*u*0.42)))}px ui-sans-serif,system-ui,sans-serif`;
-  g.fillText('\u2195'+h, l*u/2, w*u/2);
+  // the height only goes on the tile when the tile can hold it; every caller
+  // already prints the full l x w x h beside it, so nothing is lost
+  if(Math.min(l,w)*u>=16 && Math.max(l,w)*u>=30){
+    g.fillStyle = peek ? css('--dim') : 'rgba(0,0,0,.8)';
+    g.textAlign='center'; g.textBaseline='middle';
+    g.font=`700 ${Math.max(9,Math.round(Math.min(u*0.62,Math.min(l,w)*u*0.42)))}px ui-sans-serif,system-ui,sans-serif`;
+    g.fillText('\u2195'+h, l*u/2, w*u/2);
+  }
 }
 
 // ---- top view -----------------------------------------------------------
-function cellSize(){
+let ZOOM = null;                 // px per cell; null means fit to the space
+
+function fitCell(){
   const avail = ($('#board').clientWidth || 700) - 300;   // leave room for the 3D bin
   const box = Math.max(260, Math.min(460, avail));
-  return Math.max(14, Math.min(42, Math.floor(box / Math.max(LX, LY))));
+  // The floor used to be 14px, which is right for a 10-wide bin and disastrous
+  // for a 120-wide one: 1680px of canvas in an `auto` grid column, shoving the
+  // 3D card off the row.  The fit has to hold `box` at any extent, so the cell
+  // shrinks instead and `drawTop` drops the decorations that need the room.
+  return Math.max(2, Math.min(42, Math.floor(box / Math.max(LX, LY))));
+}
+
+// A fit that keeps a 120-wide bin on screen puts it at 3px per cell, which is
+// too small to aim at.  The zoom overrides it and #palwrap scrolls; the rules
+// and the height digits come back on their own as the cell grows.
+function cellSize(){ return ZOOM || fitCell(); }
+
+function setZoom(px){
+  ZOOM = px;
+  try { px ? localStorage.setItem('ar2l.cell', px)
+           : localStorage.removeItem('ar2l.cell'); } catch (e) {}
+  if (B) render();
+}
+
+function syncZoom(){
+  const c = cellSize();
+  $('#zoom').value = Math.max(2, Math.min(48, c));
+  $('#zoomv').textContent = c;
+  $('#zoomfit').disabled = ZOOM === null;
 }
 
 function drawTop(){
@@ -417,25 +466,40 @@ function drawTop(){
   const g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0);
   g.clearRect(0, 0, LX * C, LY * C);
 
+  // Below ~7px a per-cell rule is thicker than the cell it outlines and the
+  // board reads as grey mush; below ~13px the height digits are unreadable.
+  // Dropping both is also what keeps a 12000-cell redraw fast.
+  const rules = C >= 7, nums = C >= 13;
+  if (nums){
+    g.font = `600 ${Math.round(C * .32)}px ui-monospace,monospace`;
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+  }
   for (let y = 0; y < LY; y++) for (let x = 0; x < LX; x++){
     const h = B.hmap[x][y];
     g.fillStyle = heightColor(h); g.fillRect(x * C, y * C, C, C);
-    g.strokeStyle = cvar('--line'); g.lineWidth = 1;
-    g.strokeRect(x * C + .5, y * C + .5, C - 1, C - 1);
-    if (h > 0){
+    if (rules){
+      g.strokeStyle = cvar('--line'); g.lineWidth = 1;
+      g.strokeRect(x * C + .5, y * C + .5, C - 1, C - 1);
+    }
+    if (nums && h > 0){
       g.fillStyle = 'rgba(255,255,255,.82)';
-      g.font = `600 ${Math.round(C * .32)}px ui-monospace,monospace`;
-      g.textAlign = 'center'; g.textBaseline = 'middle';
       g.fillText(h, x * C + C / 2, y * C + C / 2);
     }
   }
+  if (!rules){                     // one outer edge, since the cells have none
+    g.strokeStyle = cvar('--line'); g.lineWidth = 1;
+    g.strokeRect(.5, .5, LX * C - 1, LY * C - 1);
+  }
+  $('#lgnum').hidden = !nums;
   if (B.done) return;
 
   if ($('#hint').checked){
     // every cell you may click.  Split by colour, the cyan ones are the EMS
     // corners the packer scores and the purple ones are placements only you
     // can reach - which is most of the board once the bin has some relief.
-    const split = $('#showems').checked, r = Math.max(2, C * .09);
+    // 2px is the readable dot on a big cell and a blot on a 3px one
+    const split = $('#showems').checked,
+          r = Math.max(Math.min(2, C * .34), C * .09);
     g.globalAlpha = .55;
     for (let y = 0; y < LY; y++) for (let x = 0; x < LX; x++)
       if (legal(x, y)){
@@ -472,7 +536,9 @@ function render(){
     $('#cur').textContent = `${l} × ${w} × ${h}`;
     $('#curinfo').textContent = `box ${B.items + 1} · volume ${l * w * h} of ${LX * LY * LZ}`
       + (ORIENT ? ' · turned 90°' : '');
-    drawFootprint($('#curbox'), poseDims(), C, B.items);       // 1:1 with the grid
+    // 1:1 with the grid, until that would overflow the 330px side panel
+    const cu = Math.max(1, Math.min(C, Math.floor(276 / Math.max(l, w))));
+    drawFootprint($('#curbox'), poseDims(), cu, B.items);
   } else {
     $('#cur').textContent = '—'; $('#curinfo').textContent = '';
     $('#curbox').width = 0; $('#curbox').style.width = '0px';
@@ -481,12 +547,18 @@ function render(){
   $('#rot').hidden = B.done || B.rot < 2 || square();
 
   drawTop();
+  syncZoom();
   drawIso($('#iso3d'), B.placed, LX, LY, LZ, {highlight:B.placed.length-1, height:300});
   $('#palsub').innerHTML = B.done ? ''
     : `&mdash; x &rarr; right, y &darr; down &middot; ${B.ncand} of your ${B.nfree}
        placements are ones the packer would also consider`;
 
-  const qu = Math.max(6, Math.round(C * .36));
+  // A conveyor thumbnail is capped by its pixel extent, not by a per-cell
+  // floor: with 60-cell boxes the old 6px floor drew 360px tiles and the
+  // queue ran off the bottom of the page.  One shared unit keeps the boxes
+  // comparable to each other, which is the whole point of the strip.
+  const qbig = Math.max(1, ...B.window.map(w => Math.max(w[0], w[1])));
+  const qu = Math.max(1, Math.min(Math.round(C * .36), Math.floor(110 / qbig)));
   $('#slots').innerHTML = B.window.map((w, i) => {
     const cls = 'slot' + (i === 0 ? ' head' : '') + (G.promoted === i ? ' prom' : '');
     return `<div class="${cls}"><span class="qb"><canvas data-i="${i}"></canvas>
@@ -527,7 +599,7 @@ function onMove(ev){
   const {x, y} = HOVER, [l, w, h] = poseDims(), z = landing(x, y);
   const why = (x + l > LX || y + w > LY) ? 'it hangs off the pallet'
             : (z + h > LZ) ? 'it would poke out through the lid'
-            : 'not enough support underneath — the centre of mass would fall outside the contact patch';
+            : 'not enough support underneath — less than 80% of the base would rest on what is below it';
   const ok = legal(x, y);
   $('#hoverinfo').innerHTML = `<b>(${x}, ${y})</b> → lands at z = ${z}, top at ${z + h}<br>`
     + (!ok ? `<span style="color:var(--c3)">illegal — ${why}</span>`
@@ -653,6 +725,12 @@ $('#again').onclick = () => fresh();
 $('#samesame').onclick = () => fresh(SEED);
 $('#hint').onchange = drawTop;
 $('#showems').onchange = drawTop;
+$('#zoom').oninput = e => setZoom(parseInt(e.target.value, 10));
+$('#zoomfit').onclick = () => setZoom(null);
+try {
+  const saved = parseInt(localStorage.getItem('ar2l.cell'), 10);
+  if (saved >= 2 && saved <= 48) ZOOM = saved;
+} catch (e) {}
 $('#scrub').oninput = e => drawReplay(parseInt(e.target.value, 10));
 addEventListener('resize', () => {
   if (B && !$('#play').hidden) render();
@@ -674,8 +752,11 @@ $('#back2').onclick = () => { $('#result').hidden = true; $('#setup').hidden = f
   $('#att').innerHTML = '<option value="none">none &mdash; nominal conveyor</option>'
     + m.attackers.map(r => `<option value="run:${r}">${r}</option>`).join('');
   if (!m.policies.length) $('#setupmsg').textContent = 'no trained runs found in runs/';
-  // ?play=1 deals straight into a game; &opp= and &att= pick the two dropdowns
+  // ?play=1 deals straight into a game; &opp= and &att= pick the two dropdowns,
+  // &cell= the zoom, so a board can be linked at the size it was looked at
   const q = new URLSearchParams(location.search);
+  const qc = parseInt(q.get('cell'), 10);
+  if (qc >= 2 && qc <= 48) ZOOM = qc;
   for (const [k, sel] of [['opp', '#opp'], ['att', '#att']])
     if (q.get(k) && [...$(sel).options].some(o => o.value === q.get(k))) $(sel).value = q.get(k);
   if (q.get('play')) fresh();

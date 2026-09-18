@@ -20,6 +20,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from .config import CFG
+
 NEG = -1e9
 
 
@@ -34,8 +36,12 @@ def positional_encoding(n, d, device):
 class Encoder(nn.Module):
     """Independent projections + `n_layer` attention blocks over the union."""
 
-    def __init__(self, in_dims, d=64, n_head=1, n_layer=1):
+    def __init__(self, in_dims, d=None, n_head=None, n_layer=None):
         super().__init__()
+        m = CFG["model"]
+        d = m["width"] if d is None else d
+        n_head = m["heads"] if n_head is None else n_head
+        n_layer = m["layers"] if n_layer is None else n_layer
         self.embed = nn.ModuleList([nn.Linear(k, d) for k in in_dims])
         self.blocks = nn.ModuleList()
         for _ in range(n_layer):
@@ -72,8 +78,10 @@ class Encoder(nn.Module):
 class Pointer(nn.Module):
     """Eq. 28: compatibility of every candidate with the global feature."""
 
-    def __init__(self, d=64, c_temp=10.0):
+    def __init__(self, d=None, c_temp=None):
         super().__init__()
+        d = CFG["model"]["width"] if d is None else d
+        c_temp = CFG["model"]["c_temp"] if c_temp is None else c_temp
         self.q = nn.Linear(d, d)
         self.k = nn.Linear(d, d)
         self.c_temp, self.d = c_temp, d
@@ -86,9 +94,10 @@ class Pointer(nn.Module):
 class Critic(nn.Module):
     """V(C, B) -- no dependence on the candidate list."""
 
-    def __init__(self, d=64, n_head=1, n_layer=1):
+    def __init__(self, d=None, n_head=None, n_layer=None):
         super().__init__()
         self.enc = Encoder([6, 3], d, n_head, n_layer)
+        d = self.enc.d
         self.head = nn.Sequential(nn.Linear(d, d), nn.ReLU(), nn.Linear(d, 1))
 
     def forward(self, c, c_mask, b, b_mask):
@@ -99,10 +108,10 @@ class Critic(nn.Module):
 class PackNet(nn.Module):
     """Packing policy pi_pack(l | C, B, L) and its value function."""
 
-    def __init__(self, d=64, n_head=1, n_layer=1, c_temp=10.0):
+    def __init__(self, d=None, n_head=None, n_layer=None, c_temp=None):
         super().__init__()
         self.enc = Encoder([6, 3, 6], d, n_head, n_layer)
-        self.ptr = Pointer(d, c_temp)
+        self.ptr = Pointer(self.enc.d, c_temp)
         self.critic = Critic(d, n_head, n_layer)
 
     def logits(self, o):
@@ -123,19 +132,26 @@ class PermNet(nn.Module):
 
     Used both for the permutation-based attacker and for the mixture-dynamics
     model; they differ only in the loss they are trained with.
+
+    Visibility and reachability are separate masks.  The encoder is given
+    `b_mask`, so every observable item is attended to, while the pointer is
+    given `b_pick`, the `n_pick` items the cell can reach -- the preview tail
+    informs the choice without being choosable.
     """
 
-    def __init__(self, d=64, n_head=1, n_layer=1, c_temp=10.0):
+    def __init__(self, d=None, n_head=None, n_layer=None, c_temp=None):
         super().__init__()
         self.enc = Encoder([6, 3], d, n_head, n_layer)
-        self.ptr = Pointer(d, c_temp)
+        self.ptr = Pointer(self.enc.d, c_temp)
         self.critic = Critic(d, n_head, n_layer)
 
     def logits(self, o):
         x, xbar, _ = self.enc([o["c"], o["b"]], [o["c_mask"], o["b_mask"]],
                               pos_on={1})
         nb = o["b"].shape[1]
-        return self.ptr(xbar, x[:, -nb:], o["b_mask"])
+        # a (C, B) dict built by hand -- the `approx` bootstrap -- may carry no
+        # `b_pick`, and then every observable item is selectable, as before
+        return self.ptr(xbar, x[:, -nb:], o.get("b_pick", o["b_mask"]))
 
     def value(self, o):
         return self.critic(o["c"], o["c_mask"], o["b"], o["b_mask"])

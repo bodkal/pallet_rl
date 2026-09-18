@@ -12,6 +12,14 @@ as (l, w, h), which is the discrete setting of the paper.  The attacker
 instead acts on (C_t, B_t) and moves one observable item to the front of the
 conveyor.
 
+`n_pick` splits B_t into a pickable prefix and a preview tail: with
+`nb = 11, n_pick = 5` the permuter sees eleven items and may choose among the
+first five, which is a cell that reaches five boxes at the pick station and
+has sight of six more upstream.  The tail is masked out of the pointer only --
+it is still attended to -- so it informs the choice without being choosable.
+`n_pick = 1` is the FIFO conveyor of the paper, `n_pick = nb` the unrestricted
+one; both are what the default `None` and a full-width value give.
+
 The bin is `Lx x Ly x Lz` cells and need not be a cube; `S=` takes an int for
 a cube or an `(Lx, Ly, Lz)` triple.  Node features are divided by the single
 scale `max(Lx, Ly, Lz)` rather than per axis, so a cube still looks like a
@@ -20,33 +28,43 @@ normalisation would distort exactly that.
 
 The whole batch of environments is advanced with array operations; nothing
 here loops over the batch.  Feasibility for every loading position is obtained
-from windowed max/sum over the height map, with the support count read off a
-base-32 histogram (a window holds at most 25 cells and heights are < 32, so the
-digits of sum(32**h) never carry).
+from windowed maxima over the height map: one sweep per axis carries, for each
+window, both the maximum and how many cells attain it, so the contact area of
+a footprint comes out of the same pass as its landing height.
 """
 from __future__ import annotations
 
 import numpy as np
 
+from .config import CFG
+
 # Two stability criteria, selected with `stability=`:
 #
-#   "com"  (default) the projection of the item's centre of mass must fall
-#          inside the convex hull of its contact cells -- tested, as is
+#   "com"  (default) the item must rest on at least `min_support` of its own
+#          base area, and the projection of its centre of mass must fall
+#          inside the convex hull of the contact cells -- tested, as is
 #          standard on a grid, by requiring the support to span the centre
-#          along each axis.  This is the criterion that reproduces the
-#          heuristic baselines of AR2L Table 1; see README.
+#          along each axis.  The area floor is the binding half: at 80% it
+#          already implies the centre-of-mass span, which cannot fail before
+#          roughly half the base hangs free.
 #   "cdrl" the conservative area/corner rule written down by Zhao et al.
-#          (AAAI 2021, Sec. 3.1).
+#          (AAAI 2021, Sec. 3.1), kept verbatim as the reference rule: it
+#          carries its own area thresholds and ignores `min_support`.
 SUPPORT_RULES = ((0.60, 4), (0.80, 3), (0.95, 0))
-MIN_SUPPORT = 0.0  # optional extra contact-area floor on top of "com"
 
-MAX_SIDE = 5  # item sides are <= S/2 = 5 in the discrete setting
+# The contact-area floor for "com": a placement is offered only if at least
+# this fraction of the item's base rests on the layer it lands on.  A real
+# palletiser needs the load to sit on the box below it, not merely to balance
+# on it, so the default is a physical requirement rather than a geometric one.
+# `min_support=0.0` restores the bare centre-of-mass rule that reproduces the
+# heuristic baselines of AR2L Table 1; see README.  The number itself, like
+# every other default here, lives in `config.yaml`.
+MIN_SUPPORT = float(CFG["env"]["min_support"])
 
-# The support count is read off a base-32 histogram packed into one int64:
-# a column of height h contributes 32**h, so the encoding needs 5*h <= 63.
-# Past that `1 << 5*h` returns 0 and the stability test silently accepts
-# unsupported placements, so refuse the bin rather than report nonsense.
-MAX_HEIGHT = 63 // 5
+# Ratios are counts over small integers, so the only ties that matter are
+# exact ones (4/5 against 0.80); this absorbs the float32 rounding around them
+# and is far smaller than the gap to the next attainable ratio.
+SUPPORT_EPS = 1e-6
 
 # Bin side at which pruning the EMS footprint edges starts to pay for its
 # per-bin Python loop.  Whole-step times on bins packed full by DBL, sides up
@@ -103,39 +121,76 @@ def _win_max(m, axis, L, kmax=None):
     return out
 
 
-def _win_sum(c, axis, L, kmax):
-    """Running window sum of every width 1..kmax along one axis."""
+def _win_maxcount(m, c, axis, L, kmax):
+    """Running window max, and how many cells attain it, for widths 1..kmax.
+
+    Same recurrence as `_win_max` -- width k+1 is width k with one more cell
+    appended -- carried on the pair (max, count), which is associative over
+    that append: the new cell either beats the running max, ties it, or loses.
+    `c` counts the cells behind each entry of `m` (`None` for raw cells), so
+    the y-sweep can be fed straight into the x-sweep and the counts of the
+    disjoint columns add up without double counting.
+    """
     S = L
-    out = np.empty((kmax,) + c.shape, c.dtype)
-    out[0] = c
+    om = np.empty((kmax,) + m.shape, m.dtype)
+    oc = np.empty((kmax,) + m.shape, np.int32)
+    om[0], oc[0] = m, 1 if c is None else c
     for k in range(1, kmax):
-        cur = out[k - 1].copy()
+        nm, nc = om[k - 1].copy(), oc[k - 1].copy()
         if axis == 1:
-            cur[:, : S - k] = out[k - 1][:, : S - k] + c[:, k:]
+            head = np.s_[:, : S - k]
+            am, ac = m[:, k:], 1 if c is None else c[:, k:]
         else:
-            cur[:, :, : S - k] = out[k - 1][:, :, : S - k] + c[:, :, k:]
-        out[k] = cur
-    return out
+            head = np.s_[:, :, : S - k]
+            am, ac = m[:, :, k:], 1 if c is None else c[:, :, k:]
+        hm, hc = om[k - 1][head], oc[k - 1][head]
+        up = am > hm
+        nm[head] = np.where(up, am, hm)
+        nc[head] = np.where(up, ac, np.where(am == hm, hc + ac, hc))
+        om[k], oc[k] = nm, nc
+    return om, oc
 
 
 class BPPBatch:
     """`n_env` independent bins stepped in lockstep."""
 
-    def __init__(self, n_env, S=10, nb=1, n_items=150, max_c=80, max_l=120,
-                 size_lo=1, size_hi=5, seed=0, ems=True, stability="com",
-                 rot=2):
+    def __init__(self, n_env, S=None, nb=1, n_items=None, max_c=None,
+                 max_l=None, size_lo=None, size_hi=None, seed=0, ems=None,
+                 stability=None, rot=None, min_support=None, n_pick=None):
+        # `None` means "whatever config.yaml says"; an explicit argument wins
+        e = CFG["env"]
+        S = e["bin"] if S is None else S
+        n_items = e["n_items"] if n_items is None else n_items
+        max_c = e["max_c"] if max_c is None else max_c
+        max_l = e["max_l"] if max_l is None else max_l
+        size_lo = e["size_lo"] if size_lo is None else size_lo
+        size_hi = e["size_hi"] if size_hi is None else size_hi
+        ems = e["ems"] if ems is None else ems
+        stability = e["stability"] if stability is None else stability
+        rot = e["rot"] if rot is None else rot
         self.Lx, self.Ly, self.Lz = _triple(S)
         self.size_lo, self.size_hi = _triple(size_lo), _triple(size_hi)
-        if stability != "com" and (self.Lz > MAX_HEIGHT
-                                   or max(self.size_hi) > MAX_SIDE):
-            raise ValueError(
-                f"stability={stability!r} counts contact area with a base-32 "
-                f"histogram packed into an int64, which needs bin height <= "
-                f"{MAX_HEIGHT} and item sides <= {MAX_SIDE}; got {self.Lz} and "
-                f"{max(self.size_hi)}. stability='com' compares window maxima "
-                f"instead and has no size limit.")
-        self.n_env, self.nb, self.ems = n_env, nb, ems
+        self.n_env, self.nb, self.ems = n_env, nb, bool(ems)
+        # How many of the `nb` observable items are within the cell's reach.
+        # `None` means all of them, which is the unrestricted conveyor the
+        # paper assumes; a smaller number splits the window into a pickable
+        # prefix and a preview tail that is seen but cannot be chosen.
+        self.n_pick = nb if n_pick is None else int(n_pick)
+        if not 1 <= self.n_pick <= nb:
+            raise ValueError(f"n_pick is how many of the {nb} observable "
+                             f"items can be reached, got {self.n_pick}")
         self.stability, self.rot = stability, int(rot)
+        # read from CFG rather than from MIN_SUPPORT, so a `--config` file
+        # loaded after import is honoured too
+        self.min_support = float(e["min_support"] if min_support is None
+                                 else min_support)
+        if not 0.0 <= self.min_support <= 1.0:
+            raise ValueError(f"min_support is a fraction of the item base, "
+                             f"got {self.min_support}")
+        # the contact count costs a second sweep, so only pay for it when a
+        # rule actually reads it
+        self._needs_count = (self.stability != "com"
+                             or self.min_support > 0.0)
         self.n_items, self.max_c, self.max_l = n_items, max_c, max_l
         # one divisor for every node feature, so item shape survives the
         # normalisation even when the bin is lopsided
@@ -205,6 +260,21 @@ class BPPBatch:
         valid = off < self.n_items
         items = self.seq[self._ar[:, None], np.minimum(off, self.n_items - 1)]
         return np.where(valid[..., None], items, 0), valid
+
+    def pick_mask(self, valid):
+        """(B, nb) which observable items the cell can actually reach.
+
+        The first `n_pick` slots of the window are the pick station; the rest
+        are visible further up the conveyor and are there to be reasoned about,
+        not chosen.  `permute` keeps the split consistent by itself: moving
+        slot i < n_pick to the front permutes the prefix among itself and
+        leaves the tail alone, and the `head += 1` in `step` then slides one
+        preview item into reach.  Validity is a prefix property, so a restricted
+        window never runs out of pickable items while preview items remain.
+        """
+        if self.n_pick >= self.nb:
+            return valid
+        return valid & (np.arange(self.nb) < self.n_pick)[None, :]
 
     def permute(self, idx):
         """Move observable item `idx` (B,) to the front of the conveyor."""
@@ -356,11 +426,19 @@ class BPPBatch:
 
     # --------------------------------------------------------- feasibility
     def _sweeps(self):
-        """Height-map sweeps that depend on the bin but not on the item."""
+        """Height-map sweeps that depend on the bin but not on the item.
+
+        Returns `(my, myc, mx)`: the y-window maxima, how many cells of each
+        y-window attain them (`None` when no rule needs contact area), and the
+        x-window maxima.
+        """
         if self._sweep_cache is None:
-            self._sweep_cache = (
-                _win_max(self.hmap, 2, self.Ly, self.sidey),
-                _win_max(self.hmap, 1, self.Lx, self.sidex))
+            if self._needs_count:
+                my, myc = _win_maxcount(self.hmap, None, 2, self.Ly, self.sidey)
+            else:
+                my, myc = _win_max(self.hmap, 2, self.Ly, self.sidey), None
+            self._sweep_cache = (my, myc,
+                                 _win_max(self.hmap, 1, self.Lx, self.sidex))
         return self._sweep_cache
 
     def _feas_one(self, dims):
@@ -368,14 +446,17 @@ class BPPBatch:
         Lx, Ly, Lz = self.Lx, self.Ly, self.Lz
         sx, sy, sz = dims[:, 0], dims[:, 1], dims[:, 2]
         ar, gx, gy = self._ar, np.arange(Lx), np.arange(Ly)
-        my, mx = self._sweeps()
+        my, myc, mx = self._sweeps()
         # an item too long for an axis still has to index a window that exists;
         # `inx`/`iny` below drop it, so the clamped sweep is never read out
         cx = np.minimum(sx, self.sidex)
         cy = np.minimum(sy, self.sidey)
 
         myd = my[cy - 1, ar]                          # max over the y extent
-        mxy = _win_max(myd, 1, Lx, self.sidex)        # ... and x sub-windows
+        if myc is None:                               # ... and x sub-windows
+            mxy, cxy = _win_max(myd, 1, Lx, self.sidex), None
+        else:
+            mxy, cxy = _win_maxcount(myd, myc[cy - 1, ar], 1, Lx, self.sidex)
         z = mxy[cx - 1, ar].astype(np.int32)
 
         if self.stability == "com":
@@ -402,10 +483,11 @@ class BPPBatch:
                 return near & (far == z)
 
             stable = span(mxy, cx, 1) & span(myx, cy, 2)
-            if MIN_SUPPORT > 0:
-                stable &= self._support_ratio(dims, z) >= MIN_SUPPORT
+            if self.min_support > 0:
+                ratio = self._support_ratio(dims, cxy, cx)
+                stable &= ratio >= self.min_support - SUPPORT_EPS
         else:
-            ratio = self._support_ratio(dims, z)
+            ratio = self._support_ratio(dims, cxy, cx)
             ix = np.minimum(gx[None, :] + (sx - 1)[:, None], Lx - 1)
             iy = np.minimum(gy[None, :] + (sy - 1)[:, None], Ly - 1)
             hx = self.hmap[ar[:, None], ix]
@@ -425,28 +507,17 @@ class BPPBatch:
             feas &= self._ems_corners(dims)
         return feas, z
 
-    def _support_ratio(self, dims, z):
+    def _support_ratio(self, dims, cxy, cx):
         """Fraction of the footprint that rests on the contact layer.
 
-        Only the area-threshold rules need an actual count rather than a
-        "does it touch" test, so this is the one place the base-32 histogram
-        -- and its bin-height and item-side limits -- is still used.
+        A cell carries the item exactly when its column reaches `z`, the
+        maximum over the whole footprint, so the contact area is the number of
+        cells attaining that maximum -- which `cxy`, the count carried through
+        both sweeps beside the maximum itself, already holds, at any bin
+        height and any item side.
         """
-        ar = self._ar
         sx, sy = dims[:, 0], dims[:, 1]
-        side = int(max(sx.max(), sy.max()))
-        if self.Lz > MAX_HEIGHT or side > MAX_SIDE:
-            raise ValueError(
-                f"the area-threshold support count needs bin height <= "
-                f"{MAX_HEIGHT} and item sides <= {MAX_SIDE}; this bin is "
-                f"{self.Lz} tall with sides up to {side}. stability='com' "
-                f"needs no count and has no such limit.")
-        code = np.left_shift(np.int64(1), 5 * self.hmap.astype(np.int64))
-        cy = _win_sum(code, 2, self.Ly, self.sidey)[
-            np.minimum(sy, self.sidey) - 1, ar]
-        cxy = _win_sum(cy, 1, self.Lx, self.sidex)[
-            np.minimum(sx, self.sidex) - 1, ar]
-        count = np.right_shift(cxy, 5 * z.astype(np.int64)) & np.int64(31)
+        count = cxy[cx - 1, self._ar]
         return count.astype(np.float32) / (sx * sy)[:, None, None]
 
     def _positions(self):
@@ -480,7 +551,8 @@ class BPPBatch:
         win, wvalid = self.window()
         c, cmask = self._trim_c()
         return {"c": c, "c_mask": cmask,
-                "b": win.astype(np.float32) / self.scale, "b_mask": wvalid}
+                "b": win.astype(np.float32) / self.scale, "b_mask": wvalid,
+                "b_pick": self.pick_mask(wvalid)}
 
     def obs(self):
         feas, z, odims = self._positions()
@@ -510,6 +582,7 @@ class BPPBatch:
         return {
             "c": c, "c_mask": cmask,
             "b": win.astype(np.float32) / scale, "b_mask": wvalid,
+            "b_pick": self.pick_mask(wvalid),
             "l": lnode, "l_mask": lmask,
         }
 

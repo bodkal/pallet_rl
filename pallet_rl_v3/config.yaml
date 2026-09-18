@@ -1,0 +1,82 @@
+# Every default in one place.
+#
+# This file *is* the defaults: `ar2l/config.py` reads it at import, the
+# argparsers of `ar2l.train` and `ar2l.evaluate` take their defaults from it,
+# and the values that have no flag at all (the PPO clip, the pointer
+# temperature, the packed-item capacity) are read from it directly.  Editing a
+# value here changes it everywhere, and a flag on the command line still wins
+# over the file.
+#
+# Point at a different file with `--config other.yaml` or `AR2L_CONFIG=...`.
+# RUN.md documents what each of these means.
+
+env:
+  # A 60 x 50 x 80 cm pallet modelled on a 2 cm grid.  The list form matters:
+  # a "30x25x40" string is only parsed by the argparsers, so anything that
+  # reads CFG directly -- BPPBatch, and therefore the whole `ar2l.evaluate`
+  # CLI, which has no --bin flag -- would choke on it.
+  bin: [30, 25, 40]
+  n_items: 120           # items per episode; episodes end by infeasibility ~40
+  size_lo: 4             # 8 cm, the smallest carton; item side bounds
+  size_hi: [15, 10, 10]  # 30 x 20 x 20 cm
+  max_l: 256             # candidate-list cap (leaf nodes); ~32 are used at p90
+  max_c: 128             # initial packed-item capacity; it grows if exceeded
+  rot: 2                 # 1 = no rotation, 2 = also yawed 90 degrees
+  ems: 1                 # 0 = score every loading position, not EMS corners
+  stability: com         # com = centre of mass over support, cdrl = 60%/4 corners
+  # Contact-area floor.  0.70 on this problem leaves a median of 4 legal
+  # placements and caps DBL at 18% utilisation; 0.30 costs ~2 points against
+  # the bare centre-of-mass rule and leaves the action space intact.
+  min_support: 0.30
+
+train:
+  algo: pct               # pct|cppo|rarl|rfmdp|exact|approx|attack
+  nb: 10                  # observable items N_B
+  n_pick: null            # of the N_B, how many are within reach; the rest
+                          # are preview only.  null = all of them.
+  iters: 8000             # PPO iterations
+  n_env: 64               # parallel bins
+  T: 30                   # rollout length
+  alpha: 1.0              # robustness weight (exact, approx)
+  rho: 0.1                # TV uncertainty radius (approx, rfmdp)
+  dist_coef: 1.0          # mixture-model distance loss weight (exact)
+  cvar_q: 0.5             # CVaR level (cppo)
+
+ppo:
+  lr: 3.0e-4
+  gamma: 1.0              # undiscounted, as in the paper
+  lam: 0.95               # GAE lambda
+  epochs: 4               # passes over each rollout
+  minibatches: 4
+  ent_coef: 0.01          # entropy bonus
+  ent_final: null         # anneal the attacker's bonus to this; null = no anneal
+  clip: 0.2               # PPO ratio clip
+  vf_coef: 0.5            # value loss weight
+  max_grad: 0.5           # gradient-norm clip
+
+model:
+  # The paper's 65k-parameter transformer.  Grid resolution does not drive
+  # capacity here: the candidate list runs to 32 nodes at p90 and the packed
+  # list to ~40, both far short of max_l, so 128/4/2 buys sequence capacity
+  # that is never used and costs ~3x the GPU time per iteration.
+  width: 64
+  heads: 1
+  layers: 1              # attention blocks
+  c_temp: 10.0            # pointer-head temperature c in Eq. 28
+
+run:
+  seed: 0
+  device: cuda            # cpu works, slowly; there is no silent fallback
+  compile: 0              # torch.compile; miscompiles the pointer head
+  eval_every: 250         # iterations between held-out evals; they select best.pt
+  eval_inst: 512          # instances per held-out eval
+  log_every: 50
+  save_every: 250
+  progress: auto          # auto|on|off, the stderr progress bar
+
+eval:
+  data: data/pallet_2cm_test.npy   # must match env.bin and the size bounds
+  n_inst: 3000            # held-out instances scored
+  batch: 256              # bins stepped at once
+  beta: [0, 25, 50, 75, 100]   # percent of instances the attacker reorders
+  seed: 0                 # which instances each beta subset picks

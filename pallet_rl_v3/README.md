@@ -138,6 +138,7 @@ not the action space.
 
 | file | contents |
 |---|---|
+| `config.yaml` | every default, in six sections (`env`, `train`, `ppo`, `model`, `run`, `eval`); `ar2l/config.py` reads it, the argparsers take their defaults from it, and `--config other.yaml` patches it |
 | `ar2l/env.py` | batched online 3D-BPP simulator with the PCT state `(C_t, B_t, L_t)`: height map, exact empty-maximal-space enumeration, two orientations, stability, conveyor permutation |
 | `ar2l/model.py` | the three transformers — packer, attacker, mixture model — and the pointer head of Eq. 28 |
 | `ar2l/ppo.py` | PPO, plus the TV-dual value targets: Eq. 18 for ApproxAR2L and its pessimistic mirror for RfMDP |
@@ -154,13 +155,29 @@ The state is the PCT triple: the packed items `C_t` (position and size each),
 the observable conveyor `B_t` (sizes only), and the feasible positions `L_t`
 generated for whichever item is at the front. An action picks one `l ∈ L_t`.
 
+`n_pick` splits `B_t` into what the cell can reach and what it can merely see.
+With `--nb 11 --n_pick 5` the permuter is shown eleven items and may move any
+of the first five to the front; the remaining six are upstream on the conveyor,
+attended to by the encoder but masked out of the pointer, so they inform the
+choice without being choosable. Taking a box slides exactly one preview item
+into reach. `n_pick = 1` is the FIFO conveyor the paper assumes and `n_pick =
+N_B` is free choice, so it is a single dial from one to the other — which makes
+"utilisation against how many boxes the station can reach" a sweep rather than
+an architecture change. The default, `null`, is free choice.
+
 Everything is stepped as array operations over the whole batch of bins. Landing
-heights come from running window maxima of the height map; the support count
-under a footprint is read off a **base-32 histogram** — encoding a column of
-height `h` as `32^h` makes a window sum a histogram of the heights it contains
-(a footprint holds at most 25 cells and heights are below 32, so the digits
-never carry), and the digit at the landing height *is* the number of supporting
-cells. 64 bins step in 1.7 ms.
+heights come from running window maxima of the height map, and the support
+count rides along in the same sweep: each window carries the pair **(max, how
+many cells attain it)**, which is associative over "append one more cell" just
+as the max alone is, so widening a window updates both together. A cell
+carries the item exactly when its column reaches the footprint maximum, so
+that count *is* the contact area — at any bin height and any item side. 64
+bins step in 1.7 ms.
+
+(It used to be a base-32 histogram, `32^h` per column, read at the landing
+height. That is cheaper by one sweep but only representable while heights stay
+below 12 and footprints below 25 cells, which made the area rules unavailable
+on exactly the bins worth running.)
 
 Candidate positions are the corners of the empty maximal spaces, which on a
 grid are exactly the offsets where the item ends up flush against a packed face
@@ -238,6 +255,37 @@ Regenerate the table with `python3 scripts/calibrate.py`.
 
 Both are checked cell-by-cell against a brute-force reference in
 `tests/test_env.py` — 0 mismatches over 192,000 positions.
+
+### The default is stricter than any of them: an 80% contact-area floor
+
+The table above answers "what did AR2L run?". It is not the answer to "what
+will a palletiser actually carry". The centre-of-mass rule is happy with a box
+balanced on a third of its base, which is a real stack in the simulator and a
+fallen one on a pallet. So the simulator's default adds a **contact-area
+floor**: a placement is offered only if at least 80% of the item's base rests
+on the layer it lands on (`env.min_support` in `config.yaml`, `min_support=`
+on `BPPBatch`, `--min_support` on `train`/`evaluate`).
+
+The floor is the binding half of the rule — at 80% the centre-of-mass span
+cannot fail, since that needs roughly half the base hanging free — but both
+are evaluated, so lowering `min_support` degrades gracefully back to the bare
+centre-of-mass rule at `0.0`.
+
+It is not free. Scored the way the table above is scored (`--n 64`, so noisier
+than the rows above, which is why it is quoted against a same-seed rerun of
+its own baseline rather than against them):
+
+| rule | DBL | BMF | LSAH | ONLINEBPH | HMM | MACS |
+|---|---|---|---|---|---|---|
+| centre of mass over support | 63.1 | 56.4 | 59.7 | 62.2 | 62.2 | 67.3 |
+| **centre of mass + 80% area** (default) | 42.1 | 47.4 | 46.5 | 42.9 | 41.8 | 47.7 |
+
+Roughly 15 points of utilisation, because sides 1–5 make very jagged piles and
+most of the ledges in them are now unusable. **Every number elsewhere in this
+README predates the floor and was measured at `min_support=0.0`**; to compare
+against the paper, or against any run in `runs/`, pass `--min_support 0`.
+`scripts/calibrate.py` pins the floor per row for exactly that reason, so the
+identification table does not move when the default does.
 
 > **The table above was measured before rotation was implemented**, so it is a
 > sweep of the stability rule at a fixed, one-orientation action space. The
@@ -353,8 +401,9 @@ made `rng.integers` consume its stream in a different order, silently
 re-rolling every stored dataset. The isotropic draw is now kept bit-identical,
 and `scripts/ablate_env.py` reproduces the 10^3 table digit-for-digit.
 
-Non-cubic bins need `stability="com"` (the default); the `cdrl` area rule
-still counts contact area with a base-32 histogram that caps height at 12.
+Non-cubic bins work under either stability rule: contact area is counted from
+the same windowed (max, count) sweep that produces the landing height, so
+there is no longer a bin-height or item-side cap on it.
 
 `max_c` is an initial capacity, not a limit. It allocates `C_t`, the packer's
 memory of the bin; a 10^3 bin never holds more than ~30 boxes, but a large bin
@@ -374,6 +423,21 @@ instead of the cube default, and takes `max_l` so the replay uses the leaf cap
 the policy was trained with. `python3 -m ar2l.viz.game --bin 60x50x80
 --size_hi 30x25x40 --max_l 256` therefore races you against a policy under its
 training configuration.
+
+The game page sizes its top view to fit beside the 3D bin instead of at a fixed
+14px per cell, which drew a 120-wide bin 1680px across and pushed the 3D card
+out of the row. Below 7px per cell the per-cell rules are dropped (a 1px rule
+around a 3px cell is just grey) and below 13px the stacked-height digits are,
+so on a large bin the floor is read by colour alone. Conveyor thumbnails are
+capped by pixel extent rather than a per-cell floor, for the same reason.
+
+A fit that keeps a 120-wide bin on screen puts it at 3px per cell, which is too
+small to aim at, so a `cell size` slider overrides the fit and the top view
+scrolls inside its card instead of widening its grid track. The rules and the
+height digits reappear on their own as the cell passes 7px and 13px. The choice
+persists in `localStorage`, `Fit` returns to the automatic size, and `&cell=`
+sets it from the query string so a board can be linked at the size it was
+looked at.
 
 ## Deviations from the paper
 

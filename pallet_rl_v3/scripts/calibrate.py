@@ -29,24 +29,32 @@ from ar2l import heuristics as H                      # noqa: E402
 PAPER = {"dbl": (63.6, 25.8), "bmf": (62.0, 24.8), "lsah": (60.9, 24.6),
          "onlinebph": (64.1, 25.8), "hmm": (56.1, 22.6), "macs": (53.0, 21.5)}
 
+# (stability mode, SUPPORT_RULES override, contact-area floor).  The floor is
+# pinned per row rather than left at the env default: this table is the
+# identification argument for the *paper's* rule, and must not move when the
+# simulator's own default does.
 RULES = {
-    "60% + 4 corners (as written)": ("cdrl", ((0.60, 4), (0.80, 3), (0.95, 0))),
-    "4 corners only":               ("cdrl", ((0.0, 4),)),
-    "support area >= 60%":          ("cdrl", ((0.599, 0),)),
-    "support area >= 40%":          ("cdrl", ((0.399, 0),)),
-    "support area >= 20%":          ("cdrl", ((0.199, 0),)),
-    "no stability check":           ("cdrl", ((0.0, 0),)),
-    "centre of mass over support":  ("com", None),
+    "60% + 4 corners (as written)": ("cdrl", ((0.60, 4), (0.80, 3), (0.95, 0)), 0.0),
+    "4 corners only":               ("cdrl", ((0.0, 4),), 0.0),
+    "support area >= 60%":          ("cdrl", ((0.599, 0),), 0.0),
+    "support area >= 40%":          ("cdrl", ((0.399, 0),), 0.0),
+    "support area >= 20%":          ("cdrl", ((0.199, 0),), 0.0),
+    "no stability check":           ("cdrl", ((0.0, 0),), 0.0),
+    "centre of mass over support":  ("com", None, 0.0),
+    # not a candidate for the paper's rule -- the simulator's own default,
+    # scored here for the cost of the area floor over the bare CoM rule
+    "centre of mass + 80% area":    ("com", None, 0.80),
 }
 
 
 def score(rule, n, seed=11, rot=2):
-    mode, rules = RULES[rule]
+    mode, rules, floor = RULES[rule]
     if rules:
         E.SUPPORT_RULES = rules
     out = {}
     for h in PAPER:
-        env = BPPBatch(n, nb=1, seed=seed, stability=mode, rot=rot)
+        env = BPPBatch(n, nb=1, seed=seed, stability=mode, rot=rot,
+                       min_support=floor)
         while not env.done.all():
             env.step(H.act(env, h))
         out[h] = {"uti": float(env.utilization().mean() * 100),

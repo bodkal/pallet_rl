@@ -58,6 +58,9 @@ def run_info(run):
     rows = read_log(run)
     return {"run": run, "ckpt": os.path.join(d, ck), "args": args,
             "algo": args["algo"], "nb": args["nb"], "alpha": args["alpha"],
+            # runs trained before --n_pick existed recorded none, and are
+            # unrestricted, which is what `None` means downstream
+            "n_pick": args.get("n_pick"),
             "it": rows[-1]["it"] if rows else 0,
             "nom_util": rows[-1].get("nom_util", 0.0) if rows else 0.0}
 
@@ -138,6 +141,19 @@ def load_attacker(spec, device="cuda"):
     return fn, f"{kind}({run})", info["nb"]
 
 
+def spec_n_pick(spec):
+    """The reach the run behind `spec` was trained with, or `None`.
+
+    A viewer that replays a restricted policy on an unrestricted window would
+    let the permuter reach items the cell never could, so the reach is read
+    back from the run rather than left to the env default.
+    """
+    if not spec or spec in ("none", "random") or spec.startswith("heur:"):
+        return None
+    info = run_info(spec.split(":")[1])
+    return info["n_pick"] if info else None
+
+
 def extent(S):
     """A bin size -- an int for a cube, or an (Lx, Ly, Lz) triple -- as 3 ints."""
     a = np.broadcast_to(np.asarray(S, np.int64), (3,))
@@ -145,7 +161,8 @@ def extent(S):
 
 
 def play(seq, policy, attacker=None, nb=1, S=10, stability="com", record=True,
-         size_hi=None, max_l=None):
+         min_support=None,
+         size_hi=None, max_l=None, n_pick=None):
     """One episode; returns the trace the viewers draw.
 
     `S` is an int for a cube or an (Lx, Ly, Lz) triple.  `size_hi` bounds the
@@ -155,6 +172,7 @@ def play(seq, policy, attacker=None, nb=1, S=10, stability="com", record=True,
     """
     seq = np.asarray(seq, np.int16)
     env = BPPBatch(1, S=S, nb=nb, n_items=len(seq), stability=stability,
+                   min_support=min_support, n_pick=n_pick,
                    size_hi=seq.reshape(-1, 3).max(0) if size_hi is None else size_hi,
                    **({} if max_l is None else {"max_l": max_l}))
     env.reset(seq[None])

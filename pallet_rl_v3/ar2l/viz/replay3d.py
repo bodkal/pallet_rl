@@ -73,8 +73,9 @@ def main(argv=None):
     policy, plabel, pnb = A.load_policy(a.policy, a.device)
     attacker, alabel, anb = A.load_attacker(a.attacker, a.device)
     nb = a.nb or anb or pnb or 1
+    n_pick = A.spec_n_pick(a.attacker) or A.spec_n_pick(a.policy)
     seq = np.load(os.path.join(a.root, a.data))[a.seq]
-    ep = A.play(seq, policy, attacker, nb=nb)
+    ep = A.play(seq, policy, attacker, nb=nb, n_pick=n_pick)
 
     tag = a.tag or f"{plabel}_{alabel}_s{a.seq}".replace(":", "-").replace("/", "-")
     out = os.path.join(a.root, 'results', 'replays', tag)

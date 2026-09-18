@@ -17,6 +17,8 @@ from __future__ import annotations
 import torch
 import torch.nn.functional as F
 
+from .config import CFG
+
 
 
 def to_torch(obs, device):
@@ -28,7 +30,7 @@ def cat_obs(seq):
     return {k: torch.cat([o[k] for o in seq], 0) for k in seq[0]}
 
 
-def gae(rew, val, done, last_val, gamma=1.0, lam=0.95, next_val=None):
+def gae(rew, val, done, last_val, gamma=None, lam=None, next_val=None):
     """rew/val/done: (T, N).  Returns advantages and value targets.
 
     `next_val[t]` overrides V(s_{t+1}) in the TD residual.  The robust
@@ -37,6 +39,8 @@ def gae(rew, val, done, last_val, gamma=1.0, lam=0.95, next_val=None):
     multi-step -- a one-step target would otherwise handicap them for reasons
     that have nothing to do with robustness.
     """
+    gamma = CFG["ppo"]["gamma"] if gamma is None else gamma
+    lam = CFG["ppo"]["lam"] if lam is None else lam
     T = rew.shape[0]
     adv = torch.zeros_like(rew)
     nxt = last_val
@@ -106,10 +110,22 @@ def inf_tv_dual(v_o, rho, v_all, n_grid=192, vmax=1.0):
 
 
 class PPO:
-    """Clipped-surrogate update shared by all three networks."""
+    """Clipped-surrogate update shared by all three networks.
 
-    def __init__(self, net, lr=3e-4, clip=0.2, epochs=4, minibatches=4,
-                 vf_coef=0.5, ent_coef=0.01, max_grad=0.5):
+    Every hyper-parameter defaults to `None`, meaning the `ppo:` section of
+    `config.yaml`; an explicit argument wins over the file.
+    """
+
+    def __init__(self, net, lr=None, clip=None, epochs=None, minibatches=None,
+                 vf_coef=None, ent_coef=None, max_grad=None):
+        c = CFG["ppo"]
+        lr = c["lr"] if lr is None else lr
+        clip = c["clip"] if clip is None else clip
+        epochs = c["epochs"] if epochs is None else epochs
+        minibatches = c["minibatches"] if minibatches is None else minibatches
+        vf_coef = c["vf_coef"] if vf_coef is None else vf_coef
+        ent_coef = c["ent_coef"] if ent_coef is None else ent_coef
+        max_grad = c["max_grad"] if max_grad is None else max_grad
         self.net = net
         self.opt = torch.optim.Adam(net.parameters(), lr=lr, eps=1e-5)
         self.clip, self.epochs, self.nmb = clip, epochs, minibatches

@@ -28,9 +28,16 @@ from . import agents as A
 
 
 @torch.no_grad()
-def profile(pack, attacker, nb, seqs, device="cuda", stability="com"):
-    """Per-step record of which conveyor slot and which item size was promoted."""
-    env = BPPBatch(len(seqs), nb=nb, n_items=seqs.shape[1], stability=stability)
+def profile(pack, attacker, nb, seqs, device="cuda", stability="com",
+            min_support=None, n_pick=None):
+    """Per-step record of which conveyor slot and which item size was promoted.
+
+    `n_pick` matters here: "how far down the conveyor it reaches" is only a
+    measurement of the attacker if the slots beyond its reach were ever open
+    to it.
+    """
+    env = BPPBatch(len(seqs), nb=nb, n_items=seqs.shape[1], stability=stability,
+                   min_support=min_support, n_pick=n_pick)
     env.reset(seqs)
     slots, chosen, steps = [], [], []
     t = 0
@@ -75,7 +82,8 @@ def main(argv=None):
         info = A.run_info(name)
         nets = load_nets(info["ckpt"], a.device, ("pack", "attacker"))
         nb = info["nb"]
-        pr = profile(nets["pack"], nets["attacker"], nb, seqs, a.device)
+        pr = profile(nets["pack"], nets["attacker"], nb, seqs, a.device,
+                     n_pick=info["n_pick"])
         vol = pr["chosen"].prod(1)
         lab = f"$N_B$={nb}"
         axes[0].hist(vol, bins=np.arange(0, 130, 6), density=True, histtype="step",

@@ -7,7 +7,7 @@ from ar2l.env import BPPBatch
 from ar2l import heuristics as H
 
 
-def brute(hmap, item, L, mode):
+def brute(hmap, item, L, mode, min_support=E.MIN_SUPPORT):
     """Feasibility and landing height, one loading position at a time."""
     Lx, Ly, Lz = L
     sx, sy, sz = item
@@ -25,7 +25,8 @@ def brute(hmap, item, L, mode):
                 xs = np.nonzero(eq.any(1))[0]
                 ys = np.nonzero(eq.any(0))[0]
                 ok[x, y] = (xs[0] + .5 <= sx / 2 <= xs[-1] + .5 and
-                            ys[0] + .5 <= sy / 2 <= ys[-1] + .5)
+                            ys[0] + .5 <= sy / 2 <= ys[-1] + .5 and
+                            eq.mean() >= min_support - 1e-9)
             else:
                 r = eq.mean()
                 nc = int(eq[0, 0]) + int(eq[-1, 0]) + int(eq[0, -1]) + int(eq[-1, -1])
@@ -79,10 +80,11 @@ def random_action(env, rng):
     return np.array([rng.choice(np.nonzero(r)[0]) if r.any() else 0 for r in m])
 
 
-@pytest.mark.parametrize("mode", ["com", "cdrl"])
-def test_feasibility_matches_brute_force(mode):
+@pytest.mark.parametrize("mode,min_support", [("com", 0.80), ("com", 0.0),
+                                              ("cdrl", 0.80)])
+def test_feasibility_matches_brute_force(mode, min_support):
     rng = np.random.default_rng(1)
-    env = BPPBatch(16, nb=3, seed=3, stability=mode)
+    env = BPPBatch(16, nb=3, seed=3, stability=mode, min_support=min_support)
     checked = 0
     for _ in range(40):
         feas, z, odims = env._positions()
@@ -92,7 +94,8 @@ def test_feasibility_matches_brute_force(mode):
             ems = brute_ems(env.hmap[b], extents(env))
             for r in range(odims.shape[1]):
                 item = odims[b, r]
-                ref, Zr = brute(env.hmap[b], item, extents(env), mode)
+                ref, Zr = brute(env.hmap[b], item, extents(env), mode,
+                                env.min_support)
                 ref = ref & brute_corners(ems, extents(env), item)
                 if r and odims[b, 0, 0] == odims[b, 0, 1]:
                     ref = np.zeros_like(ref)   # a square turns into itself
@@ -102,6 +105,62 @@ def test_feasibility_matches_brute_force(mode):
         env.step(random_action(env, rng))
         env.reset_done()
     assert checked > 400
+
+
+@pytest.mark.parametrize("k,want", [(5, True), (4, True), (3, False)])
+def test_area_floor_rejects_what_the_centre_of_mass_rule_allows(k, want):
+    """A 5x1 item with k of its 5 base cells on the layer it lands on.
+
+    k = 3 keeps the contact patch under the centre, so the bare centre-of-mass
+    rule takes it; 60% of the base is not enough for the 80% floor.
+    """
+    def offer(min_support):
+        env = BPPBatch(1, S=10, nb=1, rot=1, ems=False, seed=0,
+                       min_support=min_support)
+        env.seq[0, 0] = (5, 1, 1)
+        env.hmap[:] = 0
+        env.hmap[0, :k, 0] = 1
+        env._invalidate()
+        return bool(env._positions()[0][0, 0, 0, 0])
+
+    # 0.80 explicitly, not E.MIN_SUPPORT: this test is about the 80% floor as
+    # a rule, and 3/5 = 60% support only fails a floor above 0.60.  Reading the
+    # shipped default made it a test of whatever config.yaml happened to say.
+    assert offer(0.80) is want
+    assert offer(0.0) is True, "the centre of mass is over the contact patch"
+
+
+@pytest.mark.parametrize("mode", ["com", "cdrl"])
+def test_contact_area_beyond_the_old_histogram_limits(mode):
+    """A bin 20 tall with sides up to 7 -- the base-32 count could not.
+
+    Both rules read the contact area off the same sweep now, so this covers
+    the count itself against brute force outside the range the packed-integer
+    histogram could represent.
+    """
+    rng = np.random.default_rng(4)
+    env = BPPBatch(4, S=(9, 8, 20), size_hi=(7, 6, 5), nb=1, seed=13,
+                   n_items=200, stability=mode)
+    checked = 0
+    for _ in range(20):
+        feas, z, odims = env._positions()
+        for b in range(env.n_env):
+            if env.done[b]:
+                continue
+            ems = brute_ems(env.hmap[b], extents(env))
+            for r in range(odims.shape[1]):
+                item = odims[b, r]
+                ref, Zr = brute(env.hmap[b], item, extents(env), mode,
+                                env.min_support)
+                ref = ref & brute_corners(ems, extents(env), item)
+                if r and odims[b, 0, 0] == odims[b, 0, 1]:
+                    ref = np.zeros_like(ref)
+                assert (ref == feas[b, r]).all(), (mode, b, r)
+                assert (Zr[ref] == z[b, r][ref]).all(), (mode, b, r)
+            checked += 1
+        env.step(random_action(env, rng))
+        env.reset_done()
+    assert checked > 50
 
 
 def test_ems_list_is_exact():
@@ -199,6 +258,45 @@ def test_permute_moves_the_chosen_item_to_the_front():
         assert [tuple(v) for v in new[b, 1:]] == rest, "order of the others changed"
 
 
+def test_n_pick_splits_the_window_into_reach_and_preview():
+    """`b_mask` is what is seen, `b_pick` is what can be taken."""
+    env = BPPBatch(4, S=10, nb=11, n_pick=5, size_hi=4, seed=5)
+    for o in (env.obs_cb(), env.obs()):
+        assert o["b_mask"].sum(1).tolist() == [11] * 4, "preview items went blind"
+        assert o["b_pick"].sum(1).tolist() == [5] * 4
+        assert not o["b_pick"][:, 5:].any(), "a preview item was selectable"
+    # the default leaves the whole window selectable, as before
+    o = BPPBatch(4, S=10, nb=11, size_hi=4, seed=5).obs_cb()
+    assert np.array_equal(o["b_pick"], o["b_mask"])
+
+
+def test_n_pick_station_refills_from_the_preview_head():
+    """Taking a box slides exactly one preview item into reach."""
+    env = BPPBatch(1, S=10, nb=6, n_pick=3, n_items=30, size_hi=4, seed=1)
+    seq = np.zeros((1, 30, 3), np.int16)
+    seq[0, :, 0] = np.arange(1, 31)          # a serial number per item
+    seq[0, :, 1:] = 2
+    env.reset(seq)
+    for t in range(5):
+        win, _ = env.window()
+        reach = set(win[0, :3, 0].tolist())
+        tail = list(win[0, 3:, 0])
+        env.permute(np.array([t % 3]))
+        moved, _ = env.window()
+        assert set(moved[0, :3, 0].tolist()) == reach, "permute left the station"
+        assert list(moved[0, 3:, 0]) == tail, "permute disturbed the preview"
+        taken = int(moved[0, 0, 0])
+        env.step(env.obs()["l_mask"].argmax(1))
+        after, _ = env.window()
+        assert set(after[0, :3, 0].tolist()) == (reach - {taken}) | {min(tail)}
+
+
+@pytest.mark.parametrize("bad", [0, -1, 7])
+def test_n_pick_must_fit_the_window(bad):
+    with pytest.raises(ValueError):
+        BPPBatch(1, S=10, nb=6, n_pick=bad, size_hi=4, seed=0)
+
+
 def test_heuristics_pick_legal_placements():
     for name in H.NAMES:
         env = BPPBatch(24, nb=1, seed=13)
@@ -274,7 +372,7 @@ def test_pruned_ems_survives_episode_boundaries():
 def test_non_cubic_feasibility_matches_brute_force(L, hi):
     """Every claim the simulator makes about a lopsided bin, against brute force."""
     rng = np.random.default_rng(0)
-    env = BPPBatch(6, S=L, nb=1, seed=11, size_hi=hi, n_items=200)
+    env = BPPBatch(6, S=L, nb=1, seed=11, size_lo=1, size_hi=hi, n_items=200)
     checked = 0
     for _ in range(25):
         feas, z, odims = env._positions()
@@ -288,7 +386,8 @@ def test_non_cubic_feasibility_matches_brute_force(L, hi):
             assert got == set(ems), (L, b)
             for r in range(odims.shape[1]):
                 item = odims[b, r]
-                ref, Zr = brute(env.hmap[b], item, extents(env), "com")
+                ref, Zr = brute(env.hmap[b], item, extents(env), "com",
+                                env.min_support)
                 ref = ref & brute_corners(ems, extents(env), item)
                 if r and odims[b, 0, 0] == odims[b, 0, 1]:
                     ref = np.zeros_like(ref)
@@ -306,7 +405,7 @@ def test_non_cubic_ems_paths_agree(L, hi):
         return set(map(tuple, np.stack([np.asarray(c, np.int64) for c in cols], 1)))
 
     rng = np.random.default_rng(2)
-    env = BPPBatch(6, S=L, nb=1, seed=5, size_hi=hi, n_items=200)
+    env = BPPBatch(6, S=L, nb=1, seed=5, size_lo=1, size_hi=hi, n_items=200)
     for _ in range(25):
         assert as_set(env._ems_pruned()) == as_set(env._ems_exhaustive()), L
         env.step(random_action(env, rng))
@@ -317,7 +416,7 @@ def test_non_cubic_ems_paths_agree(L, hi):
 def test_non_cubic_heuristics_place_legally(L, hi):
     """Every heuristic must run on a lopsided bin and pack inside it."""
     for name in H.NAMES:
-        env = BPPBatch(4, S=L, nb=1, seed=7, size_hi=hi, n_items=200)
+        env = BPPBatch(4, S=L, nb=1, seed=7, size_lo=1, size_hi=hi, n_items=200)
         for _ in range(40):
             m = env.obs()["l_mask"]
             if not m.any():

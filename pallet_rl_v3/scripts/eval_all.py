@@ -77,7 +77,8 @@ def table2(a):
             att, asrc = attacker_for(runname, a.device)
             row = {}
             for b in a.betas:
-                u, k = run(seqs, pack, nb, att, fl[b], a.batch, device=a.device)
+                u, k = run(seqs, pack, nb, att, fl[b], a.batch, device=a.device,
+                           min_support=a.min_support)
                 row[str(b)] = metrics(u, k)
             out[runname] = {"nb": nb, "method": m, "attacker": asrc, **row}
             print(f"{runname:12s} att={asrc or '-':16s} " + "  ".join(
@@ -99,13 +100,15 @@ def table1(a):
                 print("skip pct (no pct_nb1 checkpoint)"); continue
             policy = load_nets(p, a.device, ("pack",))["pack"]
         row = {}
-        u, k = run(seqs, policy, 1, None, None, a.batch, device=a.device)
+        u, k = run(seqs, policy, 1, None, None, a.batch, device=a.device,
+                   min_support=a.min_support)
         row["none"] = metrics(u, k)
         for nb in a.nbs:
             att, asrc = attacker_for(f"h{name}_nb{nb}", a.device)
             if att is None:
                 print(f"  {name} N_B={nb}: no attacker"); continue
-            u, k = run(seqs, policy, nb, att, on, a.batch, device=a.device)
+            u, k = run(seqs, policy, nb, att, on, a.batch, device=a.device,
+                       min_support=a.min_support)
             row[str(nb)] = metrics(u, k)
         out[name] = row
         print(f"{name:10s} " + "  ".join(
@@ -123,6 +126,9 @@ def main():
     p.add_argument("--n_inst", type=int, default=3000)
     p.add_argument("--batch", type=int, default=375)
     p.add_argument("--device", default="cuda")
+    p.add_argument("--min_support", type=float, default=None,
+                   help="contact-area floor; must match the one the policies "
+                        "were trained under (0 for the published tables)")
     a = p.parse_args()
     torch.set_grad_enabled(False)
     res = table2(a) if a.which == "table2" else table1(a)

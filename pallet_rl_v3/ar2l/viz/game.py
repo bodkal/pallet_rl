@@ -144,9 +144,11 @@ def new_game(nb, seed, attacker_spec, bin_size=10, size_hi=5, max_l=120):
     """`bin_size` is an int for a cube or an (Lx, Ly, Lz) triple."""
     att, alabel, anb = A.load_attacker(attacker_spec, DEVICE)
     nb = anb or nb
+    # the attacker reorders only what its own run let it reach
+    n_pick = A.spec_n_pick(attacker_spec)
     seq = sample_items(np.random.default_rng(seed), (150,), 1, size_hi)
     env = BPPBatch(1, S=bin_size, nb=nb, n_items=150, size_hi=size_hi,
-                   max_l=max_l)
+                   max_l=max_l, n_pick=n_pick)
     env.reset(seq[None])
     st = {'env': env, 'seq': seq, 'nb': nb, 'att': att, 'alabel': alabel,
           'bin': bin_size, 'size_hi': size_hi, 'max_l': max_l,

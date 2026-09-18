@@ -91,7 +91,8 @@ def main(argv=None):
     policy, plabel, pnb = A.load_policy(a.policy, a.device)
     attacker, alabel, anb = A.load_attacker(a.attacker, a.device)
     nb = a.nb or anb or pnb or 1
-    ep = A.play(np.load(os.path.join(a.root, a.data))[a.seq], policy, attacker, nb=nb)
+    n_pick = A.spec_n_pick(a.attacker) or A.spec_n_pick(a.policy)
+    ep = A.play(np.load(os.path.join(a.root, a.data))[a.seq], policy, attacker, nb=nb, n_pick=n_pick)
 
     tag = f"{plabel}_{alabel}_s{a.seq}".replace(":", "-").replace("/", "-")
     out = os.path.join(a.root, 'results', 'heatmaps', tag)
