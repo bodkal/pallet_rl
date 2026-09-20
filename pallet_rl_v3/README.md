@@ -357,6 +357,60 @@ adversary reorders the conveyor for both of you — which is the fastest way to
 feel what AR2L is about. The same instance is handed to the opponent
 (any trained run, or a heuristic) and the two bins are scored side by side.
 
+The instance is built from **the opponent's own `args.json`**: choose a run and
+the setup form fills itself with the bin, the item bounds, `nb`, `n_pick`,
+`max_l`, `rot`, `ems` and the stability rule that run was trained under, so the
+duel is fought on the geometry the agent actually knows. A flag you passed on
+the command line still outranks the run — otherwise the preset would silently
+undo it the moment an opponent was chosen, which is every time. Every field
+stays editable. `POST /api/check` re-validates the whole set on each keystroke and
+`POST /api/new` refuses one the simulator could not run — a reach larger than
+the window, an item side wider than its axis, a floor of more cells than the
+top view can redraw — so no accepted combination can raise out of
+`BPPBatch.__init__`. Anything moved away from the run's own value is marked on
+the field and named in a warning: the agent will still play, it was just never
+asked this. `tests/test_game.py` pins the pair — every set the form refuses,
+and that every set it accepts runs.
+
+With `n_pick = k > 1` the conveyor is a **pick station** rather than a queue:
+all `k` reachable boxes are drawn with the number of placements each one still
+has, and you pack whichever you like — the job a `select`-trained permuter does
+for the agent. The rest of the window is drawn dashed: seen, reasoned about,
+not reachable. A pick is applied to the order the strip is showing rather than
+to whatever the last pick left behind, so changing your mind is one permutation
+of the window and not two composed ones, and the strip keeps a stable order to
+click. The bin is finished when *every* reachable box is stuck, not when the
+front one is. `k = 1` collapses to the FIFO conveyor of the paper, and the
+checkbox that withholds the pick puts you back on the front box with the rest
+of the reach visible.
+
+Because the human now chooses, the agent has to choose too or the duel is not
+one: replayed with no attacker, a `select` run gets **its own mixer** back as
+the permuter rather than silently taking slot 0 every step, which is not the
+policy that was trained. The result screen names who handed each side its box.
+
+The result screen also **recalculates**: `POST /api/recalc` hands the session's
+own item stream back to a model you pick, under parameters you edit, one table
+row per setting — so the model, the bin, the window, the reach, the action
+space and the stability rule can each be varied against a fixed instance rather
+than against a fresh sample. The model is the row's other axis and comes from
+the request rather than the session, so a row can race a run the game never
+faced; the panel offers the same policies and heuristics the setup form does,
+and **Fill in that run's own parameters** pulls the selected run's geometry into
+the fields it is allowed to move. Choosing a model does *not* fill them by
+itself: holding the parameters still while the model changes is the controlled
+comparison, and it would be a strange thing to undo for you.
+`n_items`, `size_lo` and `size_hi` are held at the game's own values there and
+shown inert — they are what `sample_items` draws from, so moving one deals a
+different sequence and the row would be measuring the new boxes rather than the
+field that was changed. The server takes those three from the session and not
+from the request, which is what makes "the same boxes" a guarantee rather than
+a promise the page is trusted to keep. Only the agent is re-run: your bin
+stands at the parameters you packed it under, so the rows are read against each
+other. Each row names what it moved, and warns when the move has walked the
+agent off its own training configuration — the same drift the setup form marks,
+for the same reason.
+
 **`dashboard`** — polls `runs/*/log.jsonl` while the grid runs: held-out
 nominal utilisation, the utilisation of whatever dynamics each algorithm is
 actually training on, the losses, and the mixture model's distance loss. The
@@ -419,10 +473,12 @@ The viewers take the same extent. `ar2l.viz.agents.play` accepts an int or a
 triple and de-normalises boxes by `env.scale` (it used to multiply by `S`,
 which raised `operands could not be broadcast together with shapes (6,) (3,)`
 on a triple); it also defaults `size_hi` to the sequence's own per-axis maximum
-instead of the cube default, and takes `max_l` so the replay uses the leaf cap
-the policy was trained with. `python3 -m ar2l.viz.game --bin 60x50x80
---size_hi 30x25x40 --max_l 256` therefore races you against a policy under its
-training configuration.
+instead of the cube default, and takes `max_l`, `rot` and `ems` so the replay
+uses the leaf cap, the orientation count and the action space the policy was
+trained with. The game reads all of those out of the run itself, so racing a
+policy under its training configuration is the default rather than something
+you have to spell out; `--bin 60x50x80 --size_hi 30x25x40 --max_l 256` now only
+seeds the form before you pick an opponent.
 
 The game page sizes its top view to fit beside the 3D bin instead of at a fixed
 14px per cell, which drew a 120-wide bin 1680px across and pushed the 3D card

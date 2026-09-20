@@ -44,8 +44,21 @@ kbd{border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;paddi
 .hint{color:var(--dim);font-size:11.5px;line-height:1.6}
 
 /* setup */
-#setup{max-width:760px;margin:26px auto}
+#setup{max-width:820px;margin:26px auto}
 .opt{color:var(--dim);font-size:12px;margin-top:6px}
+.pg{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:9px}
+.pf{display:flex;flex-direction:column;gap:4px;min-width:0}
+.pf>span{color:var(--dim);font-size:11px;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis}
+.pf input,.pf select{width:100%;padding:6px 8px;font-variant-numeric:tabular-nums}
+.pf3{grid-column:span 2}
+.tri{display:grid;grid-template-columns:repeat(3,1fr);gap:5px}
+.pf.off input,.pf.off select{border-color:var(--c1);color:var(--c1)}
+#perr{color:var(--c3);white-space:pre-line}
+#pwarn{color:var(--c1)}
+details.par>summary{cursor:pointer;color:var(--dim);font-size:11px;
+  text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;outline:none}
+details.par>summary::marker{color:var(--dim)}
 
 /* play */
 #play{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:14px;align-items:start}
@@ -65,12 +78,21 @@ kbd{border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;paddi
 .zoom b{font-variant-numeric:tabular-nums;color:var(--fg);font-weight:600;min-width:30px}
 .zoom button{padding:2px 8px;font-size:11px}
 #iso3d{display:block;border-radius:8px}
-.slot{display:flex;justify-content:space-between;align-items:center;padding:6px 10px;
-  border:1px solid var(--line);border-radius:8px;margin-bottom:5px;
+.slot{display:flex;justify-content:space-between;align-items:center;gap:8px;
+  padding:6px 10px;border:1px solid var(--line);border-radius:8px;margin-bottom:5px;
   font-variant-numeric:tabular-nums}
-.slot.head{border-color:var(--c0);background:color-mix(in srgb,var(--c0) 12%,transparent)}
-.slot.prom{border-color:var(--c3)}
-.slot .tag{color:var(--dim);font-size:11px}
+.slot.pick{cursor:pointer}
+.slot.pick:hover{border-color:var(--c0)}
+.slot.sel{border-color:var(--c0);background:color-mix(in srgb,var(--c0) 12%,transparent)}
+.slot.prom{box-shadow:inset 3px 0 0 var(--c3)}
+.slot.dead{opacity:.55}
+.slot.dead .tag{color:var(--c3)}
+.slot.peek{border-style:dashed;opacity:.62}
+.slot .tag{color:var(--dim);font-size:11px;text-align:right;flex:none}
+.slot .num{color:var(--dim);font-size:10px;border:1px solid var(--line);
+  border-radius:4px;padding:0 4px;flex:none}
+.slot.sel .num{border-color:var(--c0);color:var(--c0)}
+.rule{border:0;border-top:1px dashed var(--line);margin:9px 2px}
 #msg{margin-top:9px;min-height:20px;color:var(--dim)}
 
 /* result */
@@ -89,6 +111,27 @@ kbd{border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;paddi
 .stat{display:flex;justify-content:space-between;padding:3px 0;font-variant-numeric:tabular-nums}
 .stat span{color:var(--dim)}
 input[type=range]{width:100%;accent-color:var(--c0)}
+/* recalculation: a field held at the game's value, and one moved off it */
+.pf.lock>span{opacity:.6}
+.pf.lock input,.pf.lock select{opacity:.5;cursor:not-allowed}
+.pf.moved input,.pf.moved select{border-color:var(--c0);color:var(--c0)}
+table.rc{width:100%;border-collapse:collapse;margin-top:13px;
+  font-variant-numeric:tabular-nums}
+table.rc th{font-size:10px;text-transform:uppercase;letter-spacing:.5px;
+  color:var(--dim);text-align:right;font-weight:600;padding:0 0 6px 10px;
+  border-bottom:1px solid var(--line);white-space:nowrap}
+table.rc td{padding:7px 0 7px 10px;border-bottom:1px solid var(--line);
+  text-align:right;vertical-align:top;white-space:nowrap}
+/* the model and what it was run under are the row's subject; the numbers it
+   is read for sit right-aligned after them */
+table.rc th:nth-child(-n+2),table.rc td:nth-child(-n+2){text-align:left}
+table.rc th:first-child,table.rc td:first-child{padding-left:0}
+table.rc th:nth-child(2),table.rc td:nth-child(2){width:99%;white-space:normal}
+table.rc tr:last-child td{border-bottom:0}
+table.rc tr.base td{color:var(--dim)}
+table.rc .d{font-size:11px}
+.up{color:var(--c2)}.down{color:var(--c3)}
+.warn{color:var(--c1)}
 .spin{display:inline-block;width:13px;height:13px;border:2px solid var(--line);
   border-top-color:var(--c0);border-radius:50%;animation:sp .7s linear infinite;vertical-align:-2px}
 @keyframes sp{to{transform:rotate(360deg)}}
@@ -117,6 +160,55 @@ input[type=range]{width:100%;accent-color:var(--c0)}
       <div class="opt">This is the point of AR2L: a policy is only as good as its worst
         ordering. With an attacker on, the item you are handed is the one it thinks
         hurts most.</div>
+    </div>
+    <div class="field">
+      <details class="par" id="pardet" open>
+        <summary>Game parameters <span id="psrc" style="text-transform:none;letter-spacing:0"></span></summary>
+        <div class="pg">
+          <div class="pf pf3"><span>bin &mdash; x &times; y &times; z cells</span>
+            <div class="tri"><input id="bin0" type="number" min="1" step="1">
+              <input id="bin1" type="number" min="1" step="1">
+              <input id="bin2" type="number" min="1" step="1"></div></div>
+          <div class="pf pf3"><span>item side &mdash; smallest</span>
+            <div class="tri"><input id="lo0" type="number" min="1" step="1">
+              <input id="lo1" type="number" min="1" step="1">
+              <input id="lo2" type="number" min="1" step="1"></div></div>
+          <div class="pf pf3"><span>item side &mdash; largest</span>
+            <div class="tri"><input id="hi0" type="number" min="1" step="1">
+              <input id="hi1" type="number" min="1" step="1">
+              <input id="hi2" type="number" min="1" step="1"></div></div>
+          <div class="pf"><span>window N<sub>B</sub> &mdash; boxes you can see</span>
+            <input id="nb" type="number" min="1" step="1"></div>
+          <div class="pf"><span>reach k &mdash; boxes you may pick</span>
+            <input id="npick" type="number" min="1" step="1"></div>
+          <div class="pf"><span>items in the sequence</span>
+            <input id="nitems" type="number" min="1" step="1"></div>
+          <div class="pf"><span>candidate cap N<sub>L</sub></span>
+            <input id="maxl" type="number" min="1" step="1"></div>
+          <div class="pf"><span>orientations</span><select id="prot">
+            <option value="1">1 &mdash; as it arrives</option>
+            <option value="2">2 &mdash; also yawed 90&deg;</option></select></div>
+          <div class="pf"><span>the packer's action space</span><select id="ems">
+            <option value="1">EMS corners</option>
+            <option value="0">every loading position</option></select></div>
+          <div class="pf"><span>stability rule</span><select id="stab">
+            <option value="com">com &mdash; area + centre of mass</option>
+            <option value="cdrl">cdrl &mdash; Zhao et al.</option></select></div>
+          <div class="pf"><span>support floor (com only)</span>
+            <input id="msup" type="number" min="0" max="1" step="0.05"></div>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <button id="preset" type="button">Reset to the opponent's own values</button>
+        </div>
+        <div id="perr" class="opt"></div>
+        <div id="pwarn" class="opt"></div>
+      </details>
+    </div>
+    <div class="field">
+      <label class="row" style="cursor:pointer">
+        <input type="checkbox" id="hpick" checked>
+        <span>let me choose which of the k reachable boxes to pack</span></label>
+      <div class="opt" id="hpickopt"></div>
     </div>
     <div class="row">
       <button class="go" id="start">Start packing &rarr;</button>
@@ -165,7 +257,8 @@ input[type=range]{width:100%;accent-color:var(--c0)}
     </div>
 
     <div class="card" style="margin-top:12px">
-      <h2>Conveyor B<sub>t</sub> &mdash; only the front item may be packed</h2>
+      <h2>Pick station B<sub>t</sub> <span id="reachsub" class="sub"
+        style="text-transform:none;letter-spacing:0"></span></h2>
       <div id="slots"></div>
       <div class="sub" id="note" style="margin-top:9px;min-height:32px"></div>
     </div>
@@ -226,6 +319,64 @@ input[type=range]{width:100%;accent-color:var(--c0)}
     </div>
   </div>
 
+  <div class="card" style="margin-top:14px">
+    <details class="par" id="rcdet">
+      <summary>Recalculate &mdash; same boxes, another model or another rule</summary>
+      <div class="sub" style="margin-bottom:12px">The same
+        <b id="rcseq">&mdash;</b> boxes in the same order, handed to a model of
+        your choosing under rules of your choosing. Only the model is re-run:
+        the bin you packed above stands at the parameters you packed it under,
+        so read these rows against each other rather than against your own
+        score.</div>
+      <div class="pg" style="margin-bottom:10px">
+        <div class="pf pf3"><span>model &mdash; who packs it this time</span>
+          <select id="rcopp"></select></div>
+        <div class="pf pf3" style="justify-content:flex-end;align-items:flex-start">
+          <button id="rcpreset" type="button">Fill in that run's own parameters</button></div>
+      </div>
+      <div class="pg">
+        <div class="pf pf3"><span>bin &mdash; x &times; y &times; z cells</span>
+          <div class="tri"><input id="rcbin0" type="number" min="1" step="1">
+            <input id="rcbin1" type="number" min="1" step="1">
+            <input id="rcbin2" type="number" min="1" step="1"></div></div>
+        <div class="pf"><span>window N<sub>B</sub> &mdash; boxes it can see</span>
+          <input id="rcnb" type="number" min="1" step="1"></div>
+        <div class="pf"><span>reach k &mdash; boxes it may pick</span>
+          <input id="rcnpick" type="number" min="1" step="1"></div>
+        <div class="pf"><span>candidate cap N<sub>L</sub></span>
+          <input id="rcmaxl" type="number" min="1" step="1"></div>
+        <div class="pf"><span>orientations</span><select id="rcrot">
+          <option value="1">1 &mdash; as it arrives</option>
+          <option value="2">2 &mdash; also yawed 90&deg;</option></select></div>
+        <div class="pf"><span>the packer's action space</span><select id="rcems">
+          <option value="1">EMS corners</option>
+          <option value="0">every loading position</option></select></div>
+        <div class="pf"><span>stability rule</span><select id="rcstab">
+          <option value="com">com &mdash; area + centre of mass</option>
+          <option value="cdrl">cdrl &mdash; Zhao et al.</option></select></div>
+        <div class="pf"><span>support floor (com only)</span>
+          <input id="rcmsup" type="number" min="0" max="1" step="0.05"></div>
+        <div class="pf lock pf3"><span>item side &mdash; smallest / largest</span>
+          <div class="tri" style="grid-template-columns:1fr 1fr">
+            <input id="rclo" disabled><input id="rchi" disabled></div></div>
+        <div class="pf lock"><span>items in the sequence</span>
+          <input id="rcitems" disabled></div>
+      </div>
+      <div class="opt">These last three are what <code>sample_items</code> draws
+        from, so they are held at this game's values &mdash; move one and the
+        seed deals a different sequence, and the row would be measuring the new
+        boxes rather than the parameter you changed. Change them from setup.</div>
+      <div class="row" style="margin-top:11px">
+        <button class="go" id="rcrun">Run this instance</button>
+        <button id="rcreset">Reset to this game's values</button>
+        <span class="sub" id="rcmsg"></span>
+      </div>
+      <div id="rcerr" class="opt" style="color:var(--c3);white-space:pre-line"></div>
+      <div id="rcwarn" class="opt" style="color:var(--c1)"></div>
+      <table class="rc" id="rctab" hidden></table>
+    </details>
+  </div>
+
   <div class="row" style="margin-top:16px">
     <button class="go" id="again">Another instance</button>
     <button id="samesame">Replay this exact instance</button>
@@ -242,6 +393,91 @@ const DPR = () => Math.min(2, window.devicePixelRatio || 1);
 const css = cvar;                       // the v1 renderer's name for it
 let LX = 10, LY = 10, LZ = 10, G = null, B = null, OPP = null, ORIENT = 0, HOVER = null;
 let SEED = null, T0 = 0, REASON = null, RES = null, BUSY = false;
+
+/* ---------------- the game parameters -----------------------------------
+   The form is filled from whichever run you race, because an agent is only
+   meaningful in the bin it was trained in; every field then stays editable
+   and the server re-validates the whole set, so nothing here has to be the
+   authority on what the simulator will accept. */
+const PF = {
+  bin: ['#bin0', '#bin1', '#bin2'],
+  size_lo: ['#lo0', '#lo1', '#lo2'],
+  size_hi: ['#hi0', '#hi1', '#hi2'],
+  nb: '#nb', n_pick: '#npick', n_items: '#nitems', max_l: '#maxl',
+  rot: '#prot', ems: '#ems', stability: '#stab', min_support: '#msup',
+};
+const PLABEL = {bin: 'bin', size_lo: 'smallest item side', size_hi: 'largest item side',
+  nb: 'window N_B', n_pick: 'reach k', n_items: 'items in the sequence',
+  max_l: 'candidate cap', rot: 'orientations', ems: 'action space',
+  stability: 'stability rule', min_support: 'support floor'};
+
+function readParams(){
+  const o = {};
+  for (const [k, sel] of Object.entries(PF)){
+    if (Array.isArray(sel)) o[k] = sel.map(t => parseInt($(t).value, 10));
+    else if (k === 'stability') o[k] = $(sel).value;
+    else if (k === 'min_support') o[k] = parseFloat($(sel).value);
+    else o[k] = parseInt($(sel).value, 10);
+  }
+  return o;
+}
+
+function writeParams(p){
+  for (const [k, sel] of Object.entries(PF)){
+    if (Array.isArray(sel)) sel.forEach((t, i) => $(t).value = p[k][i]);
+    else $(sel).value = p[k];
+  }
+  syncPick();
+}
+
+/* the reach control is only meaningful when there is more than one box in it */
+function syncPick(){
+  const k = parseInt($('#npick').value, 10) || 1;
+  $('#hpick').disabled = !(k > 1);
+  $('#hpickopt').innerHTML = k > 1
+    ? `With k = ${k} the conveyor is a pick station: all ${k} reachable boxes are
+       shown and you pack whichever you like, which is the job a
+       <code>select</code>-trained permuter does for the agent. Off, you are
+       handed the front one, as a FIFO conveyor would.`
+    : 'k = 1 is the FIFO conveyor of the paper &mdash; there is nothing to choose from.';
+}
+
+let CHECK = null;
+function checkParams(){
+  clearTimeout(CHECK);
+  CHECK = setTimeout(async () => {
+    const r = await api('/api/check', {params: readParams(),
+                                       opponent: $('#opp').value,
+                                       attacker: $('#att').value});
+    $('#perr').textContent = (r.errors || []).join('\n');
+    $('#start').disabled = !!(r.errors || []).length;
+    const off = new Set((r.mismatch || []).map(m => m.key));
+    for (const [k, sel] of Object.entries(PF))
+      (Array.isArray(sel) ? sel : [sel]).forEach(t =>
+        $(t).parentElement.closest('.pf').classList.toggle('off', off.has(k)));
+    const say = ms => ms.map(m => `${PLABEL[m.key]} ${m.is} (trained at ${m.was})`)
+                        .join(', ');
+    const w = [];
+    if ((r.mismatch || []).length)
+      w.push(`the opponent is off its training configuration &mdash; ${say(r.mismatch)}`);
+    if ((r.att_mismatch || []).length)
+      w.push(`the attacker is off its own &mdash; ${say(r.att_mismatch)}`);
+    $('#pwarn').innerHTML = w.length
+      ? '\u26a0 ' + w.join('; ') + '. It will still play; it was just never asked this.'
+      : '';
+    $('#psrc').textContent = (r.mismatch || []).length ? '\u2014 edited' : '';
+    // nothing to say about the parameters is the only reason to keep the panel
+    // shut; a refusal or a drift has to be visible without opening anything
+    if ((r.errors || []).length || w.length) $('#pardet').open = true;
+  }, 160);
+}
+
+async function loadPreset(){
+  const r = await (await fetch('/api/params?spec='
+                   + encodeURIComponent($('#opp').value))).json();
+  if (r.params) writeParams(r.params);
+  checkParams();
+}
 
 function boxColor(i, light){
   const h = (i*137.508 + 28) % 360;
@@ -523,7 +759,9 @@ function kpis(){
   const rows = [['utilisation', (B.util * 100).toFixed(1) + '%'],
                 ['items', B.items],
                 ['positions open to you', B.nfree],
-                ['next item', B.done ? '—' : B.item.join('×')]];
+                [B.n_pick > 1 ? 'packing box #' + (B.sel + 1) + ' of ' + B.n_pick
+                              : 'next item',
+                 B.done ? '—' : B.item.join('×')]];
   $('#kpis').innerHTML = rows.map(([k, v]) =>
     `<div class="kpi"><div class="v">${v}</div><div class="k">${k}</div></div>`).join('');
 }
@@ -559,20 +797,50 @@ function render(){
   // comparable to each other, which is the whole point of the strip.
   const qbig = Math.max(1, ...B.window.map(w => Math.max(w[0], w[1])));
   const qu = Math.max(1, Math.min(Math.round(C * .36), Math.floor(110 / qbig)));
+  // Everything within reach is drawn as a box you may take; the tail of the
+  // window is drawn dashed, because it is there to be reasoned about and not
+  // chosen.  A reachable box with nowhere left to go is greyed rather than
+  // hidden -- knowing which of the k are dead is most of the decision.
+  const pick = i => B.human_pick && i < B.n_pick && !B.done && B.picks[i] > 0;
   $('#slots').innerHTML = B.window.map((w, i) => {
-    const cls = 'slot' + (i === 0 ? ' head' : '') + (G.promoted === i ? ' prom' : '');
-    return `<div class="${cls}"><span class="qb"><canvas data-i="${i}"></canvas>
-      ${w.join('×')}</span><span class="tag">${i === 0 ? 'next' : '#' + i}</span></div>`;
+    const reach = i < B.n_pick, dead = reach && !B.picks[i];
+    const cls = 'slot' + (i === B.sel ? ' sel' : '') + (reach ? '' : ' peek')
+              + (dead ? ' dead' : '') + (pick(i) ? ' pick' : '')
+              + (i === 0 && G.promoted > 0 ? ' prom' : '');
+    const tag = !reach ? 'preview'
+              : dead ? 'nowhere to go'
+              : i === B.sel ? 'packing this'
+              : B.human_pick ? B.picks[i] + ' spots'
+              : 'in reach';
+    return `<div class="${cls}" data-i="${i}"><span class="qb">
+      ${reach ? `<span class="num">${i + 1}</span>` : ''}
+      <canvas data-i="${i}"></canvas> ${w.join('×')}</span>
+      <span class="tag">${tag}</span></div>`
+      + (i === B.n_pick - 1 && B.window.length > B.n_pick ? '<hr class="rule">' : '');
   }).join('');
   $('#slots').querySelectorAll('canvas').forEach(cv => {
     const i = +cv.dataset.i;
-    drawFootprint(cv, B.window[i], qu, B.items + i);
+    // the box you are taking gets the colour it will have once it is in the
+    // bin, so the tile, the footprint and the 3D block all agree
+    drawFootprint(cv, B.window[i], qu, i === B.sel ? B.items : B.items + 1 + i,
+                  i >= B.n_pick);
   });
+  $('#slots').querySelectorAll('.slot.pick').forEach(el =>
+    el.onclick = () => choose(+el.dataset.i));
 
-  $('#note').textContent = G.promoted != null && G.promoted > 0
-    ? `the attacker pulled item #${G.promoted} to the front`
+  $('#reachsub').innerHTML = B.n_pick > 1
+    ? `&mdash; ${B.n_pick} of ${B.window.length} within reach`
+      + (B.human_pick ? ', click one (or press <kbd>1</kbd>&hellip;) to pack it'
+                      : ', chosen for you')
+    : '&mdash; a FIFO conveyor: only the front box may be packed';
+
+  const anote = G.promoted != null && G.promoted > 0
+    ? `the attacker pulled item #${G.promoted + 1} to the front`
     : (G.alabel === 'nominal' ? 'no attacker — the conveyor is in arrival order'
                               : 'the attacker left the order alone this step');
+  $('#note').textContent = anote
+    + (B.human_pick && B.n_pick > 1
+       ? ` · the pick is yours: any of the first ${B.n_pick}` : '');
   if (B.done){
     HOVER = null; $('#hoverinfo').textContent = '';
     REASON = REASON || 'no stable placement left';
@@ -632,13 +900,35 @@ function turn(){
   if (HOVER) onMove({clientX: -1, clientY: -1});
 }
 
+/* Take a different box off the pick station.  The server applies the choice
+   to the order the strip is showing rather than to whatever the last choice
+   left behind, so changing your mind is one permutation and not two, and the
+   strip keeps a stable order to click. */
+async function choose(i){
+  if (!B || B.done || !B.human_pick || i === B.sel || i >= B.n_pick) return;
+  const res = await api('/api/select', {gid: G.gid, i});
+  if (res.error){ $('#msg').textContent = '⚠ ' + res.error; return; }
+  B = res.board;
+  ORIENT = 0; HOVER = null; $('#msg').textContent = ''; $('#hoverinfo').textContent = '';
+  render();
+}
+
 $('#pallet').addEventListener('mousemove', onMove);
 $('#pallet').addEventListener('mouseleave', () => {
   HOVER = null; drawTop(); $('#hoverinfo').textContent = '';
 });
 $('#pallet').addEventListener('click', onClick);
 $('#rot').onclick = turn;
-addEventListener('keydown', e => { if (e.key === 'r' || e.key === 'R') turn(); });
+addEventListener('keydown', e => {
+  // the setup form is full of number boxes; typing a 5 into one of them is not
+  // a request to take the fifth box off the pick station.  `e.target` is not
+  // always an element - a keypress with nothing focused targets the document -
+  // so this asks whether it can be matched before matching it
+  const t = e.target;
+  if (t && t.matches && t.matches('input,select,textarea')) return;
+  if (e.key === 'r' || e.key === 'R') return turn();
+  if (B && e.key >= '1' && e.key <= '9') choose(+e.key - 1);
+});
 
 async function finish(){
   if (BUSY || RES) return;                 // render() and Resign can both land here
@@ -674,9 +964,17 @@ function renderResult(){
       : `Dead heat — ${hp.toFixed(1)}% each.`;
   $('#verdict').style.color = win === 'human' ? css('--c2')
                             : win === 'agent' ? css('--c3') : css('--dim');
-  $('#vsub').textContent = `${LX}×${LY}×${LZ} bin · seed ${SEED} · attacker ${G.alabel}`
+  const p = G.params;
+  $('#vsub').innerHTML = `${LX}×${LY}×${LZ} bin · items ${p.size_lo.join('×')}
+      to ${p.size_hi.join('×')} · N<sub>B</sub> ${p.nb}, reach k ${p.n_pick}
+      · seed ${SEED} · attacker ${G.alabel}`
     + ` · same instance and same conveyor, but you could use any stable placement`
-    + ` and ${a.label} only the corners of the empty maximal spaces`;
+    + (p.ems ? ` and ${a.label} only the corners of the empty maximal spaces` : '')
+    + (p.n_pick > 1
+       ? ` · at the pick station ${B.human_pick ? 'you chose for yourself'
+           : 'the box was chosen for you'} and ${a.label} was handed its box by `
+         + (a.picker || 'nobody — it took the first in reach')
+       : '');
   $('#hu').textContent = hp.toFixed(1) + '%'; $('#au').textContent = ap.toFixed(1) + '%';
   $('#hbar').style.width = hp + '%'; $('#abar').style.width = ap + '%';
   $('#alab').textContent = a.label; $('#alab2').textContent = a.label;
@@ -695,6 +993,25 @@ function renderResult(){
 
   const n = Math.max(h.placed.length, a.placed.length);
   const sc = $('#scrub'); sc.max = n; sc.value = n; drawReplay(n);
+
+  // the first row of the recalculation table is the duel that was just fought,
+  // so every later row is read as a move away from it
+  $('#rcseq').textContent = p.n_items;
+  $('#rcopp').value = OPP;
+  RCROWS = [{label: a.label, util: a.util, items: a.items,
+             seconds: a.seconds, changed: [], drift: []}];
+  writeRecalc(p);
+  drawRecalc();
+  $('#rcerr').textContent = ''; $('#rcwarn').innerHTML = '';
+  $('#rcrun').disabled = false;
+  // this game may itself have been played off the agent's training
+  // configuration; the base row has to admit that as plainly as a rerun does
+  const tok = RES;
+  api('/api/check', {params: p, opponent: OPP}).then(c => {
+    if (RES !== tok || !RCROWS.length || RCROWS[0].changed.length) return;
+    RCROWS[0].drift = c.mismatch || [];
+    drawRecalc();
+  }).catch(() => {});
 }
 
 function drawReplay(n){
@@ -707,14 +1024,174 @@ function drawReplay(n){
       + `,  agent ${a.length} placed` + (a.length < n ? ' (agent had already stopped)' : '');
 }
 
+/* ---------------- recalculate: the same boxes, other rules ---------------
+   A row is the session's own item stream replayed by the agent alone, so the
+   only thing that differs between two rows is the parameters between them.
+   The three fields the draw itself depends on are pinned to the game's values
+   -- on the server, which is where the guarantee has to live -- and shown here
+   inert rather than hidden, so it is clear why they cannot be moved. */
+const RPF = {
+  bin: ['#rcbin0', '#rcbin1', '#rcbin2'],
+  nb: '#rcnb', n_pick: '#rcnpick', max_l: '#rcmaxl',
+  rot: '#rcrot', ems: '#rcems', stability: '#rcstab', min_support: '#rcmsup',
+};
+let RCROWS = [];
+
+function readRecalc(){
+  const o = {};
+  for (const [k, sel] of Object.entries(RPF)){
+    if (Array.isArray(sel)) o[k] = sel.map(t => parseInt($(t).value, 10));
+    else if (k === 'stability') o[k] = $(sel).value;
+    else if (k === 'min_support') o[k] = parseFloat($(sel).value);
+    else o[k] = parseInt($(sel).value, 10);
+  }
+  return o;
+}
+
+/* what a rerun would actually be: the session's own stream fields, which are
+   not the panel's to move, under whatever the panel is currently showing.
+   The server composes this again and does not trust this copy of it -- this
+   one is only so the page can check and describe a run before making it. */
+function recalcAll(){
+  return Object.assign({}, G.params, readRecalc());
+}
+
+function writeRecalc(p){
+  for (const [k, sel] of Object.entries(RPF)){
+    if (Array.isArray(sel)) sel.forEach((t, i) => $(t).value = p[k][i]);
+    else $(sel).value = p[k];
+  }
+  $('#rclo').value = p.size_lo.join('\u00d7');
+  $('#rchi').value = p.size_hi.join('\u00d7');
+  $('#rcitems').value = p.n_items;
+  markRecalc();
+}
+
+/* which fields are off the game's own values, so the panel says what the next
+   Run would be varying before it is run rather than only after */
+function markRecalc(){
+  const was = G.params;
+  for (const [k, sel] of Object.entries(RPF)){
+    const off = Array.isArray(sel)
+      ? sel.some((t, i) => parseInt($(t).value, 10) !== was[k][i])
+      : String($(sel).value) !== String(was[k]);
+    (Array.isArray(sel) ? sel : [sel]).forEach(t =>
+      $(t).closest('.pf').classList.toggle('moved', off));
+  }
+}
+
+const rcsay = ms => ms.map(m => `${PLABEL[m.key]} ${m.is}`).join(', ');
+
+/* The setup form's contract, brought to the panel: the server is the authority
+   on what the simulator will run, and a model being asked a question it was
+   never trained on has to say so before the row is made, not only after. */
+let RCHECK = null;
+function rcCheck(){
+  markRecalc();
+  clearTimeout(RCHECK);
+  RCHECK = setTimeout(async () => {
+    const spec = $('#rcopp').value;
+    let r;
+    try {
+      r = await api('/api/check', {params: recalcAll(), opponent: spec});
+    } catch (e) { return; }
+    if ($('#rcopp').value !== spec) return;          // a later edit already won
+    const err = r.errors || [];
+    $('#rcerr').textContent = err.join('\n');
+    $('#rcrun').disabled = !!err.length;
+    $('#rcwarn').innerHTML = (r.mismatch || []).length
+      ? '\u26a0 this would run ' + spec.replace(/^(run|heur):/, '')
+        + ' off its training configuration \u2014 '
+        + r.mismatch.map(m => `${PLABEL[m.key]} ${m.is} (trained at ${m.was})`).join(', ')
+        + '. It will still play; it was just never asked this.'
+      : '';
+  }, 160);
+}
+
+/* the chosen run's own geometry, for the fields a rerun is allowed to move:
+   the three that deal the boxes stay where the game left them, so this is
+   "that run's bin and rules on *this* instance", not that run's instance */
+async function rcPreset(){
+  const spec = $('#rcopp').value;
+  let r;
+  try {
+    r = await (await fetch('/api/params?spec=' + encodeURIComponent(spec))).json();
+  } catch (e) { return; }
+  if (!r.params) return;
+  const p = Object.assign({}, G.params);
+  for (const k of Object.keys(RPF)) p[k] = r.params[k];
+  writeRecalc(p);
+  rcCheck();
+}
+
+function drawRecalc(){
+  const t = $('#rctab');
+  t.hidden = !RCROWS.length;
+  if (!RCROWS.length) return;
+  const base = RCROWS[0];
+  t.innerHTML = '<tr><th>model</th><th>parameters</th><th>fill</th>'
+    + '<th>vs. this game</th><th>boxes</th><th>time</th></tr>'
+    + RCROWS.map((r, i) => {
+        const d = (r.util - base.util) * 100;
+        const delta = i === 0 ? '<span class="d">&mdash;</span>'
+          : `<span class="${d > .05 ? 'up' : d < -.05 ? 'down' : ''}">`
+            + (d >= 0 ? '+' : '\u2212') + Math.abs(d).toFixed(1) + '</span>';
+        const what = (r.changed || []).length ? rcsay(r.changed)
+          : '<span class="d">this game\u2019s own parameters</span>';
+        // a rerun can walk the agent off its training configuration exactly as
+        // the setup form can, and the row is only readable if it says so
+        const warn = (r.drift || []).length
+          ? '<div class="d warn">\u26a0 off ' + r.label + '\u2019s training '
+            + 'configuration &mdash; ' + r.drift.map(m =>
+                `${PLABEL[m.key]} ${m.is} (trained at ${m.was})`).join(', ') + '</div>'
+          : '';
+        // the model is the other half of what a row varies, so it is named on
+        // every row rather than only when it changes
+        const who = i > 0 && r.label === base.label
+          ? `<span class="d">${r.label}</span>` : r.label;
+        return `<tr class="${i === 0 ? 'base' : ''}"><td>${who}</td>`
+          + `<td>${what}${warn}</td>`
+          + `<td><b>${(r.util * 100).toFixed(1)}%</b></td><td>${delta}</td>`
+          + `<td>${r.items}</td><td>${r.seconds.toFixed(2)} s</td></tr>`;
+      }).join('');
+}
+
+async function recalcRun(){
+  $('#rcrun').disabled = true;
+  $('#rcerr').textContent = '';
+  $('#rcmsg').innerHTML = '<span class="spin"></span> playing the instance...';
+  let r;
+  try {
+    r = await api('/api/recalc', {gid: G.gid, spec: $('#rcopp').value,
+                                  params: recalcAll()});
+  } catch (e) {
+    r = {error: String(e)};
+  }
+  $('#rcrun').disabled = false;
+  $('#rcmsg').textContent = '';
+  if (!r || r.error){
+    $('#rcerr').textContent = ((r && (r.errors || [r.error]))
+                               || ['no reply from the server']).join('\n');
+    return;
+  }
+  RCROWS.push(r);
+  drawRecalc();
+}
+
 async function fresh(seed){
   $('#setupmsg').textContent = 'dealing...';
   SEED = (seed === undefined || seed === null) ? Date.now() % 100000 : seed;
-  const r = await api('/api/new', {attacker: $('#att').value, seed: SEED});
+  const r = await api('/api/new', {attacker: $('#att').value, seed: SEED,
+                                   params: readParams(),
+                                   human_pick: $('#hpick').checked});
+  if (r.error){ $('#setupmsg').innerHTML =
+      `<span style="color:var(--c3)">${(r.errors || [r.error]).join('; ')}</span>`; return; }
   G = r; B = r.board; LX = B.Lx; LY = B.Ly; LZ = B.Lz; ORIENT = 0; HOVER = null; OPP = $('#opp').value;
   RES = null; REASON = null; BUSY = false; T0 = Date.now();
   VIEW.th = VIEW0.th; VIEW.ph = VIEW0.ph;
-  $('#who').textContent = `attacker: ${r.alabel}  ·  opponent: ${OPP.replace('run:', '').replace('heur:', '')}`;
+  $('#who').textContent = `${B.Lx}×${B.Ly}×${B.Lz}  ·  N_B ${B.nb}, k ${B.n_pick}`
+    + `  ·  attacker: ${r.alabel}  ·  opponent: `
+    + OPP.replace('run:', '').replace('heur:', '');
   $('#setup').hidden = true; $('#result').hidden = true; $('#play').hidden = false;
   $('#setupmsg').textContent = ''; $('#msg').textContent = '';
   render();
@@ -723,6 +1200,12 @@ async function fresh(seed){
 $('#start').onclick = () => fresh();
 $('#again').onclick = () => fresh();
 $('#samesame').onclick = () => fresh(SEED);
+$('#rcrun').onclick = recalcRun;
+$('#rcreset').onclick = () => { writeRecalc(G.params); rcCheck(); };
+$('#rcpreset').onclick = rcPreset;
+$('#rcopp').onchange = rcCheck;
+for (const sel of Object.values(RPF).flat())
+  $(sel).addEventListener('input', rcCheck);
 $('#hint').onchange = drawTop;
 $('#showems').onchange = drawTop;
 $('#zoom').oninput = e => setZoom(parseInt(e.target.value, 10));
@@ -745,13 +1228,30 @@ $('#tosetup').onclick = () => { $('#play').hidden = true; $('#setup').hidden = f
 $('#back2').onclick = () => { $('#result').hidden = true; $('#setup').hidden = false; };
 ['#iso3d', '#iso-h', '#iso-a'].forEach(bindRotate);
 
+/* every field re-validates on the server, which also reports which of them
+   have drifted away from the run being raced */
+for (const sel of Object.values(PF).flat())
+  $(sel).addEventListener('input', () => { syncPick(); checkParams(); });
+$('#att').onchange = checkParams;
+$('#opp').onchange = loadPreset;
+$('#preset').onclick = loadPreset;
+
 (async () => {
   const m = await (await fetch('/api/setup')).json();
   $('#opp').innerHTML = m.policies.map(r => `<option value="run:${r}">${r}</option>`).join('')
-    + m.heuristics.map(h => `<option value="heur:${h}">${h.toUpperCase()} (heuristic)</option>`).join('');
+    + m.heuristics.map(h => `<option value="heur:${h}">${h.toUpperCase()} (heuristic)</option>`).join('')
+    + '<option value="random">random (uniform over the candidates)</option>';
+  // the recalculation picker races the same field the setup form does
+  $('#rcopp').innerHTML = $('#opp').innerHTML;
   $('#att').innerHTML = '<option value="none">none &mdash; nominal conveyor</option>'
-    + m.attackers.map(r => `<option value="run:${r}">${r}</option>`).join('');
+    + m.attackers.map(r => `<option value="run:${r}">${r} (adversary)</option>`).join('')
+    + m.attackers.map(r => `<option value="mix:${r}">${r} (its selector)</option>`).join('');
+  for (const el of [$('#bin0'), $('#bin1'), $('#bin2'), $('#lo0'), $('#lo1'), $('#lo2'),
+                    $('#hi0'), $('#hi1'), $('#hi2')]) el.max = m.limits.axis;
+  $('#nb').max = $('#npick').max = m.limits.nb;
+  $('#nitems').max = m.limits.items;
   if (!m.policies.length) $('#setupmsg').textContent = 'no trained runs found in runs/';
+  writeParams(m.defaults);
   // ?play=1 deals straight into a game; &opp= and &att= pick the two dropdowns,
   // &cell= the zoom, so a board can be linked at the size it was looked at
   const q = new URLSearchParams(location.search);
@@ -759,6 +1259,22 @@ $('#back2').onclick = () => { $('#result').hidden = true; $('#setup').hidden = f
   if (qc >= 2 && qc <= 48) ZOOM = qc;
   for (const [k, sel] of [['opp', '#opp'], ['att', '#att']])
     if (q.get(k) && [...$(sel).options].some(o => o.value === q.get(k))) $(sel).value = q.get(k);
-  if (q.get('play')) fresh();
+  // the opponent's own configuration is the starting point, and &bin=, &nb=,
+  // &k= then override it, so a particular instance can still be linked
+  await loadPreset();
+  const url = {bin: '#bin0', nb: '#nb', k: '#npick', items: '#nitems'};
+  let over = false;
+  if (q.get('bin')){
+    const t = q.get('bin').toLowerCase().split('x').map(Number);
+    if (t.length && t.every(v => v >= 1)){
+      ['#bin0', '#bin1', '#bin2'].forEach((sel, i) =>
+        $(sel).value = t[t.length === 1 ? 0 : i]);
+      over = true;
+    }
+  }
+  for (const k of ['nb', 'k', 'items'])
+    if (parseInt(q.get(k), 10) >= 1){ $(url[k]).value = parseInt(q.get(k), 10); over = true; }
+  if (over){ syncPick(); checkParams(); }
+  if (q.get('play')) setTimeout(() => fresh(), 240);   // let the check land first
 })();
 </script>

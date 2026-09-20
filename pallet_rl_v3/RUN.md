@@ -324,7 +324,8 @@ which is the only way to give the whole grid a flag like `--min_support 0`.
 ```bash
 python3 -m ar2l.viz.dashboard --port 8095 --host 127.0.0.1
 python3 -m ar2l.viz.game      --port 8096 --host 127.0.0.1 --device cuda \
-                              --bin 10 --size_hi 5 --max_l 120
+                              --bin 30x25x40 --size_hi 15x10x10 --max_l 256 \
+                              --nb 10 --n_pick 5
 python3 -m ar2l.viz.report    --packing best_nb10 best_nb10@run:att_best_nb10 \
                               --curves best_nb10 --out results/report.html --device cuda
 python3 -m ar2l.viz.replay3d  --policy run:best_nb10 --attacker run:att_best_nb10 \
@@ -342,6 +343,31 @@ python3 -m ar2l.viz.attack    --runs att_best_nb10 att_best_nb20 \
 `heur:<name>` or `random`; `--attacker mix:<name>` uses an exact-AR2L run's
 mixture model instead of its attacker. `--step` renders one decision rather
 than the whole episode, and `--nb` defaults to the run's own.
+
+`game`'s own flags **seed** its setup form, which is otherwise refilled from
+whichever run you choose as the opponent — its bin, item bounds, `nb`,
+`n_pick`, `max_l`, `rot`, `ems`, stability rule and support floor, straight out
+of `runs/<name>/args.json`. A flag you did pass outranks the run, as it
+outranks `config.yaml` everywhere else; the rest come from the run, and every
+field stays editable. The server
+re-validates the whole set on each keystroke and refuses one it could not run,
+so a combination the page accepts is one `BPPBatch` accepts; fields you move
+away from the run's own value are marked, because the agent is then being asked
+a question it was never trained on. `?opp=`, `?att=`, `?bin=`, `?nb=`, `?k=`,
+`?items=`, `?cell=` and `?play=1` set the same things from the URL.
+
+With `n_pick = k > 1` the conveyor is a pick station: all `k` reachable boxes
+are shown with the placements each still has, and you click one (or press
+<kbd>1</kbd>…<kbd>9</kbd>) to pack it. Turn the pick off in setup to be handed
+the front box instead, as a FIFO conveyor would.
+
+On the result screen, **Recalculate** replays the same boxes in the same order
+with one model alone, under a model and parameters you pick — one row per
+setting, each naming the model, what it moved, and by how much the fill
+changed. Any policy or heuristic the setup form offers can be dropped onto the
+instance, whether or not it was the opponent. `n_items`, `size_lo` and
+`size_hi` are held at the game's values, because they are what deals the
+sequence; change those from setup instead.
 
 ## `python3 -m ar2l.train`
 

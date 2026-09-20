@@ -162,17 +162,22 @@ def extent(S):
 
 def play(seq, policy, attacker=None, nb=1, S=10, stability="com", record=True,
          min_support=None,
-         size_hi=None, max_l=None, n_pick=None):
+         size_hi=None, max_l=None, n_pick=None, rot=None, ems=None):
     """One episode; returns the trace the viewers draw.
 
     `S` is an int for a cube or an (Lx, Ly, Lz) triple.  `size_hi` bounds the
     items the env draws for itself once this sequence runs out, so it defaults
     to the sequence's own per-axis maximum rather than the env's cube default,
     which a big bin's sequence would otherwise overshoot.
+
+    `rot` and `ems` are here for the same reason the rest are: a viewer that
+    lets the geometry be chosen has to be able to hand the agent *that*
+    geometry, and a policy trained with one orientation replayed with two is
+    not the policy that was trained.
     """
     seq = np.asarray(seq, np.int16)
     env = BPPBatch(1, S=S, nb=nb, n_items=len(seq), stability=stability,
-                   min_support=min_support, n_pick=n_pick,
+                   min_support=min_support, n_pick=n_pick, rot=rot, ems=ems,
                    size_hi=seq.reshape(-1, 3).max(0) if size_hi is None else size_hi,
                    **({} if max_l is None else {"max_l": max_l}))
     env.reset(seq[None])
