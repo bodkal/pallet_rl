@@ -18,6 +18,8 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
+from ..orders import (add_cm_args, add_order_args, load_instances, orders_bin,
+                      randomize_order)
 from . import agents as A
 
 
@@ -73,6 +75,12 @@ def panels(fig, rec, S, plabel, alabel):
                  f"mean item volume {vol.mean()*1000:.1f})", fontsize=10)
 
 
+def bin_for(a):
+    if a.bin:
+        return tuple(a.bin)
+    return orders_bin(a.pallet_cm, a.cell_cm) if a.data.lower().endswith('.csv') else 10
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument('--policy', default='heur:dbl',
@@ -83,6 +91,11 @@ def main(argv=None):
     ap.add_argument('--step', type=int, default=None, help='render only this step')
     ap.add_argument('--data', default='data/discrete_test.npy')
     ap.add_argument('--root', default='.')
+    ap.add_argument('--bin', type=int, nargs=3, default=None,
+                    help='bin in cells; default 10^3 for a .npy (the discrete '
+                         'test set), --pallet_cm for an orders .csv')
+    add_cm_args(ap)
+    add_order_args(ap)
     ap.add_argument('--gif', action='store_true')
     ap.add_argument('--fps', type=float, default=1.4)
     ap.add_argument('--device', default='cuda')
@@ -92,7 +105,10 @@ def main(argv=None):
     attacker, alabel, anb = A.load_attacker(a.attacker, a.device)
     nb = a.nb or anb or pnb or 1
     n_pick = A.spec_n_pick(a.attacker) or A.spec_n_pick(a.policy)
-    ep = A.play(np.load(os.path.join(a.root, a.data))[a.seq], policy, attacker, nb=nb, n_pick=n_pick)
+    ep = A.play(randomize_order(load_instances(os.path.join(a.root, a.data), a.cell_cm, bin_for(a),
+                                         box_scale=a.box_scale,
+                                         box_round=a.box_round),
+                          a.order_random, a.order_seed)[a.seq], policy, attacker, nb=nb, n_pick=n_pick, S=bin_for(a))
 
     tag = f"{plabel}_{alabel}_s{a.seq}".replace(":", "-").replace("/", "-")
     out = os.path.join(a.root, 'results', 'heatmaps', tag)

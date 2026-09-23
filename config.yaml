@@ -59,6 +59,19 @@ train:
   rho: 0.1                # TV uncertainty radius (approx, rfmdp)
   dist_coef: 1.0          # mixture-model distance loss weight (exact)
   cvar_q: 0.5             # CVaR level (cppo)
+  # Where training episodes come from.  null (or "") is the random generator:
+  # boxes drawn from the `types:` size classes above.  A path -- an orders
+  # .csv (read with eval's cell_cm / pallet_cm / box_scale; pallet_cm, when
+  # set, is also the bin trained on) or an instance .npy -- makes every
+  # episode one of its pallets, drawn at random.
+  data: data/orders_all.csv
+  # With `data`: the share of its pallets kept out of training and used for
+  # the held-out evals that select best.pt.  0 scores on the training pallets.
+  holdout: 0.2
+  # With `data`: randomise each drawn pallet's box order, as eval.order_random
+  # does -- 0 keeps the file's order, 1 is fully random.  More variety from
+  # the same pallets.
+  order_random: 0.0
 
 ppo:
   lr: 3.0e-4
@@ -103,3 +116,23 @@ eval:
   batch: 256              # bins stepped at once
   beta: [0, 25, 50, 75, 100]   # percent of instances the attacker reorders
   seed: 0                 # which instances each beta subset picks
+  # Real orders (`--data orders.csv`, see ar2l/orders.py) are in cm.  Their
+  # boxes are rounded to `cell_cm` cells by `box_round`, and they are packed
+  # onto a pallet of `pallet_cm` [length, width, height], rounded down to
+  # cells; null packs them onto `env.bin` instead.
+  cell_cm: 1.0
+  # up: a box is never modelled smaller than it is (1.1 -> 2 cells).
+  # down: never bigger (1.9 -> 1); a packing can then be slightly too tight
+  # for the real boxes.  nearest: 1.5 -> 1, 1.51 -> 2.  Never below 1 cell.
+  box_round: nearest
+  pallet_cm: [30,25,40]
+  # Divide every box side (x, y and z alike) by this before gridding: 0 (or 1)
+  # keeps the sizes in the file, 2 halves them, 3 takes a third, and so on.
+  # The pallet is not scaled.
+  box_scale: 4
+  # How much the box arrival order is randomised before scoring, 0..1: 0 is
+  # the order in the data, 1 a uniformly random order, and in between each
+  # box drifts from its place -- by about r / (1 - r) of the pallet, so 0.1
+  # moves a box ~5 places in a 50-box pallet.  `order_seed` fixes the draw.
+  order_random: 0.0
+  order_seed: 0

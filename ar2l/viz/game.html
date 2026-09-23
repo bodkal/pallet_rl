@@ -59,6 +59,8 @@ kbd{border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;paddi
 .pf3{grid-column:span 2}
 .tri{display:grid;grid-template-columns:repeat(3,1fr);gap:5px}
 .pf.off input,.pf.off select{border-color:var(--c1);color:var(--c1)}
+.pf input:disabled,.pf select:disabled{opacity:.6}
+.pgsrc{margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--line)}
 #perr{color:var(--c3);white-space:pre-line}
 #pwarn{color:var(--c1)}
 details.par>summary{cursor:pointer;color:var(--dim);font-size:11px;
@@ -169,6 +171,29 @@ table.rc .d{font-size:11px}
     <div class="field">
       <details class="par" id="pardet" open>
         <summary>Game parameters <span id="psrc" style="text-transform:none;letter-spacing:0"></span></summary>
+        <div class="pg pgsrc">
+          <div class="pf"><span>boxes from</span><select id="src">
+            <option value="random">the random generator</option>
+            <option value="orders">an orders file &mdash; real pallets</option></select></div>
+          <div class="pf pf3 osrc"><span>data file (.csv or .npy, from the project folder)</span>
+            <input id="data" type="text" spellcheck="false" placeholder="data/orders_all.csv"></div>
+          <div class="pf pf3 osrc"><span>pallet</span><select id="palpick">
+            <option value="-1">a random pallet (dealt by the seed)</option></select></div>
+          <div class="pf osrc"><span>order randomness &mdash; 0 file, 1 random</span>
+            <input id="ordrnd" type="number" min="0" max="1" step="0.05"></div>
+          <div class="pf pf3 osrc ocsv"><span>pallet L &times; W &times; H cm &mdash; empty: the bin below</span>
+            <div class="tri"><input id="pcm0" type="number" min="0" step="any">
+              <input id="pcm1" type="number" min="0" step="any">
+              <input id="pcm2" type="number" min="0" step="any"></div></div>
+          <div class="pf osrc ocsv"><span>cell size, cm</span>
+            <input id="cellcm" type="number" min="0.001" step="any"></div>
+          <div class="pf osrc ocsv"><span>box scale &mdash; divide every side</span>
+            <input id="bscale" type="number" min="0" step="any"></div>
+          <div class="pf osrc ocsv"><span>box rounding to cells</span><select id="bround">
+            <option value="up">up &mdash; never smaller</option>
+            <option value="down">down &mdash; never bigger</option>
+            <option value="nearest">nearest &mdash; 1.5 &rarr; 1</option></select></div>
+        </div>
         <div class="pg">
           <div class="pf pf3"><span>bin &mdash; x &times; y &times; z cells</span>
             <div class="tri"><input id="bin0" type="number" min="1" step="1">
@@ -217,6 +242,7 @@ table.rc .d{font-size:11px}
     </div>
     <div class="row">
       <button class="go" id="start">Start packing &rarr;</button>
+      <button id="skip" title="Deal the same instance, let the agent pack it alone and go straight to the result">Skip &mdash; just show the agent's packing</button>
       <span class="sub" id="setupmsg"></span>
     </div>
   </div>
@@ -297,8 +323,8 @@ table.rc .d{font-size:11px}
     <div class="verdict" id="verdict">&mdash;</div>
     <div class="sub" id="vsub"></div>
     <div style="margin-top:14px">
-      <div class="row" style="justify-content:space-between"><b>You</b><b id="hu"></b></div>
-      <div class="bar"><i id="hbar" style="background:var(--c2)"></i></div>
+      <div class="row" id="hrow" style="justify-content:space-between"><b>You</b><b id="hu"></b></div>
+      <div class="bar" id="hbarw"><i id="hbar" style="background:var(--c2)"></i></div>
       <div class="row" style="justify-content:space-between;margin-top:10px"><b id="alab">Agent</b><b id="au"></b></div>
       <div class="bar"><i id="abar" style="background:var(--c1)"></i></div>
     </div>
@@ -399,6 +425,10 @@ const DPR = () => Math.min(2, window.devicePixelRatio || 1);
 const css = cvar;                       // the v1 renderer's name for it
 let LX = 10, LY = 10, LZ = 10, G = null, B = null, OPP = null, ORIENT = 0, HOVER = null;
 let SEED = null, T0 = 0, REASON = null, RES = null, BUSY = false;
+// true when the human sat this one out and only the agent packs: "Another
+// instance" then skips too, until Start is pressed again; "Replay" always
+// hands the same instance back to the human to play
+let SKIP = false;
 
 /* ---------------- the game parameters -----------------------------------
    The form is filled from whichever run you race, because an agent is only
@@ -411,8 +441,18 @@ const PF = {
   size_hi: ['#hi0', '#hi1', '#hi2'],
   nb: '#nb', n_pick: '#npick', n_items: '#nitems', max_l: '#maxl',
   rot: '#prot', ems: '#ems', stability: '#stab', min_support: '#msup',
+  source: '#src', data: '#data', pallet: '#palpick', order_random: '#ordrnd',
+  pallet_cm: ['#pcm0', '#pcm1', '#pcm2'], cell_cm: '#cellcm',
+  box_scale: '#bscale', box_round: '#bround',
 };
-const PLABEL = {bin: 'bin', size_lo: 'smallest item side', size_hi: 'largest item side',
+/* how each field reads: the rest are whole numbers */
+const PSTR = new Set(['stability', 'source', 'data', 'box_round']);
+const PFLOAT = new Set(['min_support', 'order_random', 'cell_cm', 'box_scale']);
+/* what an orders file decides, so the form shows it rather than takes it */
+const DERIVED = ['size_lo', 'size_hi', 'n_items'];
+const PLABEL = {source: 'box source', data: 'data file', pallet: 'pallet',
+  order_random: 'order randomness', pallet_cm: 'pallet (cm)', cell_cm: 'cell size',
+  box_scale: 'box scale', box_round: 'box rounding', bin: 'bin', size_lo: 'smallest item side', size_hi: 'largest item side',
   nb: 'window N_B', n_pick: 'reach k', n_items: 'items in the sequence',
   max_l: 'candidate cap', rot: 'orientations', ems: 'action space',
   stability: 'stability rule', min_support: 'support floor'};
@@ -420,9 +460,13 @@ const PLABEL = {bin: 'bin', size_lo: 'smallest item side', size_hi: 'largest ite
 function readParams(){
   const o = {};
   for (const [k, sel] of Object.entries(PF)){
-    if (Array.isArray(sel)) o[k] = sel.map(t => parseInt($(t).value, 10));
-    else if (k === 'stability') o[k] = $(sel).value;
-    else if (k === 'min_support') o[k] = parseFloat($(sel).value);
+    if (k === 'pallet_cm'){
+      const v = sel.map(t => $(t).value.trim());
+      o[k] = v.every(t => t === '') ? null : v.map(parseFloat);
+    }
+    else if (Array.isArray(sel)) o[k] = sel.map(t => parseInt($(t).value, 10));
+    else if (PSTR.has(k)) o[k] = $(sel).value;
+    else if (PFLOAT.has(k)) o[k] = parseFloat($(sel).value);
     else o[k] = parseInt($(sel).value, 10);
   }
   return o;
@@ -430,10 +474,48 @@ function readParams(){
 
 function writeParams(p){
   for (const [k, sel] of Object.entries(PF)){
-    if (Array.isArray(sel)) sel.forEach((t, i) => $(t).value = p[k][i]);
+    if (!(k in p)) continue;
+    if (k === 'pallet') setPallet(p[k]);
+    else if (Array.isArray(sel))
+      sel.forEach((t, i) => $(t).value = p[k] == null ? '' : p[k][i]);
     else $(sel).value = p[k];
   }
-  syncPick();
+  syncPick(); syncSource();
+}
+
+/* the pallet picker keeps a value it has no option for yet, so a preset or a
+   link can name a pallet before the file's list has arrived */
+let PALLET = -1;
+function setPallet(i){
+  PALLET = parseInt(i, 10);
+  if (isNaN(PALLET)) PALLET = -1;
+  const sel = $('#palpick');
+  if (![...sel.options].some(o => o.value === String(PALLET)))
+    sel.insertAdjacentHTML('beforeend', `<option value="${PALLET}">pallet ${PALLET}</option>`);
+  sel.value = String(PALLET);
+}
+let PLIST = '';
+function fillPallets(list){
+  const key = list.map(q => q.id + ':' + q.boxes).join(',');
+  if (key === PLIST) return;
+  PLIST = key;
+  $('#palpick').innerHTML = '<option value="-1">a random pallet (dealt by the seed)</option>'
+    + list.map(q => `<option value="${q.i}">#${q.i} &mdash; ${q.id} (${q.boxes} boxes)</option>`).join('');
+  $('#palpick').value = list.some(q => q.i === PALLET) ? String(PALLET) : '-1';
+}
+
+/* An orders file decides the item bounds and the sequence length, and the bin
+   too when a pallet in cm is given; those fields then show the file's values
+   and are not editable.  The CSV reading fields mean nothing for a .npy. */
+function syncSource(){
+  const orders = $('#src').value === 'orders';
+  const csv = /\.csv$/i.test($('#data').value.trim());
+  document.querySelectorAll('.osrc').forEach(el => el.hidden = !orders);
+  document.querySelectorAll('.ocsv').forEach(el => el.hidden = !orders || !csv);
+  const pcm = ['#pcm0', '#pcm1', '#pcm2'].some(t => $(t).value.trim() !== '');
+  for (const k of DERIVED)
+    (Array.isArray(PF[k]) ? PF[k] : [PF[k]]).forEach(t => $(t).disabled = orders);
+  PF.bin.forEach(t => $(t).disabled = orders && csv && pcm);
 }
 
 /* the reach control is only meaningful when there is more than one box in it */
@@ -457,6 +539,14 @@ function checkParams(){
                                        attacker: $('#att').value});
     $('#perr').textContent = (r.errors || []).join('\n');
     $('#start').disabled = !!(r.errors || []).length;
+    // an orders file fixes some fields: show what it fixed them to
+    if (r.params && r.params.source === 'orders' && !(r.errors || []).length){
+      for (const k of DERIVED.concat(['bin']))
+        (Array.isArray(PF[k]) ? PF[k] : [PF[k]]).forEach((t, i) => {
+          if ($(t).disabled) $(t).value = Array.isArray(PF[k]) ? r.params[k][i] : r.params[k];
+        });
+      fillPallets(r.pallets || []);
+    }
     const off = new Set((r.mismatch || []).map(m => m.key));
     for (const [k, sel] of Object.entries(PF))
       (Array.isArray(sel) ? sel : [sel]).forEach(t =>
@@ -1003,13 +1093,14 @@ async function finish(){
   }
   BUSY = false;
   if (!r || r.error){
-    $('#msg').innerHTML = `<b style="color:var(--c3)">the agent could not play this
-      instance</b> — ${(r && r.error) || 'no reply from the server'}`;
+    $(SKIP ? '#setupmsg' : '#msg').innerHTML = `<b style="color:var(--c3)">the agent
+      could not play this instance</b> — ${(r && r.error) || 'no reply from the server'}`;
+    if (SKIP){ $('#result').hidden = true; $('#setup').hidden = false; }
     return;
   }
   RES = {
     human: {util: B.util, items: B.items, placed: B.placed,
-            placed_types: B.placed_types,
+            placed_types: B.placed_types, skipped: SKIP,
             seconds: (Date.now() - T0) / 1000, reason: REASON || 'ran out of room'},
     agent: r,
   };
@@ -1021,19 +1112,31 @@ function renderResult(){
   const h = RES.human, a = RES.agent;
   const hp = h.util * 100, ap = a.util * 100;
   const win = hp > ap + 1e-9 ? 'human' : ap > hp + 1e-9 ? 'agent' : 'draw';
-  $('#verdict').innerHTML = win === 'human'
-      ? `You win by ${(hp - ap).toFixed(1)} points. 🏆`
+  $('#verdict').innerHTML = h.skipped
+      ? `${a.label} filled ${ap.toFixed(1)}% of the bin.`
+      : win === 'human' ? `You win by ${(hp - ap).toFixed(1)} points. 🏆`
       : win === 'agent' ? `${a.label} wins by ${(ap - hp).toFixed(1)} points.`
       : `Dead heat — ${hp.toFixed(1)}% each.`;
-  $('#verdict').style.color = win === 'human' ? css('--c2')
+  $('#verdict').style.color = h.skipped ? css('--c1')
+                            : win === 'human' ? css('--c2')
                             : win === 'agent' ? css('--c3') : css('--dim');
+  // skipped: there is no human bin to race, so only the agent's side is shown
+  for (const sel of ['#hrow', '#hbarw', '#side-h']) $(sel).hidden = h.skipped;
+  $('#samesame').textContent = h.skipped ? 'Play this exact instance yourself'
+                                         : 'Replay this exact instance';
+  $('.duel').style.gridTemplateColumns = h.skipped ? '1fr' : '';
   const p = G.params;
-  $('#vsub').innerHTML = `${LX}×${LY}×${LZ} bin · items ${p.size_lo.join('×')}
-      to ${p.size_hi.join('×')} · N<sub>B</sub> ${p.nb}, reach k ${p.n_pick}
+  $('#vsub').innerHTML = `${LX}×${LY}×${LZ} bin · `
+    + (G.pallet_id != null
+       ? `pallet ${G.pallet_id} of ${p.data}, ${p.n_items} boxes`
+         + (p.order_random ? `, order randomised ${p.order_random}` : '')
+       : `items ${p.size_lo.join('×')} to ${p.size_hi.join('×')}`)
+    + ` · N<sub>B</sub> ${p.nb}, reach k ${p.n_pick}
       · seed ${SEED} · attacker ${G.alabel}`
-    + ` · same instance and same conveyor, but you could use any stable placement`
-    + (p.ems ? ` and ${a.label} only the corners of the empty maximal spaces` : '')
-    + (p.n_pick > 1
+    + (h.skipped ? ' · you skipped this one'
+       : ` · same instance and same conveyor, but you could use any stable placement`
+         + (p.ems ? ` and ${a.label} only the corners of the empty maximal spaces` : ''))
+    + (p.n_pick > 1 && !h.skipped
        ? ` · at the pick station ${B.human_pick ? 'you chose for yourself'
            : 'the box was chosen for you'} and ${a.label} was handed its box by `
          + (a.picker || 'nobody — it took the first in reach')
@@ -1042,9 +1145,9 @@ function renderResult(){
   $('#hbar').style.width = hp + '%'; $('#abar').style.width = ap + '%';
   $('#alab').textContent = a.label; $('#alab2').textContent = a.label;
   $('#side-h').className = 'side' + (win === 'human' ? ' win h' : '');
-  $('#side-a').className = 'side' + (win === 'agent' ? ' win a' : '');
+  $('#side-a').className = 'side' + (win === 'agent' && !h.skipped ? ' win a' : '');
   $('#crown-h').textContent = win === 'human' ? '\u2b50 WINNER' : '';
-  $('#crown-a').textContent = win === 'agent' ? '\u2b50 WINNER' : '';
+  $('#crown-a').textContent = win === 'agent' && !h.skipped ? '\u2b50 WINNER' : '';
   const stat = (o, secs) => `
     <div class="big">${(o.util * 100).toFixed(1)}<span style="font-size:18px">%</span></div>
     <div class="sub" style="margin-bottom:8px">of the bin filled</div>
@@ -1086,6 +1189,7 @@ function drawReplay(n){
           {highlight: a.length - 1, height: 290,
            types: typed() ? RES.agent.placed_types : null});
   $('#scrublab').textContent = n === 0 ? 'empty bins — drag to replay'
+    : RES.human.skipped ? `after box ${n}:  agent ${a.length} placed`
     : `after box ${n}:  you ${h.length} placed`
       + (h.length < n ? ' (you had already stopped)' : '')
       + `,  agent ${a.length} placed` + (a.length < n ? ' (agent had already stopped)' : '');
@@ -1245,7 +1349,8 @@ async function recalcRun(){
   drawRecalc();
 }
 
-async function fresh(seed){
+async function fresh(seed, skip){
+  if (skip !== undefined) SKIP = skip;
   $('#setupmsg').textContent = 'dealing...';
   SEED = (seed === undefined || seed === null) ? Date.now() % 100000 : seed;
   const r = await api('/api/new', {attacker: $('#att').value, seed: SEED,
@@ -1254,19 +1359,30 @@ async function fresh(seed){
   if (r.error){ $('#setupmsg').innerHTML =
       `<span style="color:var(--c3)">${(r.errors || [r.error]).join('; ')}</span>`; return; }
   G = r; B = r.board; LX = B.Lx; LY = B.Ly; LZ = B.Lz; ORIENT = 0; HOVER = null; OPP = $('#opp').value;
+  const pal = r.pallet_id != null ? `  ·  pallet ${r.pallet_id} (${r.params.n_items} boxes)` : '';
   RES = null; REASON = null; BUSY = false; T0 = Date.now();
   VIEW.th = VIEW0.th; VIEW.ph = VIEW0.ph;
   $('#who').textContent = `${B.Lx}×${B.Ly}×${B.Lz}  ·  N_B ${B.nb}, k ${B.n_pick}`
     + `  ·  attacker: ${r.alabel}  ·  opponent: `
-    + OPP.replace('run:', '').replace('heur:', '');
+    + OPP.replace('run:', '').replace('heur:', '') + pal;
+  $('#msg').textContent = '';
+  if (SKIP){
+    // the empty bin is the human's side; the agent plays the instance alone
+    $('#setupmsg').textContent = 'the agent is packing...';
+    B.done = true; REASON = 'skipped';
+    await finish();
+    if (RES) $('#setupmsg').textContent = '';
+    return;
+  }
   $('#setup').hidden = true; $('#result').hidden = true; $('#play').hidden = false;
-  $('#setupmsg').textContent = ''; $('#msg').textContent = '';
+  $('#setupmsg').textContent = '';
   render();
 }
 
-$('#start').onclick = () => fresh();
+$('#start').onclick = () => fresh(undefined, false);
+$('#skip').onclick = () => fresh(undefined, true);
 $('#again').onclick = () => fresh();
-$('#samesame').onclick = () => fresh(SEED);
+$('#samesame').onclick = () => fresh(SEED, false);
 $('#rcrun').onclick = recalcRun;
 $('#rcreset').onclick = () => { writeRecalc(G.params); rcCheck(); };
 $('#rcpreset').onclick = rcPreset;
@@ -1298,7 +1414,8 @@ $('#back2').onclick = () => { $('#result').hidden = true; $('#setup').hidden = f
 /* every field re-validates on the server, which also reports which of them
    have drifted away from the run being raced */
 for (const sel of Object.values(PF).flat())
-  $(sel).addEventListener('input', () => { syncPick(); checkParams(); });
+  $(sel).addEventListener('input', () => { syncPick(); syncSource(); checkParams(); });
+$('#palpick').addEventListener('change', () => { PALLET = parseInt($('#palpick').value, 10); });
 $('#att').onchange = checkParams;
 $('#opp').onchange = loadPreset;
 $('#preset').onclick = loadPreset;

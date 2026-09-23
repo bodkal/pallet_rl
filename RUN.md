@@ -49,6 +49,89 @@ still loads — `evaluate.load_nets` pads its narrow projections with zeros,
 which is the identity on the features it was trained with, and leaves the type
 embedding at its fresh initialisation.
 
+## 0b. Your own pallets: an orders CSV
+
+Real orders go in as a CSV, one row per box in arrival order
+([`data/orders_example.csv`](data/orders_example.csv)):
+
+```csv
+pallet_id,seq,length_cm,width_cm,height_cm,type,qty
+P001,1,24,14,12,0,8
+P001,2,16,12,10,2,5
+```
+
+`pallet_id` and the three sides are required; `seq` orders boxes within a
+pallet (file order otherwise), `type` is the stacking-rule type (default 0) and
+`qty` repeats a row. Sides are rounded *up* to 2 cm cells (`--cell_cm`).
+
+The pallet the orders are packed onto is `--pallet_cm L W H` (or
+`eval.pallet_cm` in [`config.yaml`](config.yaml)), rounded *down* to cells;
+without it they go onto `env.bin`, the 60 × 48 × 80 cm training pallet, which
+real cartons outgrow. A box that fits the pallet in no orientation is an error
+rather than a silently short pallet. A `pallet_id` may be spread through the
+file — a cell building two pallets at once — and its boxes are gathered in
+file order. Pallets of different lengths share one array, padded with zero
+rows the env reads as "end of this pallet".
+
+```bash
+python3 -m ar2l.evaluate --data data/orders_all.csv --pallet_cm 120 80 180 --heuristic dbl --beta 0 \
+        --per_pallet results/orders_dbl.csv
+python3 -m ar2l.evaluate --data data/orders_all.csv --pallet_cm 120 80 180 \
+        --ckpt runs/sel_types_k5/best.pt --attacker runs/sel_types_k5/best.pt \
+        --permuter mixer --nb 10 --n_pick 5 --beta 100 --per_pallet results/orders_sel.csv
+python3 -m ar2l.viz.replay3d --data data/orders_all.csv --pallet_cm 120 80 180 --seq 0 \
+        --policy run:sel_types_k5 --attacker mix:sel_types_k5 --gif
+python3 -m ar2l.orders data/orders_all.csv data/orders_all.npy --pallet_cm 120 80 180   # convert once, if wanted
+```
+
+`--box_scale N` (or `eval.box_scale`) divides every box side — x, y and z
+alike — by `N` before the rounding up to cells: `0` (or `1`) keeps the file's
+sizes, `2` halves them, `3` takes a third. The pallet is not scaled.
+
+`--order_random R` (or `eval.order_random`) randomises each pallet's box order
+before it is played: `0` is the order in the file, `1` a uniformly random
+order, and in between each box drifts from its place by about `R / (1 - R)`
+of the pallet — `0.1` moves a box ~5 places in a 50-box pallet. The draw is
+fixed by `--order_seed`, and `replay3d`/`heatmap` take the same two flags, so
+a replay shows exactly the order `evaluate` scored.
+
+The game plays them too: `python3 -m ar2l.viz.game`, then under *Game
+parameters* set **boxes from** to *an orders file*. Pick a pallet (or let the
+seed deal one), and the pallet in cm, cell size, box scale, rounding and order
+randomness work as they do here; the bin, item bounds and box count are then
+the file's. It starts from `train.data` and the `eval:` values in the config.
+
+`All` in the output is the share of pallets whose every box was placed; the
+`--per_pallet` CSV has `pallet_id,beta,boxes,placed,util_pct` per pallet. For a
+`--algo select` run the selector only acts at `--beta 100`; at `--beta 0` the
+packer takes the boxes in CSV order.
+
+## 0c. Training on your own pallets
+
+`train.data` in [`config.yaml`](config.yaml) (or `--data`) picks where the
+training episodes come from: empty/`null` is the random generator exactly as
+before, a path — an orders `.csv` or an instance `.npy` — makes every episode
+one of its pallets, drawn at random.
+
+```bash
+python3 -m ar2l.train --name sel_orders --data data/orders_all.csv \
+        --pallet_cm 120 80 180 --cell_cm 4 --algo select --nb 10 --n_pick 5 \
+        --iters 10000 --order_random 0.2
+```
+
+- `--holdout` (default `0.2`) keeps that share of the pallets out of training;
+  the held-out evals that choose `best.pt` score them. The split is seeded and
+  written to `runs/<name>/train_ids.txt` and `holdout_ids.txt`.
+- `--order_random` randomises each drawn pallet's box order, for variety from
+  few pallets. `--pallet_cm` also sets the bin trained on; `--cell_cm` and
+  `--box_scale` read the CSV as `evaluate` does.
+- On a 120 × 80 × 180 pallet a `select --n_pick 5` iteration takes ~22 s at
+  2 cm cells and ~6.5 s at 4 cm; 4 cm is the grid scale the earlier runs used.
+- The data file's SHA-1 is recorded in `args.json`, and `--resume` refuses to
+  continue if the file has changed since.
+- Few pallets overfit: with ~100 of them, trust the held-out numbers, not the
+  training `util`.
+
 ## 0. The stability rule the numbers were measured under
 
 The simulator now refuses any placement resting on less than **80%** of the

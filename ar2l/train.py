@@ -21,6 +21,7 @@ run group boxes of one type together; `--n_types 1` turns the whole thing off.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -71,6 +72,7 @@ class Progress:
 from .config import CFG, load as load_config
 from .env import BPPBatch
 from .evaluate import attack_score, nominal_score
+from .orders import add_cm_args, load_orders, orders_bin
 from .heuristics import act as heur_act
 from .model import PackNet, PermNet, sample
 from .ppo import PPO, gae, inf_tv_dual, sup_tv_dual, to_torch
@@ -234,14 +236,62 @@ def _held(nom):
     return 0.0
 
 
-def make_env(args, seed):
+def make_env(args, seed, pool=None):
+    # a pool carries its own sizes and types, so the env draws no classes and
+    # sizes its sweeps from the pool rather than from the config's envelope
+    kw = ({} if pool is None else
+          dict(pool=pool, pool_order_random=args.order_random, types=False,
+               size_hi=pool[..., :3].reshape(-1, 3).max(0)))
+    kw.setdefault("size_hi", args.size_hi)
     return BPPBatch(args.n_env, S=args.bin, nb=args.nb, n_items=args.n_items,
-                    size_lo=args.size_lo, size_hi=args.size_hi, seed=seed,
+                    size_lo=args.size_lo, seed=seed,
                     max_l=args.max_l, stability=args.stability,
                     ems=bool(args.ems), rot=args.rot, max_c=args.max_c,
                     min_support=args.min_support, n_pick=args.n_pick,
                     n_types=args.n_types,
-                    type_constraint=bool(args.type_constraint))
+                    type_constraint=bool(args.type_constraint), **kw)
+
+
+def load_data(args, out):
+    """`--data` as (train pool, held-out set), or (None, None) without one.
+
+    Resolves the bin from `--pallet_cm` for an orders CSV, splits off
+    `--holdout` of the pallets with the run's seed, writes the split beside
+    the run, and records the file's fingerprint in `args` so `--resume`
+    can refuse a file that changed under it.
+    """
+    if not args.data:
+        return None, None
+    if args.data.lower().endswith(".csv"):
+        if args.pallet_cm:
+            args.bin = orders_bin(args.pallet_cm, args.cell_cm)
+        seqs, ids = load_orders(args.data, args.cell_cm, args.bin,
+                                rot=args.rot, box_scale=args.box_scale,
+                                box_round=args.box_round)
+    else:
+        seqs = np.load(args.data)
+        ids = [str(i) for i in range(len(seqs))]
+    with open(args.data, "rb") as f:
+        args.data_sha1 = hashlib.sha1(f.read()).hexdigest()
+    if not 0.0 <= args.holdout < 1.0:
+        raise ValueError(f"--holdout is a share of the pallets in [0, 1), "
+                         f"got {args.holdout}")
+    order = np.random.default_rng(args.seed).permutation(len(seqs))
+    n_held = int(round(len(seqs) * args.holdout))
+    if args.holdout and n_held == 0:
+        n_held = 1
+    if n_held >= len(seqs):
+        raise ValueError(f"--holdout {args.holdout} leaves no training pallets "
+                         f"out of {len(seqs)}")
+    held, trn = np.sort(order[:n_held]), np.sort(order[n_held:])
+    for name, part in (("train_ids.txt", trn), ("holdout_ids.txt", held)):
+        with open(os.path.join(out, name), "w") as f:
+            f.write("".join(ids[i] + "\n" for i in part))
+    args.n_train, args.n_holdout = len(trn), len(held)
+    print(f"[{args.name}] data {args.data}: {len(trn)} training pallets, "
+          f"{len(held)} held out, bin {args.bin}", flush=True)
+    # with no hold-out the evals score the training pallets themselves
+    return seqs[trn], (seqs[held] if len(held) else seqs[trn])
 
 
 def build(args, device):
@@ -258,9 +308,10 @@ def train(args):
     torch.manual_seed(args.seed); np.random.seed(args.seed)
     out = os.path.join("runs", args.name)
     os.makedirs(out, exist_ok=True)
+    pool, held_out = load_data(args, out)
     json.dump(vars(args), open(os.path.join(out, "args.json"), "w"), indent=1)
 
-    env = make_env(args, args.seed)
+    env = make_env(args, args.seed, pool)
     pack, attacker, mixer = build(args, device)
     if args.compile:
         for net in (pack, attacker, mixer):
@@ -269,6 +320,15 @@ def train(args):
     if args.resume and os.path.exists(os.path.join(out, "last.pt")):
         resumed = torch.load(os.path.join(out, "last.pt"), map_location=device,
                              weights_only=False)
+        # the last runs were two experiments glued together because the data
+        # changed under a resume; never again for a data file
+        was = resumed.get("args", {}).get("data_sha1")
+        if was != args.data_sha1:
+            raise SystemExit(
+                f"[{args.name}] refusing to resume: the run was trained on "
+                f"{resumed.get('args', {}).get('data') or 'the random generator'} "
+                f"(sha1 {was}) but --data is now {args.data or 'the random generator'} "
+                f"(sha1 {args.data_sha1}).  Start a new --name instead.")
         pack.load_state_dict(resumed["pack"])
         attacker.load_state_dict(resumed["attacker"])
         mixer.load_state_dict(resumed["mixer"])
@@ -421,7 +481,7 @@ def train(args):
                       S=args.bin, size_hi=args.size_hi, max_l=args.max_l,
                       min_support=args.min_support, n_pick=args.n_pick,
                       n_types=args.n_types,
-                      type_constraint=bool(args.type_constraint))
+                      type_constraint=bool(args.type_constraint), seqs=held_out)
             if args.algo == "attack":
                 au, ak = attack_score(args.heur_pack or pack, attacker, args.nb,
                                       args.eval_inst, **ev)
@@ -498,6 +558,16 @@ def get_parser():
     p.add_argument("--alpha", type=float, default=t["alpha"], help="robustness weight")
     p.add_argument("--rho", type=float, default=t["rho"], help="uncertainty radius")
     p.add_argument("--dist_coef", type=float, default=t["dist_coef"])
+    p.add_argument("--data", default=t["data"],
+                   help="train on these pallets (an orders .csv or an "
+                        "instance .npy); empty = the random generator")
+    p.add_argument("--holdout", type=float, default=t["holdout"],
+                   help="with --data: share of pallets kept for the held-out "
+                        "evals that select best.pt")
+    p.add_argument("--order_random", type=float, default=t["order_random"],
+                   help="with --data: randomise each drawn pallet's box order, "
+                        "0 = file order, 1 = fully random")
+    add_cm_args(p)
     p.add_argument("--cvar_q", type=float, default=t["cvar_q"])
     p.add_argument("--iters", type=int, default=t["iters"])
     p.add_argument("--n_env", type=int, default=t["n_env"])
@@ -585,6 +655,8 @@ def main(argv=None):
     # the run was trained under instead of a bare `null`
     if args.min_support is None:
         args.min_support = float(CFG["env"]["min_support"])
+    args.data = args.data or None      # "" in the config is the generator too
+    args.data_sha1 = None
     train(args)
 
 

@@ -24,6 +24,7 @@ from ..env import BPPBatch
 from ..evaluate import load_nets, metrics
 from ..model import sample
 from ..ppo import to_torch
+from ..orders import load_instances
 from . import agents as A
 
 
@@ -76,7 +77,7 @@ def main(argv=None):
     ap.add_argument('--out', default='results/attacker_behaviour.png')
     a = ap.parse_args(argv)
 
-    seqs = np.load(os.path.join(a.root, a.data))[: a.n_inst]
+    seqs = load_instances(os.path.join(a.root, a.data))[: a.n_inst]
     # an item the attacker passes over stays in the window and would be
     # counted again, so the baseline is the dataset itself, not what was seen
     base = float(seqs[..., :3].reshape(-1, 3).prod(1).mean())

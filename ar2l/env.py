@@ -224,7 +224,7 @@ class BPPBatch:
                  max_l=None, size_lo=None, size_hi=None, seed=0, ems=None,
                  stability=None, rot=None, min_support=None, n_pick=None,
                  n_types=None, types=None, type_constraint=None,
-                 pick_feasible=None):
+                 pick_feasible=None, pool=None, pool_order_random=0.0):
         # `None` means "whatever config.yaml says"; an explicit argument wins
         e = CFG["env"]
         S = e["bin"] if S is None else S
@@ -247,6 +247,11 @@ class BPPBatch:
         elif types is False:
             types = None
         n_types = e["n_types"] if n_types is None else n_types
+        # a caller sizing the envelope from its own data (real orders of small
+        # cartons) can bring `size_hi` under the config's `size_lo`; the
+        # stream it would draw from must still be a valid range
+        size_lo = tuple(min(a, b) for a, b in
+                        zip(_triple(size_lo), _triple(size_hi)))
         self.classes = type_classes(types, n_types, size_lo, size_hi)
         self.n_types = len(self.classes[0])
         self.type_constraint = bool(e["type_constraint"]
@@ -291,6 +296,15 @@ class BPPBatch:
         # rule actually reads it
         self._needs_count = (self.stability != "com"
                              or self.min_support > 0.0)
+        # `pool`: a fixed set of instances -- real orders -- that every episode
+        # draws one of at random instead of sampling boxes from the size
+        # classes, each draw reordered by `pool_order_random` (see
+        # `orders.randomize_order`).  The episode is as long as the pool is wide.
+        self.pool = self.pool_len = None
+        self.pool_order_random = float(pool_order_random)
+        if pool is not None:
+            self.pool, self.pool_len = self._as_seq(pool)
+            n_items = self.pool.shape[1]
         self.n_items, self.max_c, self.max_l = n_items, max_c, max_l
         # one divisor for every node feature, so item shape survives the
         # normalisation even when the bin is lopsided
@@ -330,6 +344,10 @@ class BPPBatch:
 
         A three-column array is a pre-type dataset: every box is type 0, which
         is what it was drawn as.  Anything else has to carry its own types.
+
+        Instances may be shorter than the table: trailing all-zero rows are
+        padding, so real orders of different lengths share one array.  Returns
+        the table and each instance's length.
         """
         a = np.asarray(seqs, np.int16)
         if a.shape[-1] == 3:
@@ -341,7 +359,28 @@ class BPPBatch:
         if t.size and (t.min() < 0 or t.max() >= self.n_types):
             raise ValueError(f"type_id must be in [0, {self.n_types}), got "
                              f"[{int(t.min())}, {int(t.max())}]")
-        return a.copy()
+        box = (a[..., :3] > 0).all(-1)
+        pad = (a == 0).all(-1)
+        if not (box | pad).all():
+            raise ValueError("a box has a zero side but is not an all-zero "
+                             "padding row")
+        length = box.sum(-1).astype(np.int32)
+        # padding only at the end: a box after a pad row would never be reached
+        if (box != (np.arange(a.shape[-2]) < length[..., None])).any():
+            raise ValueError("padding rows must all come after the last box")
+        if (length == 0).any():
+            raise ValueError("every instance needs at least one box")
+        return a.copy(), length
+
+    def _draw(self, k):
+        """`k` instances from the pool, with replacement, and their lengths."""
+        from .orders import randomize_order
+        i = self.rng.integers(len(self.pool), size=k)
+        rows = self.pool[i]
+        if self.pool_order_random:
+            # the env's own generator, so a seeded run replays the same orders
+            rows = randomize_order(rows, self.pool_order_random, self.rng)
+        return rows, self.pool_len[i].copy()
 
     def reset(self, seqs=None):
         n = self.n_env
@@ -354,11 +393,14 @@ class BPPBatch:
         self.n_packed = np.zeros(n, np.int32)
         self.volume = np.zeros(n, np.float32)
         self.done = np.zeros(n, bool)
-        if seqs is None:
+        if seqs is None and self.pool is not None:
+            self.seq, self.length = self._draw(n)
+        elif seqs is None:
             self.seq = sample_items(self.rng, (n, self.n_items),
                                     self.size_lo, self.size_hi, self.classes)
+            self.length = np.full(n, self.n_items, np.int32)
         else:
-            self.seq = self._as_seq(seqs)
+            self.seq, self.length = self._as_seq(seqs)
         self.head = np.zeros(n, np.int32)
         # windows are only ever indexed by a footprint side, and `reset` may be
         # handed a sequence the constructor knew nothing about
@@ -377,8 +419,13 @@ class BPPBatch:
         self.ptype[idx] = 0
         self.n_packed[idx] = 0
         self.volume[idx] = 0
-        self.seq[idx] = sample_items(self.rng, (idx.size, self.n_items),
-                                     self.size_lo, self.size_hi, self.classes)
+        if self.pool is not None:
+            self.seq[idx], self.length[idx] = self._draw(idx.size)
+        else:
+            self.seq[idx] = sample_items(self.rng, (idx.size, self.n_items),
+                                         self.size_lo, self.size_hi,
+                                         self.classes)
+            self.length[idx] = self.n_items
         self._set_side(self.seq)
         self.head[idx] = 0
         self.done[idx] = False
@@ -388,7 +435,7 @@ class BPPBatch:
     def window(self):
         """(B, nb, 4) observable items -- (sx, sy, sz, type_id) -- and validity."""
         off = self.head[:, None] + np.arange(self.nb)[None, :]
-        valid = off < self.n_items
+        valid = off < self.length[:, None]
         items = self.seq[self._ar[:, None], np.minimum(off, self.n_items - 1)]
         return np.where(valid[..., None], items, 0), valid
 
@@ -428,7 +475,7 @@ class BPPBatch:
         win, valid = self.window()
         k = min(self.n_pick, self.nb)
         out = np.zeros((self.n_env, self.nb), bool)
-        alive = ~self.done & (self.head < self.n_items)
+        alive = ~self.done & (self.head < self.length)
         for i in range(k):
             dims, types = win[:, i, :3], win[:, i, 3]
             # an invalid slot is zero-sized, and a zero side would index
@@ -762,7 +809,7 @@ class BPPBatch:
         # built by concatenating these onto float32 coordinates, and a wider
         # integer would promote the whole block to float64 and hand the first
         # linear layer a dtype it does not have weights for
-        row = self.seq[self._ar, np.minimum(self.head, self.n_items - 1)]
+        row = self.seq[self._ar, np.minimum(self.head, self.length - 1)]
         return row[:, :3], row[:, 3]
 
     def _positions(self):
@@ -778,7 +825,7 @@ class BPPBatch:
                 f = f & (item[:, 0] != item[:, 1])[:, None, None]
             feas.append(f); zs.append(z); tu.append(self._type_under(d, z))
         feas = np.stack(feas, 1)                      # (n, R, Lx, Ly)
-        alive = ~self.done & (self.head < self.n_items)
+        alive = ~self.done & (self.head < self.length)
         feas &= alive[:, None, None, None]
         self._pos_cache = (feas, np.stack(zs, 1), np.stack(orients, 1),
                            np.stack(tu, 1))
@@ -805,7 +852,7 @@ class BPPBatch:
             if r:
                 f = f & (item[:, 0] != item[:, 1])[:, None, None]
             free |= f.any((1, 2))
-        return free & (self.head < self.n_items) & (self.n_feasible() == 0)
+        return free & (self.head < self.length) & (self.n_feasible() == 0)
 
     # ------------------------------------------------------------ observation
     def _trim_c(self):
@@ -935,7 +982,7 @@ class BPPBatch:
         reward = (vol / self.bin_vol) * alive
         # terminate when the new leading item has nowhere to go
         self.done |= ~alive
-        self.done |= self.head >= self.n_items
+        self.done |= self.head >= self.length
         self.done |= self.n_feasible() == 0
         return reward.astype(np.float32), self.done.copy()
 

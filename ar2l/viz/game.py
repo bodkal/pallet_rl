@@ -28,6 +28,13 @@ of you - which is the whole point of AR2L: a policy is only as good as its
 worst ordering.  The instance is then handed to the opponent (any trained run,
 or a heuristic) and the two bins are scored side by side.
 
+The boxes come from the random generator (the `types:` size classes), or from
+an orders file -- the real pallets of `ar2l.orders`, read with the same
+`pallet_cm` / `cell_cm` / `box_scale` / `box_round` as training and
+evaluation, one pallet per game (a chosen one, or one dealt by the seed), its
+box order randomised by `order_random`.  A run trained on a data file presets
+the form to that file and those settings.
+
 The result screen can then recalculate: the same boxes in the same order, the
 agent replayed under parameters you edit, one row per setting.  The three
 fields that feed the draw itself - `n_items`, `size_lo`, `size_hi` - are held
@@ -50,6 +57,8 @@ import numpy as np
 
 from ..config import CFG
 from ..env import BPPBatch, TYPE_FLOOR, sample_items, type_classes
+from ..orders import (ROUNDING, box_divisor, load_orders, orders_bin,
+                      randomize_order)
 from . import agents as A
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -61,17 +70,30 @@ DEVICE = 'cuda'
 #: what the command line pinned, which then overrides config.yaml in the form
 CLI: dict = {}
 
-#: the editable fields, and the three that are per-axis triples
-PARAM_KEYS = ('bin', 'n_items', 'size_lo', 'size_hi', 'nb', 'n_pick',
-              'max_l', 'rot', 'ems', 'stability', 'min_support',
-              'n_types', 'type_constraint')
+#: the editable geometry and rule fields, and the three that are per-axis
+#: triples; `PARAM_KEYS` adds where the boxes come from, below
+GAME_KEYS = ('bin', 'n_items', 'size_lo', 'size_hi', 'nb', 'n_pick',
+             'max_l', 'rot', 'ems', 'stability', 'min_support',
+             'n_types', 'type_constraint')
 TRIPLES = ('bin', 'size_lo', 'size_hi')
 
+#: where the boxes come from: the generator, or a file of real pallets and how
+#: it is read.  In `orders` mode the bin (when `pallet_cm` is set), the item
+#: bounds and `n_items` are derived from the data rather than typed in.
+SOURCE_KEYS = ('source', 'data', 'pallet', 'cell_cm', 'pallet_cm',
+               'box_scale', 'box_round', 'order_random')
+#: what a run's own configuration fixes about its data -- the pallet picked
+#: and the order shuffle are the game's choice, not the run's
+RUN_SOURCE_KEYS = ('source', 'data', 'cell_cm', 'pallet_cm', 'box_scale',
+                   'box_round')
 #: the three that feed `sample_items`, and so fix the box stream a session was
-#: dealt.  A recalculation holds them at the values the game was played under
-#: -- move one and the same seed deals a *different* sequence, so the rerun
-#: would no longer be about the parameter that was changed.
-STREAM_KEYS = ('n_items', 'size_lo', 'size_hi', 'n_types')
+#: dealt, plus everything that picks and reads a data file.  A recalculation
+#: holds them at the values the game was played under -- move one and the same
+#: seed deals a *different* sequence, so the rerun would no longer be about the
+#: parameter that was changed.
+STREAM_KEYS = ('n_items', 'size_lo', 'size_hi', 'n_types') + SOURCE_KEYS
+#: every field the form carries
+PARAM_KEYS = GAME_KEYS + SOURCE_KEYS
 #: everything else: geometry and rules, which the stream is indifferent to
 RECALC_KEYS = tuple(k for k in PARAM_KEYS if k not in STREAM_KEYS)
 
@@ -81,6 +103,53 @@ RECALC_KEYS = tuple(k for k in PARAM_KEYS if k not in STREAM_KEYS)
 MAX_AXIS = 200
 MAX_NB = 60
 MAX_ITEMS = 5000
+
+#: loaded data files, keyed by everything that changes what is read from one
+_DATA: dict = {}
+
+
+def data_path(path):
+    """A data file the page named, resolved against the project root."""
+    q = os.path.normpath(os.path.join(ROOT, os.path.expanduser(str(path))))
+    if not q.lower().endswith(('.csv', '.npy')):
+        raise ValueError(f'a data file is an orders .csv or an instance .npy, '
+                         f'got {path!r}')
+    if not os.path.isfile(q):
+        raise ValueError(f'no such data file: {path}')
+    return q
+
+
+def load_data(p):
+    """-> (table, ids, bin) for an `orders` parameter set; cached.
+
+    The bin is `pallet_cm` in cells when that is set, the form's own bin
+    otherwise; a `.npy` is already in cells and ignores the CSV settings.
+    """
+    q = data_path(p['data'])
+    csv = q.lower().endswith('.csv')
+    S = (tuple(orders_bin(p['pallet_cm'], p['cell_cm']))
+         if csv and p['pallet_cm'] else tuple(p['bin']))
+    key = (q, os.path.getmtime(q), S, p['rot'],
+           (p['cell_cm'], p['box_scale'], p['box_round']) if csv else None)
+    if key not in _DATA:
+        if csv:
+            tbl, ids = load_orders(q, p['cell_cm'], S, rot=p['rot'],
+                                   box_scale=p['box_scale'],
+                                   box_round=p['box_round'])
+        else:
+            tbl = np.load(q)
+            ids = [str(i) for i in range(len(tbl))]
+        while len(_DATA) > 8:
+            _DATA.pop(next(iter(_DATA)))
+        _DATA[key] = (np.asarray(tbl), ids, S)
+    return _DATA[key]
+
+
+def fits(box, S, rot):
+    """Does a (sx, sy, sz) box fit bin S in some allowed orientation?"""
+    sx, sy, sz = (int(v) for v in box[:3])
+    flat = (sx <= S[0] and sy <= S[1]) or (rot >= 2 and sy <= S[0] and sx <= S[1])
+    return flat and sz <= S[2]
 
 
 # --------------------------------------------------------------- parameters
@@ -100,6 +169,16 @@ def defaults():
          'min_support': float(e['min_support']),
          'n_types': int(e['n_types']),
          'type_constraint': int(e['type_constraint'])}
+    ev = CFG['eval']
+    p.update({'source': 'orders' if t.get('data') else 'random',
+              'data': str(t.get('data') or ''),
+              'pallet': -1,                    # -1: the seed deals one
+              'cell_cm': float(ev['cell_cm']),
+              'pallet_cm': (None if ev['pallet_cm'] is None
+                            else [float(v) for v in ev['pallet_cm']]),
+              'box_scale': float(ev['box_scale']),
+              'box_round': str(ev['box_round']),
+              'order_random': float(ev['order_random'])})
     p.update(CLI)
     return p
 
@@ -148,6 +227,18 @@ def run_params(spec):
     # a run trained before --n_pick existed recorded `null`, i.e. the whole
     # window was within reach
     p['n_pick'] = int(a['n_pick'] or p['nb'])
+    # the data it was trained on, read the way it was read.  A run trained on
+    # the generator keeps whatever source the form had: which boxes to play is
+    # the game's question, and resetting it to the generator on every
+    # opponent change would throw away the file you chose.  The drift check
+    # still says it was trained on random boxes.
+    if a.get('data'):
+        p['source'] = 'orders'
+        p['data'] = a['data']
+        for k in ('cell_cm', 'box_scale', 'box_round'):
+            if a.get(k) is not None:
+                p[k] = a[k]
+        p['pallet_cm'] = a.get('pallet_cm')
     # A flag on the command line outranks the run, as it outranks config.yaml
     # everywhere else here; without this the preset would silently undo it the
     # moment an opponent was chosen, which is every time.  The field is then
@@ -211,6 +302,47 @@ def validate(raw):
     p['n_types'] = whole('n_types', 1, 16, 'box types')
     p['type_constraint'] = whole('type_constraint', 0, 1, 'stacking rule')
 
+    # ---- where the boxes come from ----------------------------------------
+    src = str(raw.get('source', p['source']))
+    if src not in ('random', 'orders'):
+        err.append(f"box source: expected 'random' or 'orders', got {src!r}")
+    else:
+        p['source'] = src
+    p['data'] = str(raw.get('data', p['data']) or '').strip()
+    p['pallet'] = whole('pallet', -1, 1 << 30, 'pallet')
+    for k, lo, hi, what in (('cell_cm', 1e-3, 1e3, 'cell size (cm)'),
+                            ('order_random', 0.0, 1.0, 'order randomness')):
+        try:
+            v = float(raw.get(k, p[k]))
+            if not lo <= v <= hi:
+                raise ValueError
+            p[k] = v
+        except (TypeError, ValueError):
+            err.append(f'{what}: expected a number between {lo:g} and {hi:g}')
+    try:
+        p['box_scale'] = float(raw.get('box_scale', p['box_scale']))
+        box_divisor(p['box_scale'])
+    except (TypeError, ValueError):
+        err.append('box scale: 0 (sizes as in the file) or a number >= 1 '
+                   'to divide every side by')
+    r = str(raw.get('box_round', p['box_round']))
+    if r not in ROUNDING:
+        err.append(f'box rounding: one of {", ".join(sorted(ROUNDING))}, got {r!r}')
+    else:
+        p['box_round'] = r
+    pc = raw.get('pallet_cm', p['pallet_cm'])
+    if pc in (None, '', [], [None, None, None]):
+        p['pallet_cm'] = None
+    else:
+        try:
+            pc = [float(v) for v in pc]
+            if len(pc) != 3 or min(pc) <= 0:
+                raise ValueError
+            p['pallet_cm'] = pc
+        except (TypeError, ValueError):
+            err.append('pallet (cm): three positive numbers, or empty to use '
+                       'the bin in cells')
+
     s = str(raw.get('stability', p['stability']))
     if s not in ('com', 'cdrl'):
         err.append(f"stability rule: expected 'com' or 'cdrl', got {s!r}")
@@ -225,11 +357,16 @@ def validate(raw):
         err.append('support floor: expected a fraction between 0 and 1')
 
     # ---- the combinations, once every field is individually sane -----------
+    orders = p['source'] == 'orders'
+    if orders and not err:
+        err += derive_orders(p)
     if p['n_pick'] > p['nb']:
         err.append(f"reach k = {p['n_pick']} is larger than the window "
                    f"N_B = {p['nb']}: you cannot reach a box you cannot see")
     for ax, (lo, hi, L) in enumerate(zip(p['size_lo'], p['size_hi'], p['bin'])):
         n = 'xyz'[ax]
+        if orders:
+            break          # real boxes are checked one by one, turned if need be
         if lo > hi:
             err.append(f'item side {n}: the smallest ({lo}) is above the '
                        f'largest ({hi})')
@@ -245,16 +382,80 @@ def validate(raw):
     return p, err
 
 
+def derive_orders(p, table=True):
+    """Fill the fields an orders file fixes, in place.  -> errors.
+
+    The bin (when `pallet_cm` is set), the item-side envelope and `n_items`
+    come from the data, so the form cannot claim a stream the file does not
+    hold.  `table=False` is a recalculation: the session's pallet is already
+    dealt, so only the bin can move and nothing is re-read.
+    """
+    if not p['data']:
+        return ['box source is an orders file, but no data file is given']
+    try:
+        tbl, ids, S = load_data(p)
+    except (OSError, ValueError) as e:
+        return [str(e)]
+    p['bin'] = list(S)
+    if not -1 <= p['pallet'] < len(tbl):
+        return [f"pallet: the file holds {len(tbl)} pallets (0 to "
+                f"{len(tbl) - 1}, or -1 for one dealt by the seed), got "
+                f"{p['pallet']}"]
+    real = tbl[..., 0] > 0
+    boxes = tbl[real]
+    p['size_lo'] = boxes[:, :3].min(0).astype(int).tolist()
+    p['size_hi'] = boxes[:, :3].max(0).astype(int).tolist()
+    p['n_items'] = int(real.sum(1).max())
+    if p['pallet'] >= 0:
+        p['n_items'] = int(real[p['pallet']].sum())
+    t = int(boxes[:, 3].max())
+    if t >= p['n_types']:
+        return [f"the data has box type {t}, but box types is "
+                f"{p['n_types']}; raise it to at least {t + 1}"]
+    return []
+
+
+def pallet_list(p):
+    """The pallets of an orders parameter set, for the page's picker."""
+    try:
+        tbl, ids, _ = load_data(p)
+    except (OSError, ValueError):
+        return []
+    n = (tbl[..., 0] > 0).sum(1)
+    return [{'i': i, 'id': ids[i], 'boxes': int(n[i])} for i in range(len(ids))]
+
+
+def compared_keys(p):
+    """What a run's configuration is compared on for this parameter set.
+
+    With an orders file the item bounds and `n_items` are the file's, not
+    settings, and the file itself (and how it is read) is compared instead.
+    """
+    if p['source'] == 'orders':
+        return tuple(k for k in GAME_KEYS
+                     if k not in ('size_lo', 'size_hi', 'n_items')) + RUN_SOURCE_KEYS
+    return GAME_KEYS + ('source',)
+
+
 def diff_params(p, want, keys=PARAM_KEYS):
     """Which of `keys` differ between two parameter sets, formatted for the page."""
     out = []
     for k in keys:
         a, b = p[k], want[k]
-        if isinstance(a, list):
+        if isinstance(a, list) and isinstance(b, (list, tuple)):
             a, b = list(a), list(b)
+        if k == 'data' and a and b:
+            try:                        # the same file, however it is spelled
+                a, b = data_path(a), data_path(b)
+            except ValueError:
+                pass
         if a != b:
-            fmt = (lambda v: 'x'.join(map(str, v))) if isinstance(a, list) else str
-            out.append({'key': k, 'is': fmt(a), 'was': fmt(b)})
+            fmt = (lambda v: 'x'.join(f'{t:g}' if isinstance(t, float) else str(t)
+                                      for t in v)
+                   if isinstance(v, (list, tuple)) else
+                   ('none' if v is None else f'{v:g}' if isinstance(v, float)
+                    else str(v)))
+            out.append({'key': k, 'is': fmt(p[k]), 'was': fmt(want[k])})
     return out
 
 
@@ -262,7 +463,11 @@ def mismatch(p, spec):
     """Which fields `p` moved away from the run behind `spec`."""
     if not spec or spec in ('none', 'random') or spec.startswith('heur:'):
         return []
-    return diff_params(p, run_params(spec))
+    want = run_params(spec)
+    info = A.run_info(spec.split(':')[1])
+    if info is not None and not info['args'].get('data'):
+        want['source'] = 'random'      # what it was trained on, for the drift
+    return diff_params(p, want, compared_keys(p))
 
 
 # -------------------------------------------------------------------- board
@@ -449,11 +654,33 @@ def advance(st):
     snapshot(st)
 
 
+def deal_pallet(p, seed):
+    """-> (seq, pallet index, pallet id): one pallet of the file, reordered.
+
+    `pallet = -1` lets the seed pick it, so "replay this exact instance"
+    deals the same pallet in the same order again.
+    """
+    tbl, ids, _ = load_data(p)
+    rng = np.random.default_rng(seed)
+    i = int(rng.integers(len(tbl))) if p['pallet'] < 0 else int(p['pallet'])
+    L = int((tbl[i, :, 0] > 0).sum())
+    seq = randomize_order(tbl[i:i + 1], p['order_random'], rng)[0, :L]
+    return seq, i, ids[i]
+
+
 def new_game(seed, attacker_spec, params, human_pick=True):
     att, alabel, _ = A.load_attacker(attacker_spec, DEVICE)
-    p = params
-    seq = sample_items(np.random.default_rng(seed), (p['n_items'],),
-                       p['size_lo'], p['size_hi'], stream_classes(p))
+    p = dict(params)
+    pid = None
+    if p['source'] == 'orders':
+        seq, p['pallet'], pid = deal_pallet(p, seed)
+        # the game is this pallet: its length, and the bounds of its own boxes
+        p['n_items'] = len(seq)
+        p['size_lo'] = seq[:, :3].min(0).astype(int).tolist()
+        p['size_hi'] = seq[:, :3].max(0).astype(int).tolist()
+    else:
+        seq = sample_items(np.random.default_rng(seed), (p['n_items'],),
+                           p['size_lo'], p['size_hi'], stream_classes(p))
     env = BPPBatch(1, S=p['bin'], nb=p['nb'], n_items=p['n_items'],
                    size_lo=p['size_lo'], size_hi=p['size_hi'],
                    max_l=p['max_l'], rot=p['rot'], ems=p['ems'],
@@ -462,6 +689,7 @@ def new_game(seed, attacker_spec, params, human_pick=True):
                    type_constraint=bool(p['type_constraint']))
     env.reset(seq[None])
     st = {'env': env, 'seq': seq, 'p': p, 'att': att, 'alabel': alabel,
+          'pallet_id': pid,
           'human_pick': bool(human_pick) and p['n_pick'] > 1,
           'promoted': None, 'opp_spec': None, 'opp': None}
     gid = uuid.uuid4().hex[:12]
@@ -549,7 +777,21 @@ def recalc_params(st, raw):
     p = dict(st['p'])
     p.update({k: raw[k] for k in RECALC_KEYS if k in raw})
     p.update({k: st['p'][k] for k in STREAM_KEYS})
-    return validate(p)
+    if p['source'] != 'orders':
+        return validate(p)
+    # the pallet is dealt and fixed; the rerun may move the bin but must not
+    # re-derive it from the file, so it is checked as the generator's is,
+    # against the boxes that will actually be played
+    p = dict(p, source='random')
+    q, err = validate(p)
+    q.update({k: st['p'][k] for k in STREAM_KEYS})
+    err = [e for e in err if not e.startswith('largest item side')]
+    bad = [b for b in st['seq'] if not fits(b, q['bin'], q['rot'])]
+    if bad:
+        err.append(f"{len(bad)} of this pallet's boxes do not fit a "
+                   f"{'x'.join(map(str, q['bin']))} bin, the first "
+                   f"{'x'.join(map(str, bad[0][:3].tolist()))}")
+    return q, err
 
 
 def recalc(st, spec, p):
@@ -627,6 +869,9 @@ class Handler(BaseHTTPRequestHandler):
         if p == '/api/check':
             params, err = validate(body.get('params'))
             return self._json({'params': params, 'errors': err,
+                               'pallets': (pallet_list(params)
+                                           if params['source'] == 'orders'
+                                           and not err else []),
                                'mismatch': mismatch(params, body.get('opponent')),
                                'att_mismatch': mismatch(params, body.get('attacker'))})
         if p == '/api/new':
@@ -636,7 +881,7 @@ class Handler(BaseHTTPRequestHandler):
             gid, st = new_game(body.get('seed', 0), body.get('attacker'),
                                params, body.get('human_pick', True))
             return self._json({'gid': gid, 'board': board(st),
-                               'params': params,
+                               'params': st['p'], 'pallet_id': st['pallet_id'],
                                'promoted': st['promoted'], 'alabel': st['alabel']})
         st = _GAMES.get(body.get('gid'))
         if st is None:

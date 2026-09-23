@@ -201,7 +201,7 @@ def play(seq, policy, attacker=None, nb=1, S=10, stability="com", record=True,
         rec = None
         if record:
             k = int(o["l_mask"][0].sum())
-            item = env.seq[0, min(int(env.head[0]), env.n_items - 1)]
+            item = env.seq[0, min(int(env.head[0]), int(env.length[0]) - 1)]
             rec = {
                 "t": len(trace),
                 "hmap": env.hmap[0].copy(),

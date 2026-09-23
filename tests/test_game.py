@@ -13,7 +13,7 @@ from ar2l.viz import game as G
 
 BASE = {"bin": [12, 12, 14], "size_lo": [2, 2, 2], "size_hi": [5, 5, 5],
         "n_items": 40, "nb": 6, "n_pick": 3, "max_l": 64, "rot": 2, "ems": 1,
-        "stability": "com", "min_support": 0.3}
+        "stability": "com", "min_support": 0.3, "source": "random"}
 
 
 def start(**over):
@@ -80,11 +80,23 @@ def test_the_parameters_reach_the_simulator():
 def test_drift_from_the_run_is_reported_field_by_field():
     if not _has("sel_2cm_k5"):
         pytest.skip("no runs/ checkpoints")
-    p = G.run_params("run:sel_2cm_k5")
+    # the run's own values, on the random boxes it was trained on
+    p = dict(G.run_params("run:sel_2cm_k5"), source="random")
     assert G.mismatch(p, "run:sel_2cm_k5") == []
     off = {m["key"] for m in G.mismatch(dict(p, nb=99, bin=[1, 2, 3]),
                                         "run:sel_2cm_k5")}
     assert off == {"nb", "bin"}
+    # the preset leaves the box source to the form, and playing a file with a
+    # generator-trained run is drift like any other
+    for src in ("random", "orders"):
+        G.CLI["source"] = src
+        try:
+            assert G.run_params("run:sel_2cm_k5")["source"] == src
+        finally:
+            G.CLI.pop("source")
+    assert {m["key"] for m in G.mismatch(dict(p, source="orders",
+                                              data="data/orders_all.csv"),
+                                         "run:sel_2cm_k5")} >= {"source"}
 
 
 # ----------------------------------------------------------- pick station
@@ -238,3 +250,110 @@ def test_a_recalculation_plays_the_model_it_was_handed():
     assert labels == {"DBL", "LSAH"}
     # and the session's own cached opponent is untouched by any of it
     assert st["opp_spec"] is None
+
+
+# ------------------------------------------------------------ orders files
+def orders_csv(tmp_path, rows=None):
+    rows = rows or ["A,1,24,14,12,0", "A,2,16,12,10,1", "A,3,20,16,10,2",
+                    "B,1,30,20,20,2", "B,2,24,14,12,0",
+                    "C,1,10,10,10,1", "C,2,12,10,8,1", "C,3,14,10,6,0",
+                    "C,4,8,8,8,2"]
+    p = tmp_path / "orders.csv"
+    p.write_text("pallet_id,seq,length_cm,width_cm,height_cm,type\n"
+                 + "\n".join(rows) + "\n")
+    return str(p)
+
+
+ORD = dict(BASE, source="orders", pallet=-1, cell_cm=2.0,
+           pallet_cm=[60, 50, 80], box_scale=0, box_round="up",
+           order_random=0.0, n_types=3, type_constraint=1)
+
+
+def test_an_orders_file_fixes_the_bin_the_bounds_and_the_length(tmp_path):
+    p, err = G.validate(dict(ORD, data=orders_csv(tmp_path)))
+    assert not err, err
+    assert p["bin"] == [30, 25, 40]                  # 60 x 50 x 80 cm in 2 cm cells
+    assert p["size_lo"] == [4, 4, 3] and p["size_hi"] == [15, 10, 10]
+    assert p["n_items"] == 4                         # the longest pallet
+    assert [q["id"] for q in G.pallet_list(p)] == ["A", "B", "C"]
+    p, _ = G.validate(dict(ORD, data=orders_csv(tmp_path), pallet=1))
+    assert p["n_items"] == 2
+
+
+def test_the_game_is_the_chosen_pallet_in_its_own_order(tmp_path):
+    p, _ = G.validate(dict(ORD, data=orders_csv(tmp_path), pallet=2))
+    gid, st = G.new_game(0, "none", p, human_pick=True)
+    assert st["pallet_id"] == "C" and st["p"]["n_items"] == 4
+    assert st["seq"].tolist() == [[5, 5, 5, 1], [6, 5, 4, 1], [7, 5, 3, 0],
+                                  [4, 4, 4, 2]]
+    assert st["env"].n_items == 4 and st["env"].length[0] == 4
+
+
+def test_a_random_pallet_is_dealt_by_the_seed(tmp_path):
+    p, _ = G.validate(dict(ORD, data=orders_csv(tmp_path), order_random=1.0))
+    a = G.new_game(5, "none", p)[1]
+    b = G.new_game(5, "none", p)[1]
+    assert a["pallet_id"] == b["pallet_id"] and (a["seq"] == b["seq"]).all()
+    seen = {G.new_game(s, "none", p)[1]["pallet_id"] for s in range(30)}
+    assert seen == {"A", "B", "C"}
+    # the order shuffle keeps the pallet's boxes
+    tbl, ids, _ = G.load_data(p)
+    i = ids.index(a["pallet_id"])
+    L = len(a["seq"])
+    assert sorted(map(tuple, a["seq"])) == sorted(map(tuple, tbl[i, :L]))
+
+
+@pytest.mark.parametrize("over, why", [
+    ({"data": ""}, "no data file"),
+    ({"data": "no/such.csv"}, "no such data file"),
+    ({"data": "config.yaml"}, ".csv"),
+    ({"pallet": 7}, "holds 3 pallets"),
+    ({"pallet_cm": [20, 20, 20]}, "does not fit"),
+    ({"n_types": 2}, "box type 2"),
+    ({"box_round": "sideways"}, "box rounding"),
+    ({"box_scale": 0.5}, "box scale"),
+    ({"order_random": 2}, "order randomness"),
+    ({"source": "elsewhere"}, "box source"),
+])
+def test_an_orders_game_refuses_what_it_could_not_play(tmp_path, over, why):
+    raw = dict(ORD, data=orders_csv(tmp_path))
+    raw.update(over)
+    _, err = G.validate(raw)
+    assert err and any(why in e for e in err), (over, err)
+
+
+def test_an_orders_game_plays_through_and_the_agent_gets_the_same_boxes(tmp_path):
+    p, _ = G.validate(dict(ORD, data=orders_csv(tmp_path), pallet=0))
+    gid, st = G.new_game(0, "none", p)
+    b = G.board(st)
+    while not b["done"]:
+        r, x, y = np.argwhere(np.array(b["free"]))[0]      # (orientation, x, y)
+        assert G.place(st["env"], int(r), int(x), int(y))
+        G.advance(st)
+        b = G.board(st)
+    assert b["items"] == 3                     # every box of pallet A fits
+    out = G.opponent(st, "heur:dbl")
+    assert out["items"] == 3
+
+
+def test_an_orders_recalc_holds_the_pallet_but_may_move_the_bin(tmp_path):
+    p, _ = G.validate(dict(ORD, data=orders_csv(tmp_path), pallet=1))
+    st = G.new_game(0, "none", p)[1]
+    q, err = G.recalc_params(st, {"bin": [30, 25, 30], "data": "other.csv",
+                                  "pallet": 0})
+    assert not err, err
+    assert q["bin"] == [30, 25, 30]
+    assert q["data"] == p["data"] and q["pallet"] == 1        # held
+    _, err = G.recalc_params(st, {"bin": [10, 10, 10]})
+    assert err and "do not fit" in err[-1]
+
+
+def test_drift_is_judged_on_the_data_and_how_it_is_read(tmp_path):
+    p, _ = G.validate(dict(ORD, data=orders_csv(tmp_path)))
+    keys = G.compared_keys(p)
+    assert "box_scale" in keys and "data" in keys and "size_hi" not in keys
+    assert "pallet" not in keys and "order_random" not in keys
+    want = dict(p, box_scale=2.0)
+    assert [d["key"] for d in G.diff_params(p, want, keys)] == ["box_scale"]
+    # and the generator is not judged on file settings it never reads
+    assert "box_scale" not in G.compared_keys(dict(p, source="random"))
