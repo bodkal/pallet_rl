@@ -1,0 +1,6 @@
+[q_base] it    100  util 40.90%  items 16.32   528.1 ms/it
+[q_base] it    200  util 41.87%  items 16.10   565.9 ms/it
+[q_base] it    300  util 44.33%  items 17.23   597.1 ms/it
+[q_base] it    400  util 42.57%  items 16.39   612.1 ms/it
+[q_base] it    500  util 42.70%  items 16.75   622.1 ms/it
+[q_base] it    600  util 41.75%  items 16.63   628.3 ms/it

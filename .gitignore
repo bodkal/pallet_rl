@@ -1,4 +1,8 @@
 __pycache__/
 *.pyc
 runs/
-runs_*.log
+old_run/runs_norot/
+old_run/runs_nosupport/
+data/*.npy
+results/replays/
+results/heatmaps/
