@@ -246,7 +246,7 @@ def make_env(args, seed, pool=None):
     return BPPBatch(args.n_env, S=args.bin, nb=args.nb, n_items=args.n_items,
                     size_lo=args.size_lo, seed=seed,
                     max_l=args.max_l, stability=args.stability,
-                    ems=bool(args.ems), rot=args.rot, max_c=args.max_c,
+                    ems=args.ems, rot=args.rot, max_c=args.max_c,
                     min_support=args.min_support, n_pick=args.n_pick,
                     n_types=args.n_types,
                     type_constraint=bool(args.type_constraint), **kw)
@@ -629,8 +629,9 @@ def get_parser():
                         "stacked on any other")
     p.add_argument("--type_embed", type=int, default=m["type_embed"],
                    help="width of the trainable box-type embedding")
-    p.add_argument("--ems", type=int, default=e["ems"],
-                   help="0 scores every loading position instead of EMS corners")
+    p.add_argument("--ems", type=int, choices=(0, 1, 2, 3), default=e["ems"],
+                   help="candidate filter: 0 every loading position, 1 EMS "
+                        "corners, 2 height-map corner cells, 3 EMS | corner")
     p.add_argument("--eval_every", type=int, default=r["eval_every"])
     p.add_argument("--eval_inst", type=int, default=r["eval_inst"])
     p.add_argument("--log_every", type=int, default=r["log_every"])

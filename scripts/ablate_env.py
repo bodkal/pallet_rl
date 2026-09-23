@@ -7,6 +7,7 @@ The six heuristics never train, so running them under each combination of
 
     rot   1 = the item is offered in one orientation, 2 = also yawed 90 deg
     ems   1 = candidates are the bottom corners of the empty maximal spaces,
+          2 = the corner cells of the height map, 3 = both,
           0 = every loading position on the grid is a candidate
 
 separates what the action space is worth from what the policy is worth.  The
@@ -29,7 +30,7 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 # AR2L Table 1, beta = 0 column: (utilisation, items)
 PAPER = {"dbl": (63.6, 25.8), "bmf": (62.0, 24.8), "lsah": (60.9, 24.6),
          "onlinebph": (64.1, 25.8), "hmm": (56.1, 22.6), "macs": (53.0, 21.5)}
-CONFIGS = [(1, 1), (2, 1), (1, 0), (2, 0)]
+CONFIGS = [(1, 1), (2, 1), (1, 0), (2, 0), (2, 2), (2, 3)]
 
 
 def play(name, rot, ems, n, seed, batch=128):
@@ -38,7 +39,7 @@ def play(name, rot, ems, n, seed, batch=128):
         # The paper's Table 1 is an untyped problem, so the column printed
         # alongside is only a target if the bins here are untyped too.
         env = BPPBatch(min(batch, n - s), nb=1, seed=seed + s, rot=rot,
-                       ems=bool(ems), n_types=1, types=False)
+                       ems=ems, n_types=1, types=False)
         while not env.done.all():
             env.step(act(env, name))
         u.append(env.utilization()); k.append(env.n_packed)

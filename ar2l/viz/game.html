@@ -136,6 +136,10 @@ table.rc th:first-child,table.rc td:first-child{padding-left:0}
 table.rc th:nth-child(2),table.rc td:nth-child(2){width:99%;white-space:normal}
 table.rc tr:last-child td{border-bottom:0}
 table.rc tr.base td{color:var(--dim)}
+/* a rerun row is clicked to show it in 3D; the one on show is tinted */
+table.rc tr.view{cursor:pointer}
+table.rc tr.view:hover td{background:color-mix(in srgb,var(--c0) 6%,transparent)}
+table.rc tr.pick td{background:color-mix(in srgb,var(--c0) 13%,transparent)}
 table.rc .d{font-size:11px}
 .up{color:var(--c2)}.down{color:var(--c3)}
 .warn{color:var(--c1)}
@@ -220,6 +224,8 @@ table.rc .d{font-size:11px}
             <option value="2">2 &mdash; also yawed 90&deg;</option></select></div>
           <div class="pf"><span>the packer's action space</span><select id="ems">
             <option value="1">EMS corners</option>
+            <option value="2">corner cells</option>
+            <option value="3">EMS corners + corner cells</option>
             <option value="0">every loading position</option></select></div>
           <div class="pf"><span>stability rule</span><select id="stab">
             <option value="com">com &mdash; area + centre of mass</option>
@@ -382,6 +388,8 @@ table.rc .d{font-size:11px}
           <option value="2">2 &mdash; also yawed 90&deg;</option></select></div>
         <div class="pf"><span>the packer's action space</span><select id="rcems">
           <option value="1">EMS corners</option>
+          <option value="2">corner cells</option>
+          <option value="3">EMS corners + corner cells</option>
           <option value="0">every loading position</option></select></div>
         <div class="pf"><span>stability rule</span><select id="rcstab">
           <option value="com">com &mdash; area + centre of mass</option>
@@ -406,6 +414,24 @@ table.rc .d{font-size:11px}
       <div id="rcerr" class="opt" style="color:var(--c3);white-space:pre-line"></div>
       <div id="rcwarn" class="opt" style="color:var(--c1)"></div>
       <table class="rc" id="rctab" hidden></table>
+      <div id="rc3d" hidden style="margin-top:14px">
+        <div class="sub" style="margin-bottom:6px">Click a row to show it here.
+          Drag either bin to rotate both; double-click resets.</div>
+        <input type="range" id="rcscrub" min="0" max="1" value="1">
+        <div class="sub" id="rcscrublab" style="font-variant-numeric:tabular-nums"></div>
+        <div class="duel" style="margin-top:10px">
+          <div class="side">
+            <h2 style="font-size:11px;color:var(--dim);letter-spacing:.6px;text-transform:uppercase;margin:0 0 8px">This game &mdash; <span id="rcl0"></span></h2>
+            <canvas id="iso-rc0"></canvas>
+            <div class="sub" id="rcs0" style="margin-top:8px"></div>
+          </div>
+          <div class="side">
+            <h2 style="font-size:11px;color:var(--dim);letter-spacing:.6px;text-transform:uppercase;margin:0 0 8px">Row <span id="rcnum"></span> &mdash; <span id="rcl1"></span></h2>
+            <canvas id="iso-rc1"></canvas>
+            <div class="sub" id="rcs1" style="margin-top:8px"></div>
+          </div>
+        </div>
+      </div>
     </details>
   </div>
 
@@ -446,6 +472,10 @@ const PF = {
   box_scale: '#bscale', box_round: '#bround',
 };
 /* how each field reads: the rest are whole numbers */
+/* what each `ems` mode leaves the packer, for the duel's subtitle */
+const EMSTEXT = {1: 'the corners of the empty maximal spaces',
+  2: 'the corner cells of the height map',
+  3: 'the empty-maximal-space corners and the corner cells'};
 const PSTR = new Set(['stability', 'source', 'data', 'box_round']);
 const PFLOAT = new Set(['min_support', 'order_random', 'cell_cm', 'box_scale']);
 /* what an orders file decides, so the form shows it rather than takes it */
@@ -730,6 +760,7 @@ function redrawIsos(){
              // there the per-box hue is what keeps the blocks apart
              types: typed() ? B.placed_types : null});
   if(!$('#result').hidden && RES) drawReplay(parseInt($('#scrub').value,10));
+  if(!$('#result').hidden && RES && RCSEL) drawRcReplay(parseInt($('#rcscrub').value,10));
 }
 function bindRotate(sel){
   const cv = $(sel); if(!cv) return;
@@ -851,8 +882,9 @@ function drawTop(){
   if (B.done) return;
 
   if ($('#hint').checked){
-    // every cell you may click.  Split by colour, the cyan ones are the EMS
-    // corners the packer scores and the purple ones are placements only you
+    // every cell you may click.  Split by colour, the cyan ones are the
+    // candidates the packer scores (whatever `ems` mode filters them down
+    // to) and the purple ones are placements only you
     // can reach - which is most of the board once the bin has some relief.
     // 2px is the readable dot on a big cell and a blot on a 3px one
     const split = $('#showems').checked,
@@ -1135,7 +1167,7 @@ function renderResult(){
       · seed ${SEED} · attacker ${G.alabel}`
     + (h.skipped ? ' · you skipped this one'
        : ` · same instance and same conveyor, but you could use any stable placement`
-         + (p.ems ? ` and ${a.label} only the corners of the empty maximal spaces` : ''))
+         + (p.ems ? ` and ${a.label} only ${EMSTEXT[p.ems]}` : ''))
     + (p.n_pick > 1 && !h.skipped
        ? ` · at the pick station ${B.human_pick ? 'you chose for yourself'
            : 'the box was chosen for you'} and ${a.label} was handed its box by `
@@ -1165,7 +1197,10 @@ function renderResult(){
   $('#rcseq').textContent = p.n_items;
   $('#rcopp').value = OPP;
   RCROWS = [{label: a.label, util: a.util, items: a.items,
-             seconds: a.seconds, changed: [], drift: []}];
+             seconds: a.seconds, changed: [], drift: [],
+             placed: a.placed, placed_types: a.placed_types, params: p}];
+  RCSEL = 0;
+  $('#rc3d').hidden = true;
   writeRecalc(p);
   drawRecalc();
   $('#rcerr').textContent = ''; $('#rcwarn').innerHTML = '';
@@ -1207,6 +1242,7 @@ const RPF = {
   rot: '#rcrot', ems: '#rcems', stability: '#rcstab', min_support: '#rcmsup',
 };
 let RCROWS = [];
+let RCSEL = 0;           // the row shown in 3D beside this game's; 0 = none yet
 
 function readRecalc(){
   const o = {};
@@ -1320,11 +1356,47 @@ function drawRecalc(){
         // every row rather than only when it changes
         const who = i > 0 && r.label === base.label
           ? `<span class="d">${r.label}</span>` : r.label;
-        return `<tr class="${i === 0 ? 'base' : ''}"><td>${who}</td>`
+        const cls = i === 0 ? 'base' : 'view' + (i === RCSEL ? ' pick' : '');
+        return `<tr class="${cls}" data-i="${i}"><td>${who}</td>`
           + `<td>${what}${warn}</td>`
           + `<td><b>${(r.util * 100).toFixed(1)}%</b></td><td>${delta}</td>`
           + `<td>${r.items}</td><td>${r.seconds.toFixed(2)} s</td></tr>`;
       }).join('');
+  t.querySelectorAll('tr.view').forEach(tr =>
+    tr.onclick = () => showRecalc(parseInt(tr.dataset.i, 10)));
+}
+
+/* one rerun in 3D beside the game's own agent, stepped by one shared slider.
+   A row may have been run in another bin, so each side is drawn in its own */
+function showRecalc(i){
+  RCSEL = i;
+  const n = Math.max(RCROWS[0].placed.length, RCROWS[i].placed.length);
+  const sc = $('#rcscrub'); sc.max = n; sc.value = n;
+  $('#rc3d').hidden = false;
+  drawRecalc();
+  drawRcReplay(n);
+}
+
+function drawRcReplay(n){
+  if (!RCSEL || !RCROWS[RCSEL]) return;
+  const sides = [RCROWS[0], RCROWS[RCSEL]];
+  sides.forEach((r, k) => {
+    const pl = r.placed.slice(0, n), [bx, by, bz] = r.params.bin;
+    drawIso($('#iso-rc' + k), pl, bx, by, bz,
+            {highlight: pl.length - 1, height: 290,
+             types: typed() ? r.placed_types : null});
+    $('#rcs' + k).textContent = `${(r.util * 100).toFixed(1)}% filled · `
+      + `${r.items} boxes · ${bx}\u00d7${by}\u00d7${bz} bin`;
+  });
+  $('#rcl0').textContent = sides[0].label;
+  $('#rcnum').textContent = RCSEL;
+  $('#rcl1').textContent = sides[1].label
+    + ((sides[1].changed || []).length ? ' \u00b7 ' + rcsay(sides[1].changed) : '');
+  const [a, b] = sides.map(r => Math.min(n, r.placed.length));
+  $('#rcscrublab').textContent = n === 0 ? 'empty bins \u2014 drag to replay'
+    : `after box ${n}:  this game ${a} placed`
+      + (a < n ? ' (had already stopped)' : '')
+      + `,  row ${RCSEL} ${b} placed` + (b < n ? ' (had already stopped)' : '');
 }
 
 async function recalcRun(){
@@ -1346,7 +1418,7 @@ async function recalcRun(){
     return;
   }
   RCROWS.push(r);
-  drawRecalc();
+  showRecalc(RCROWS.length - 1);
 }
 
 async function fresh(seed, skip){
@@ -1398,9 +1470,15 @@ try {
   if (saved >= 2 && saved <= 48) ZOOM = saved;
 } catch (e) {}
 $('#scrub').oninput = e => drawReplay(parseInt(e.target.value, 10));
+$('#rcscrub').oninput = e => drawRcReplay(parseInt(e.target.value, 10));
+// a closed <details> has no width to draw into, so redraw once it opens
+$('#rcdet').addEventListener('toggle', () => {
+  if ($('#rcdet').open && RCSEL) drawRcReplay(parseInt($('#rcscrub').value, 10));
+});
 addEventListener('resize', () => {
   if (B && !$('#play').hidden) render();
   if (RES && !$('#result').hidden) drawReplay(parseInt($('#scrub').value, 10));
+  if (RES && !$('#result').hidden && RCSEL) drawRcReplay(parseInt($('#rcscrub').value, 10));
 });
 $('#resign').onclick = () => {
   if (!B || B.done) return;
@@ -1409,7 +1487,7 @@ $('#resign').onclick = () => {
 };
 $('#tosetup').onclick = () => { $('#play').hidden = true; $('#setup').hidden = false; };
 $('#back2').onclick = () => { $('#result').hidden = true; $('#setup').hidden = false; };
-['#iso3d', '#iso-h', '#iso-a'].forEach(bindRotate);
+['#iso3d', '#iso-h', '#iso-a', '#iso-rc0', '#iso-rc1'].forEach(bindRotate);
 
 /* every field re-validates on the server, which also reports which of them
    have drifted away from the run being raced */

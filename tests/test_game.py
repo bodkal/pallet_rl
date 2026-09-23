@@ -72,7 +72,7 @@ def test_the_parameters_reach_the_simulator():
     st = start(bin=[9, 11, 13], rot=1, ems=0, stability="cdrl", min_support=0.0)
     env, b = st["env"], G.board(st)
     assert (b["Lx"], b["Ly"], b["Lz"]) == (9, 11, 13)
-    assert b["rot"] == 1 and env.ems is False and env.stability == "cdrl"
+    assert b["rot"] == 1 and env.ems == 0 and env.stability == "cdrl"
     assert b["ncand"] == b["nfree"], "ems off means every free cell is a candidate"
     assert all(2 <= v <= 5 for it in b["window"] for v in it)
 
@@ -157,10 +157,10 @@ def test_a_pick_leaves_the_conveyor_no_shorter_than_it_found_it():
 
 
 def test_free_positions_restores_the_filter_it_borrowed():
-    for ems in (0, 1):
+    for ems in (0, 1, 2, 3):
         st = start(ems=ems)
         G.free_positions(st["env"])
-        assert st["env"].ems is bool(ems)
+        assert st["env"].ems == ems
 
 
 def test_the_bin_is_finished_only_when_every_reachable_box_is_stuck():

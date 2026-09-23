@@ -22,7 +22,7 @@ env:
   max_l: 256             # candidate-list cap (leaf nodes); ~32 are used at p90
   max_c: 128             # initial packed-item capacity; it grows if exceeded
   rot: 2                 # 1 = no rotation, 2 = also yawed 90 degrees
-  ems: 1                 # 0 = score every loading position, not EMS corners
+  ems: 1                 # 0 = every position, 1 = EMS corners, 2 = corner cells, 3 = 1|2
   stability: com         # com = centre of mass over support, cdrl = 60%/4 corners
   # Contact-area floor.  0.70 on this problem leaves a median of 4 legal
   # placements and caps DBL at 18% utilisation; 0.30 costs ~2 points against

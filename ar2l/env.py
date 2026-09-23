@@ -84,6 +84,37 @@ SUPPORT_EPS = 1e-6
 # compared on the area rather than on either side alone.
 EMS_PRUNE_S = 25
 
+# What `ems=` filters the loading positions down to:
+#
+#   0  nothing: every stable position on the grid is a candidate
+#   1  the bottom corners of the empty maximal spaces (PCT / AR2L)
+#   2  corner cells of the height map (`_corner_mask`): the item's footprint
+#      corner sits where it is bounded on one x side and one y side by a wall,
+#      a taller column, or the drop edge of the surface it rests on
+#   3  the union of 1 and 2
+#
+# 1 places items only against walls and taller boxes; over the top of an
+# isolated box its maximal space runs out to the bin walls, so a box stacked
+# exactly on a box is never offered.  2 offers that and costs a few grid
+# comparisons instead of the space enumeration, but misses pockets that are
+# bounded only as a whole space.  `True`/`False` still read as 1/0.
+EMS_OFF, EMS_SPACES, EMS_CORNER, EMS_BOTH = 0, 1, 2, 3
+EMS_NAMES = {"off": EMS_OFF, "ems": EMS_SPACES, "corner": EMS_CORNER,
+             "ems|corner": EMS_BOTH, "both": EMS_BOTH}
+
+
+def ems_mode(v):
+    """`ems=` as one of the four modes: an int 0-3, a bool, or a name."""
+    if isinstance(v, str) and not v.strip().lstrip("-").isdigit():
+        if v.strip().lower() not in EMS_NAMES:
+            raise ValueError(f"ems: expected 0-3 or one of {sorted(EMS_NAMES)}, "
+                             f"got {v!r}")
+        return EMS_NAMES[v.strip().lower()]
+    m = int(v)
+    if not EMS_OFF <= m <= EMS_BOTH:
+        raise ValueError(f"ems: expected 0-3, got {m}")
+    return m
+
 # What `tmap` holds for a column no box has reached yet, and the type a
 # candidate placement on the bin floor reports as the thing underneath it.
 # The floor accepts every type, so it is a type of its own rather than one of
@@ -265,7 +296,7 @@ class BPPBatch:
             size_hi = self.classes[2].max(0)
         self.Lx, self.Ly, self.Lz = _triple(S)
         self.size_lo, self.size_hi = _triple(size_lo), _triple(size_hi)
-        self.n_env, self.nb, self.ems = n_env, nb, bool(ems)
+        self.n_env, self.nb, self.ems = n_env, nb, ems_mode(ems)
         # How many of the `nb` observable items are within the cell's reach.
         # `None` means all of them, which is the unrestricted conveyor the
         # paper assumes; a smaller number splits the window into a pickable
@@ -636,6 +667,49 @@ class BPPBatch:
                 out[env, x, y] = True
         return out
 
+    def _corner_mask(self, dims, z):
+        """(n, Lx, Ly): some corner of the footprint sits in a corner cell.
+
+        A footprint corner at column `c`, facing out along `dx` and `dy`, is
+        bounded on a side when the neighbour `nb` across it is
+
+            contact   taller than the landing height `z` -- a wall or a box
+                      the item's side leans against
+            drop      lower than `z` while `c` itself carries the item -- the
+                      corner lines up with the edge of the surface below,
+                      which is what puts a box exactly on top of a box
+            aligned   (x side only when the y side is in contact, and vice
+                      versa) the wall it leans against ends right there: the
+                      diagonal column is no taller than `z`
+
+        and it is a corner cell when both its x side and its y side are
+        bounded.  The bin wall is a column taller than any `z`.  Stateless, like
+        the EMS list, and item-dependent only through the footprint size and
+        `z`, so it is a handful of gathers over the grid.
+        """
+        Lx, Ly = self.Lx, self.Ly
+        p = np.full((self.n_env, Lx + 2, Ly + 2), self.Lz + 1, np.int32)
+        p[:, 1:-1, 1:-1] = self.hmap
+        ar = self._ar[:, None, None]
+        gx = np.arange(Lx)[None, :, None]
+        gy = np.arange(Ly)[None, None, :]
+        sx, sy = dims[:, 0, None, None], dims[:, 1, None, None]
+        # near and far column of the footprint along each axis, and which way
+        # its outside lies; `+ 1` is the padding
+        xs = ((gx + 1, -1), (np.minimum(gx + sx, Lx), 1))
+        ys = ((gy + 1, -1), (np.minimum(gy + sy, Ly), 1))
+        out = np.zeros((self.n_env, Lx, Ly), bool)
+        for cx, dx in xs:
+            for cy, dy in ys:
+                hc = p[ar, cx, cy]
+                nx, ny, nd = p[ar, cx + dx, cy], p[ar, cx, cy + dy], p[ar, cx + dx, cy + dy]
+                on = hc == z
+                tx, ty = nx > z, ny > z
+                ex = tx | (on & (nx < z)) | (ty & (nd <= z))
+                ey = ty | (on & (ny < z)) | (tx & (nd <= z))
+                out |= ex & ey
+        return out
+
     # --------------------------------------------------------- feasibility
     def _sweeps(self):
         """Height-map sweeps that depend on the bin but not on the item.
@@ -784,8 +858,12 @@ class BPPBatch:
         iny = gy[None, None, :] + sy[:, None, None] <= Ly
         fits = z + sz[:, None, None] <= Lz
         feas = stable & inx & iny & fits
-        if self.ems:
+        if self.ems == EMS_SPACES:
             feas &= self._ems_corners(dims)
+        elif self.ems == EMS_CORNER:
+            feas &= self._corner_mask(dims, z)
+        elif self.ems == EMS_BOTH:
+            feas &= self._ems_corners(dims) | self._corner_mask(dims, z)
         if self.type_constraint and self.n_types > 1 and types is not None:
             feas &= self._type_ok(dims, z, types)
         return feas, z

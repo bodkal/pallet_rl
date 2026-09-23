@@ -535,7 +535,7 @@ comparable to another trained with the same ones.
 | `--n_items` | `150` | items per episode |
 | `--size_lo` / `--size_hi` | `1` / `5` | item side bounds; `--size_hi` also takes `WxLxH` for per-axis caps |
 | `--rot` | `2` | orientations offered: `1` = none, `2` = also yawed 90°. Worth +6.7 points on the heuristics |
-| `--ems` | `1` | `1` = candidates are the empty-maximal-space corners, `0` = every loading position on the grid |
+| `--ems` | `1` | `1` = candidates are the empty-maximal-space corners, `2` = corner cells of the height map (walls, taller boxes, and the edges of box tops), `3` = both, `0` = every loading position on the grid |
 | `--max_l` | `120` | leaf-node cap, the length of the candidate list. Raise it on a large bin if the EMS corners hit it |
 | `--max_c` | `80` | initial packed-item capacity — the packer's memory of the bin. Not a limit: it doubles when a bin holds more |
 | `--stability` | `com` | `com` = centre of mass over the support (the identified rule), `cdrl` = the 60%-area/4-corner rule as the paper's citations write it |

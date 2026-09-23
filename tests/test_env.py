@@ -460,3 +460,101 @@ def test_non_cubic_heuristics_place_legally(L, hi):
             assert (it[:, 1] + it[:, 4] <= env.Ly).all(), (name, L)
             assert (it[:, 2] + it[:, 5] <= env.Lz).all(), (name, L)
         assert env.utilization().mean() > 0
+
+
+def brute_corner_cells(hmap, L, item, Z):
+    """`_corner_mask`, one footprint corner at a time."""
+    Lx, Ly, Lz = L
+    sx, sy = item[0], item[1]
+    wall = Lz + 1
+
+    def h(x, y):
+        return int(hmap[x, y]) if 0 <= x < Lx and 0 <= y < Ly else wall
+
+    m = np.zeros((Lx, Ly), bool)
+    for x in range(Lx - sx + 1):
+        for y in range(Ly - sy + 1):
+            z = int(Z[x, y])
+            for cx, dx in ((x, -1), (x + sx - 1, 1)):
+                for cy, dy in ((y, -1), (y + sy - 1, 1)):
+                    c, nx, ny, nd = (h(cx, cy), h(cx + dx, cy),
+                                     h(cx, cy + dy), h(cx + dx, cy + dy))
+                    ex = nx > z or (c == z and nx < z) or (ny > z and nd <= z)
+                    ey = ny > z or (c == z and ny < z) or (nx > z and nd <= z)
+                    m[x, y] |= ex and ey
+    return m
+
+
+@pytest.mark.parametrize("mode", [E.EMS_CORNER, E.EMS_BOTH])
+@pytest.mark.parametrize("L,hi", [((10, 10, 10), 5)] + ODD_BINS[:3])
+def test_corner_modes_match_brute_force(mode, L, hi):
+    rng = np.random.default_rng(7)
+    env = plain(6, S=L, nb=1, seed=13, size_lo=1, size_hi=hi, n_items=200,
+                ems=mode)
+    checked = 0
+    for _ in range(25):
+        feas, z, odims, _ = env._positions()
+        for b in range(env.n_env):
+            if env.done[b]:
+                continue
+            ems = brute_ems(env.hmap[b], extents(env))
+            for r in range(odims.shape[1]):
+                item = odims[b, r]
+                ref, Zr = brute(env.hmap[b], item, extents(env), "com",
+                                env.min_support)
+                keep = brute_corner_cells(env.hmap[b], extents(env), item, Zr)
+                if mode == E.EMS_BOTH:
+                    keep |= brute_corners(ems, extents(env), item)
+                ref &= keep
+                if r and odims[b, 0, 0] == odims[b, 0, 1]:
+                    ref = np.zeros_like(ref)
+                assert (ref == feas[b, r]).all(), (L, b, r)
+            checked += 1
+        env.step(random_action(env, rng))
+        env.reset_done()
+    assert checked > 50
+
+
+def test_union_mode_is_exactly_both_filters():
+    """`ems=3` offers what 1 or 2 offers, and nothing either would not."""
+    rng = np.random.default_rng(5)
+    envs = [plain(8, nb=1, seed=17, ems=m) for m in (1, 2, 3)]
+    for _ in range(25):
+        for e in envs[1:]:
+            for f in ("hmap", "tmap", "seq", "head", "packed", "ptype",
+                      "n_packed", "done", "volume"):
+                setattr(e, f, getattr(envs[0], f).copy())
+            e._invalidate()
+        f1, f2, f3 = (e._positions()[0] for e in envs)
+        assert (f3 == (f1 | f2)).all()
+        if envs[0].done.all():
+            break
+        envs[0].step(random_action(envs[0], rng))
+        envs[0].reset_done()
+
+
+def test_corner_cells_offer_a_box_on_top_of_a_box():
+    """The case the EMS corners miss: a box stacked flush on an isolated box."""
+    kw = dict(S=10, nb=1, rot=1, min_support=0.0, seed=0)
+    item = np.array([[3, 3, 2, 0]] * 4)
+    for mode, want in ((E.EMS_SPACES, False), (E.EMS_CORNER, True),
+                       (E.EMS_BOTH, True)):
+        env = plain(1, ems=mode, **kw)
+        env.reset(item[None])
+        env.hmap[0, 4:7, 4:7] = 3
+        env._invalidate()
+        feas = env._positions()[0][0, 0]
+        assert feas[4, 4] == want, mode
+        assert feas[0, 0], "the bin corner is a corner in every mode"
+
+
+@pytest.mark.parametrize("v,want", [(0, 0), (1, 1), (True, 1), (False, 0),
+                                    ("2", 2), ("corner", 2), ("ems|corner", 3)])
+def test_ems_mode_parses(v, want):
+    assert E.ems_mode(v) == want
+
+
+def test_ems_mode_rejects_nonsense():
+    for v in (4, -1, "corners"):
+        with pytest.raises(ValueError):
+            E.ems_mode(v)

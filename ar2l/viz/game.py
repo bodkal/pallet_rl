@@ -298,7 +298,7 @@ def validate(raw):
     p['n_pick'] = whole('n_pick', 1, MAX_NB, 'reach k')
     p['max_l'] = whole('max_l', 1, 1 << 20, 'candidate cap')
     p['rot'] = whole('rot', 1, 2, 'orientations')
-    p['ems'] = whole('ems', 0, 1, 'EMS filter')
+    p['ems'] = whole('ems', 0, 3, 'EMS filter')
     p['n_types'] = whole('n_types', 1, 16, 'box types')
     p['type_constraint'] = whole('type_constraint', 0, 1, 'stacking rule')
 
@@ -481,7 +481,7 @@ def free_positions(env):
     terminal-state filters still apply.
     """
     ems = env.ems                        # restore what it *was*: the game can
-    env.ems = False                      # itself be run with --ems 0
+    env.ems = 0                          # itself be run with --ems 0
     env._invalidate(hmap=False)          # the height map is unchanged; only the filter
     try:
         return env._positions()[0][0].copy()
@@ -516,7 +516,7 @@ def place(env, r, x, y):
     it, and step that index normally.
     """
     ems, max_l = env.ems, env.max_l
-    env.ems = False
+    env.ems = 0
     env.max_l = env.rot * env.Lx * env.Ly   # every (orientation, x, y), none dropped
     env._invalidate(hmap=False)
     try:
@@ -796,9 +796,8 @@ def recalc_params(st, raw):
 
 def recalc(st, spec, p):
     """One row of the recalculation table: the same instance, other rules."""
+    # `placed` stays in: the page draws the rerun's bin in 3D beside the game's
     out = hand_over(st, spec, p)
-    out.pop('placed')          # the table scores the rerun, it does not draw it
-    out.pop('placed_types')
     out['params'] = p
     # what moved from the game that was played, and what that leaves the agent
     # standing on: a rerun can walk a policy off its training configuration
@@ -941,6 +940,9 @@ def main(argv=None):
     ap.add_argument('--nb', type=int, default=None, help='observable window N_B')
     ap.add_argument('--n_pick', type=int, default=None,
                     help='how many of the N_B are within reach')
+    ap.add_argument('--ems', type=int, choices=(0, 1, 2, 3), default=None,
+                    help="the packer's candidates: 0 every position, 1 EMS "
+                         "corners, 2 corner cells, 3 both")
     a = ap.parse_args(argv)
     DEVICE = a.device
 
@@ -957,7 +959,7 @@ def main(argv=None):
         CLI['bin'] = extent(a.bin)
     if a.size_hi is not None:
         CLI['size_hi'] = extent(a.size_hi)
-    for k in ('max_l', 'nb', 'n_pick'):
+    for k in ('max_l', 'nb', 'n_pick', 'ems'):
         if getattr(a, k) is not None:
             CLI[k] = getattr(a, k)
 
