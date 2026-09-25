@@ -136,3 +136,18 @@ eval:
   # moves a box ~5 places in a 50-box pallet.  `order_seed` fixes the draw.
   order_random: 0.0
   order_seed: 0
+
+robot:
+  # The UR20 drawn over the game's 3D bin, and the reach check it runs
+  # (ar2l/pack_collision.py, a port of the cell's C++).
+  # Robot base -> box origin, as the cell's tmp_base_from_box: x, y, z in
+  # metres, then the quaternion qx, qy, qz, qw.
+  base_from_box_tf: [-0.50777000000000005, 1.5415239999999999, -1, 0, 0, -0.70753916586098198, 0.70666309052477838]
+  # Flange to the tool's contact face, metres -- KinematicData::tool_length.
+  # A placeholder until the real gripper is measured.
+  tool_length_m: 0.35
+  # Metres per grid cell.  null derives it from the game's grid:
+  # eval.cell_cm * eval.box_scale / 100, i.e. the real size a scaled-down
+  # cell stands for (1 cm * 4 = 4 cm with the shipped values).
+  cell_m: null
+  ik_solution: 1          # the lazy IK branch the cell runs

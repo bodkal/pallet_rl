@@ -35,6 +35,12 @@ evaluation, one pallet per game (a chosen one, or one dealt by the seed), its
 box order randomised by `order_random`.  A run trained on a data file presets
 the form to that file and those settings.
 
+Pointing at a cell also shows the UR20 placing the box there, in the 3D bin:
+its IK pose, the link capsules of `ar2l.pack_collision` (red where one hits the
+pack) and the columns it hits, crossed out on the top view -- the same check
+the real cell runs.  Where the robot stands, the tool length and how big a
+cell is in metres live under `robot:` in `config.yaml`.
+
 The result screen can then recalculate: the same boxes in the same order, the
 agent replayed under parameters you edit, one row per setting.  The three
 fields that feed the draw itself - `n_items`, `size_lo`, `size_hi` - are held
@@ -55,6 +61,7 @@ from urllib.parse import parse_qs, urlparse
 
 import numpy as np
 
+from .. import pack_collision as PC
 from ..config import CFG
 from ..env import BPPBatch, TYPE_FLOOR, sample_items, type_classes
 from ..orders import (ROUNDING, box_divisor, load_orders, orders_bin,
@@ -536,6 +543,134 @@ def place(env, r, x, y):
     return True
 
 
+# ---------------------------------------------------------------- robot arm
+def quat_tf(v):
+    """[x, y, z, qx, qy, qz, qw] -> 4x4, as tf2::Transform(Quaternion, Vector3)."""
+    x, y, z, qx, qy, qz, qw = (float(t) for t in v)
+    n = qx * qx + qy * qy + qz * qz + qw * qw
+    s = 2.0 / n
+    R = np.array([
+        [1 - s * (qy * qy + qz * qz), s * (qx * qy - qz * qw), s * (qx * qz + qy * qw)],
+        [s * (qx * qy + qz * qw), 1 - s * (qx * qx + qz * qz), s * (qy * qz - qx * qw)],
+        [s * (qx * qz - qy * qw), s * (qy * qz + qx * qw), 1 - s * (qx * qx + qy * qy)]])
+    return PC.transform(R, [x, y, z])
+
+
+def cell_m(p):
+    """Metres one grid cell stands for.  The game's cells are scaled down by
+    `box_scale` (a 30 x 25 cm pallet of quarter-size boxes is a 120 x 100 cm
+    pallet), and the robot lives in the real one."""
+    v = CFG['robot'].get('cell_m')
+    if v:
+        return float(v)
+    return float(p['cell_cm']) * max(1.0, float(p['box_scale'] or 1)) / 100.0
+
+
+def arm_checker(st):
+    """The session's `ArmPackChecker`, built once for its grid."""
+    if st.get('arm') is None:
+        rb = CFG['robot']
+        cpm = 1.0 / cell_m(st['p'])
+        params = PC.arm_params_ur20(cpm)
+        # arm_params_ur20 gives the extensions in cells of the cell's own
+        # 1 cm grid; keep them the same length in metres on this one
+        for lp in (params.upper_arm, params.forearm, params.wrist):
+            lp.extend_front *= cpm / 100.0
+            lp.extend_back *= cpm / 100.0
+        st['arm'] = PC.ArmPackChecker(
+            tool_length_int=int(round(float(rb['tool_length_m']) * cpm)),
+            cell_frame=PC.CellFrame(cpm, cpm, cpm), arm_params=params,
+            ik_solution_number=int(rb['ik_solution']))
+        st['base_from_box'] = quat_tf(rb['base_from_box_tf'])
+    return st['arm']
+
+
+def arm_view(st, r, x, y):
+    """The arm placing the held box at (orientation r, x, y), for the 3D view."""
+    env = st['env']
+    _, z, odims, _ = env._positions()
+    if not (0 <= r < odims.shape[1] and 0 <= x < env.Lx and 0 <= y < env.Ly):
+        return {'error': 'no such placement'}
+    size = [int(v) for v in odims[0, r]]
+    pos = [int(x), int(y), int(z[0, r, x, y])]
+    return arm_pose(st, env.hmap[0].astype(int), size, pos)
+
+
+def replay_hmap(placed, S):
+    """The height map a list of placed [x, y, z, l, w, h] boxes leaves in bin S."""
+    hm = np.zeros((int(S[0]), int(S[1])), int)
+    for x, y, z, l, w, h in placed:
+        blk = hm[x:x + l, y:y + w]
+        np.maximum(blk, z + h, out=blk)
+    return hm
+
+
+def arm_replay(st, placed, S):
+    """The arm placing the last of `placed`, against the pack the others left.
+
+    A replay step is "box n has just gone in", so the arm is checked against
+    the bin as it stood a moment before -- boxes 0..n-1 -- exactly as the live
+    game checks the box you are holding against the bin as it is.
+    """
+    try:
+        placed = [[int(v) for v in b] for b in placed]
+        S = [int(v) for v in S]
+        if not placed or any(len(b) != 6 for b in placed) or len(S) != 3:
+            raise ValueError
+    except (TypeError, ValueError):
+        return {'error': 'a replay step is a list of [x, y, z, l, w, h] and a bin'}
+    *before, (x, y, z, l, w, h) = placed
+    return arm_pose(st, replay_hmap(before, S), [l, w, h], [x, y, z])
+
+
+def arm_pose(st, hm, size, pos):
+    """The arm placing a `size` box at `pos` over height map `hm`.
+
+    Everything comes back in the bin's cell coordinates, through the same
+    `CellFrame` the collision check uses, so what is drawn is what was tested:
+    the link capsules (each flagged if it hits the pack), the kinematic chain
+    from the robot base to the tool tip, and the columns the arm collides with.
+    """
+    chk = arm_checker(st)
+    B = st['base_from_box']
+    chk.set_heightmap(hm)
+    joints = chk.get_arm_joints(size, pos, B)
+    out = {'size': size, 'pos': pos}
+    if not joints:
+        out['reachable'] = False
+        return out
+    joint_tf = PC.get_forward_kinematics(joints, (1, 2, 3, 4, 5, 6))
+
+    box_from_base = np.linalg.inv(B)
+    cf = chk.cell_frame
+    to_cell = lambda T: cf((box_from_base @ T)[:3, 3]).tolist()
+    tool = joint_tf[5] @ PC.transform(t=[0.0, 0.0, float(CFG['robot']['tool_length_m'])])
+    chain = [to_cell(np.eye(4))] + [to_cell(T) for T in joint_tf] + [to_cell(tool)]
+
+    caps = PC.build_arm_capsules(joint_tf, box_from_base, chk.upper_arm_off_a,
+                                 chk.upper_arm_off_b, chk.arm_params, cf)
+    hs = cf.height_scale()
+    mask = PC.collision_mask(caps, hm, chk.pad, hs)
+    out.update({
+        'reachable': True,
+        'hit': bool(PC.any_capsule_hits_pyramid(caps, chk.pyramid, chk.pad)),
+        'caps': [{'name': n, 'a': c.a.tolist(), 'b': c.b.tolist(),
+                  'ra': c.ra, 'rb': c.rb,
+                  'hit': bool(chk.pyramid.hits(c, chk.pad))}
+                 for n, c in zip(('upper arm', 'forearm', 'wrist'), caps)],
+        'chain': chain,
+        # the pedestal, drawn from the base down to the pallet floor: joint 0's
+        # 0.45 m diameter from UrKin::get_joints_diameter
+        'base_r': 0.225 * cf.scale_x,
+        # the columns it hits, with their heights, so a replay (which has no
+        # height map of its own on the page) can still tint their tops
+        'cells': [[int(x), int(y), int(hm[x, y])] for x, y in np.argwhere(mask > 0)],
+        'depth': PC.max_penetration_depth(caps, hm, chk.pad, hs),
+        'joints_deg': np.degrees(joints).round(1).tolist(),
+    })
+    return out
+
+
 # -------------------------------------------------------------- pick station
 def snapshot(st):
     """Remember the conveyor as the page is about to draw it.
@@ -901,6 +1036,20 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({'error': 'the box will not rest there'}, 400)
             advance(st)
             return self._json({'board': board(st), 'promoted': st['promoted']})
+        if p == '/api/arm':
+            try:
+                r, x, y = (int(body[k]) for k in 'rxy')
+            except (KeyError, TypeError, ValueError):
+                return self._json({'error': 'an arm pose is r, x and y'}, 400)
+            try:
+                return self._json(arm_view(st, r, x, y))
+            except Exception as e:
+                return self._json({'error': f'{type(e).__name__}: {e}'}, 500)
+        if p == '/api/arm_replay':
+            try:
+                return self._json(arm_replay(st, body.get('placed'), body.get('bin')))
+            except Exception as e:
+                return self._json({'error': f'{type(e).__name__}: {e}'}, 500)
         if p == '/api/agent':
             # a policy that fails to load must not take the result screen down
             # with it - the page needs a body it can show as an error

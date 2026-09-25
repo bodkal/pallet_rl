@@ -24,7 +24,7 @@ import yaml
 PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                     "config.yaml")
 
-SECTIONS = ("env", "train", "ppo", "model", "run", "eval")
+SECTIONS = ("env", "train", "ppo", "model", "run", "eval", "robot")
 
 
 def _read(path):

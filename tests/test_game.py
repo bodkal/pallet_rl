@@ -357,3 +357,61 @@ def test_drift_is_judged_on_the_data_and_how_it_is_read(tmp_path):
     assert [d["key"] for d in G.diff_params(p, want, keys)] == ["box_scale"]
     # and the generator is not judged on file settings it never reads
     assert "box_scale" not in G.compared_keys(dict(p, source="random"))
+
+
+# ------------------------------------------------------------ the robot arm
+def test_the_quaternion_is_read_as_tf2_reads_it():
+    """A yaw of -90 deg about z, written x, y, z, qx, qy, qz, qw."""
+    s = np.sqrt(0.5)
+    T = G.quat_tf([1, 2, 3, 0, 0, -s, s])
+    np.testing.assert_allclose(T[:3, :3], [[0, 1, 0], [-1, 0, 0], [0, 0, 1]], atol=1e-12)
+    np.testing.assert_allclose(T[:3, 3], [1, 2, 3])
+
+
+def test_the_arm_drawn_is_the_arm_that_was_checked():
+    """`arm_view` reports what `ArmPackChecker` decides for the same pose."""
+    st = start(bin=[30, 25, 40], size_hi=[12, 10, 10], n_pick=1, nb=1)
+    env = st["env"]
+    env.hmap[0, 20:, :] = 38          # a wall of boxes on the robot's side
+    env._invalidate()
+    seen = set()
+    for x, y in [(0, 0), (5, 20), (10, 5), (2, 12)]:
+        v = G.arm_view(st, 0, x, y)
+        assert "error" not in v
+        if not v["reachable"]:
+            continue
+        chk = st["arm"]
+        chk.set_heightmap(env.hmap[0])
+        hit, caps = chk.is_arm_collid_with_pack(v["size"], v["pos"], st["base_from_box"])
+        assert v["hit"] == hit
+        assert [c["hit"] for c in v["caps"]] == [chk.pyramid.hits(c, chk.pad) for c in caps]
+        assert len(v["chain"]) == 8          # base, joints 1..6, tool tip
+        assert bool(v["cells"]) == hit
+        seen.add(hit)
+    assert seen == {True, False}, "the poses should cover a hit and a clear one"
+
+
+def test_the_replay_shows_the_arm_the_game_showed():
+    """Box n's arm in the replay is the arm you saw hovering box n in play.
+
+    The replay rebuilds the bin from the placed boxes alone; that has to give
+    the height map the simulator actually had, or the two views would disagree
+    about a collision.
+    """
+    st = start(bin=[30, 25, 40], size_hi=[12, 10, 10], n_pick=1, nb=1)
+    env = st["env"]
+    rng = np.random.default_rng(0)
+    for _ in range(12):
+        free = np.argwhere(G.free_positions(env)[0])
+        if not len(free):
+            break
+        x, y = (int(v) for v in free[rng.integers(len(free))])
+        live = G.arm_view(st, 0, x, y)
+        assert G.place(env, 0, x, y)
+        G.advance(st)
+        placed = G.board(st)["placed"]
+        np.testing.assert_array_equal(G.replay_hmap(placed, env.hmap.shape[1:] + (40,)),
+                                      env.hmap[0])
+        rep = G.arm_replay(st, placed, [30, 25, 40])
+        for k in ("reachable", "hit", "cells", "size", "pos"):
+            assert rep.get(k) == live.get(k), k

@@ -958,15 +958,19 @@ class ArmPackChecker:
     def refresh(self, hm, x0, y0, nx, ny):
         self.pyramid.refresh(hm, x0, y0, nx, ny)
 
-    def get_arm_joint_tf_for_collision(self, object_size, object_pos, base_from_box):
-        """Joint frames 1..6 in the robot base frame with the tool on top of
-        the item's centre, or [] when IK has no solution."""
+    def get_arm_joints(self, object_size, object_pos, base_from_box):
+        """IK joint angles (rad) with the tool on top of the item's centre,
+        or [] when there is no solution."""
         sx, sy, sz = (int(v) for v in object_size)
         tool_int_point = np.asarray(object_pos, int) + np.array(
             [sx // 2, sy // 2, sz + self.tool_length_int])
         box_from_tool = transform(_TOOL_DOWN, self.cell_frame.int_point_to_world(tool_int_point))
         base_from_tool = np.asarray(base_from_box, float) @ box_from_tool
-        joints = get_inverse_kinematics(base_from_tool, self.ik_solution_number)
+        return get_inverse_kinematics(base_from_tool, self.ik_solution_number)
+
+    def get_arm_joint_tf_for_collision(self, object_size, object_pos, base_from_box):
+        """Joint frames 1..6 in the robot base frame, or [] when IK has no solution."""
+        joints = self.get_arm_joints(object_size, object_pos, base_from_box)
         if not joints:
             return []
         return get_forward_kinematics(joints, (1, 2, 3, 4, 5, 6))
