@@ -233,6 +233,9 @@ table.rc .d{font-size:11px}
             <option value="cdrl">cdrl &mdash; Zhao et al.</option></select></div>
           <div class="pf"><span>support floor (com only)</span>
             <input id="msup" type="number" min="0" max="1" step="0.05"></div>
+          <div class="pf"><span>robot-arm filter</span><select id="armcol">
+            <option value="0">off &mdash; every placement the rules allow</option>
+            <option value="1">on &mdash; drop placements the arm collides on</option></select></div>
         </div>
         <div class="row" style="margin-top:10px">
           <button id="preset" type="button">Reset to the opponent's own values</button>
@@ -415,6 +418,9 @@ table.rc .d{font-size:11px}
           <option value="cdrl">cdrl &mdash; Zhao et al.</option></select></div>
         <div class="pf"><span>support floor (com only)</span>
           <input id="rcmsup" type="number" min="0" max="1" step="0.05"></div>
+        <div class="pf"><span>robot-arm filter</span><select id="rcarmcol">
+          <option value="0">off &mdash; every placement the rules allow</option>
+          <option value="1">on &mdash; drop placements the arm collides on</option></select></div>
         <div class="pf lock pf3"><span>item side &mdash; smallest / largest</span>
           <div class="tri" style="grid-template-columns:1fr 1fr">
             <input id="rclo" disabled><input id="rchi" disabled></div></div>
@@ -491,6 +497,7 @@ const PF = {
   size_hi: ['#hi0', '#hi1', '#hi2'],
   nb: '#nb', n_pick: '#npick', n_items: '#nitems', max_l: '#maxl',
   rot: '#prot', ems: '#ems', stability: '#stab', min_support: '#msup',
+  arm_collision: '#armcol',
   source: '#src', data: '#data', pallet: '#palpick', order_random: '#ordrnd',
   pallet_cm: ['#pcm0', '#pcm1', '#pcm2'], cell_cm: '#cellcm',
   box_scale: '#bscale', box_round: '#bround',
@@ -509,7 +516,8 @@ const PLABEL = {source: 'box source', data: 'data file', pallet: 'pallet',
   box_scale: 'box scale', box_round: 'box rounding', bin: 'bin', size_lo: 'smallest item side', size_hi: 'largest item side',
   nb: 'window N_B', n_pick: 'reach k', n_items: 'items in the sequence',
   max_l: 'candidate cap', rot: 'orientations', ems: 'action space',
-  stability: 'stability rule', min_support: 'support floor'};
+  stability: 'stability rule', min_support: 'support floor',
+  arm_collision: 'robot-arm filter'};
 
 function readParams(){
   const o = {};
@@ -1233,7 +1241,9 @@ function onMove(ev){
   const u = typed() ? under(x, y) : -1;
   const wrongType = typed() && B.type_constraint && z > 0 && u >= 0
                     && u !== B.item_type;
-  const why = (x + l > LX || y + w > LY) ? 'it hangs off the pallet'
+  const armBlocked = B.armblock && B.armblock[ORIENT] && B.armblock[ORIENT][x][y];
+  const why = armBlocked ? 'the robot arm would hit the pack placing it here, or cannot reach it (robot-arm filter on)'
+            : (x + l > LX || y + w > LY) ? 'it hangs off the pallet'
             : (z + h > LZ) ? 'it would poke out through the lid'
             : wrongType ? `it would come to rest on ${TNAME(u)}, and a
                            ${TNAME(B.item_type)} box may only be stacked on its own type`
@@ -1436,6 +1446,7 @@ const RPF = {
   bin: ['#rcbin0', '#rcbin1', '#rcbin2'],
   nb: '#rcnb', n_pick: '#rcnpick', max_l: '#rcmaxl',
   rot: '#rcrot', ems: '#rcems', stability: '#rcstab', min_support: '#rcmsup',
+  arm_collision: '#rcarmcol',
 };
 let RCROWS = [];
 let RCSEL = 0;           // the row shown in 3D beside this game's; 0 = none yet

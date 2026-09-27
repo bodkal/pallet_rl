@@ -290,6 +290,32 @@ the official repository implements exact AR2L alone. This is
 - [ ] CDRL baseline for Table 1 (reproduced separately in `../pallet_rl_v1`)
 - [ ] Revisit Eq. 18 at `gamma = 1` — see [B.2](#b2-open-question-eq-18-at-gamma--1)
 
+### D.4 Robot-arm filter (`env.arm_collision`): further speed-ups
+
+The batched check (`ArmPackChecker.collides_batch`) brought the filter from
+~680 ms to ~25 ms extra per env step (64 bins, ~1500 candidates). If that
+is still too slow:
+
+- [ ] Multiprocessing across bins: split the batch over a process pool
+      (16 cores). Expect 6-10x at best after pickling/IPC; awkward next to
+      the threaded game server and CUDA in the training process
+- [ ] Numba (not installed yet) or a small C++ extension for the column
+      test -- the pair-mask build and `nonzero` are now most of the time
+- [ ] Skip the check when the other rules leave a single candidate (it can
+      only end the episode, not change the choice)
+- [ ] Reuse verdicts across steps: a placement only changes the height map
+      under its footprint, so a candidate whose capsules' AABBs miss that
+      patch keeps its verdict
+- [ ] `--arm_collision` flag for `train` / `evaluate`, so `args.json`
+      records whether a run trained with the filter
+
+### D.5 Tests that depend on `config.yaml`
+
+- [ ] The brute-force feasibility tests in `tests/test_env.py`
+      (`test_feasibility_matches_brute_force`, `..._non_cubic_...`,
+      `test_contact_area_...`) inherit `env.ems` and fail with `ems: 3`;
+      pin it in `plain()` or parametrise over it
+
 ---
 
 ## DONE

@@ -39,7 +39,9 @@ Pointing at a cell also shows the UR20 placing the box there, in the 3D bin:
 its IK pose, the link capsules of `ar2l.pack_collision` (red where one hits the
 pack) and the columns it hits, crossed out on the top view -- the same check
 the real cell runs.  Where the robot stands, the tool length and how big a
-cell is in metres live under `robot:` in `config.yaml`.
+cell is in metres live under `robot:` in `config.yaml`.  With the robot-arm
+filter on (`env.arm_collision`, or the form's switch) a placement the arm
+cannot make is not a legal one at all -- for you, the packer and the opponent.
 
 The result screen can then recalculate: the same boxes in the same order, the
 agent replayed under parameters you edit, one row per setting.  The three
@@ -81,7 +83,7 @@ CLI: dict = {}
 #: triples; `PARAM_KEYS` adds where the boxes come from, below
 GAME_KEYS = ('bin', 'n_items', 'size_lo', 'size_hi', 'nb', 'n_pick',
              'max_l', 'rot', 'ems', 'stability', 'min_support',
-             'n_types', 'type_constraint')
+             'n_types', 'type_constraint', 'arm_collision')
 TRIPLES = ('bin', 'size_lo', 'size_hi')
 
 #: where the boxes come from: the generator, or a file of real pallets and how
@@ -175,7 +177,8 @@ def defaults():
          'stability': str(e['stability']),
          'min_support': float(e['min_support']),
          'n_types': int(e['n_types']),
-         'type_constraint': int(e['type_constraint'])}
+         'type_constraint': int(e['type_constraint']),
+         'arm_collision': int(e.get('arm_collision', 0))}
     ev = CFG['eval']
     p.update({'source': 'orders' if t.get('data') else 'random',
               'data': str(t.get('data') or ''),
@@ -225,7 +228,7 @@ def run_params(spec):
         return p
     a = info['args']
     for k in ('n_items', 'max_l', 'rot', 'ems', 'stability', 'min_support',
-              'nb', 'n_types', 'type_constraint'):
+              'nb', 'n_types', 'type_constraint', 'arm_collision'):
         if a.get(k) is not None:
             p[k] = a[k]
     for k in TRIPLES:
@@ -308,6 +311,7 @@ def validate(raw):
     p['ems'] = whole('ems', 0, 3, 'EMS filter')
     p['n_types'] = whole('n_types', 1, 16, 'box types')
     p['type_constraint'] = whole('type_constraint', 0, 1, 'stacking rule')
+    p['arm_collision'] = whole('arm_collision', 0, 1, 'robot-arm filter')
 
     # ---- where the boxes come from ----------------------------------------
     src = str(raw.get('source', p['source']))
@@ -478,8 +482,11 @@ def mismatch(p, spec):
 
 
 # -------------------------------------------------------------------- board
-def free_positions(env):
+def free_positions(env, arm=True):
     """(R, S, S) every placement the box would rest in, EMS filter off.
+
+    `arm=False` also lifts the robot-arm filter, so the page can tell a cell
+    the arm rules out from one the box would not rest in.
 
     The policy's action space is the corners of the empty maximal spaces, but
     a human packing by hand is not bound to it: anything that lands stably and
@@ -487,13 +494,14 @@ def free_positions(env):
     sweep `_positions` runs, with `ems` off, so the square-footprint and
     terminal-state filters still apply.
     """
-    ems = env.ems                        # restore what it *was*: the game can
-    env.ems = 0                          # itself be run with --ems 0
+    ems, armc = env.ems, env.arm_collision   # restore what it *was*: the game
+    env.ems = 0                              # can itself be run with --ems 0
+    env.arm_collision = armc and arm
     env._invalidate(hmap=False)          # the height map is unchanged; only the filter
     try:
         return env._positions()[0][0].copy()
     finally:
-        env.ems = ems
+        env.ems, env.arm_collision = ems, armc
         env._invalidate(hmap=False)
 
 
@@ -512,6 +520,13 @@ def grids(env):
     k = int(env.obs()['l_mask'][0].sum())   # refreshes the candidate table first
     cand, z, odims, tunder = env._positions()
     return cand[0], free_positions(env), z[0], odims[0], k, tunder[0]
+
+
+def arm_blocked(env, free):
+    """(R, S, S) the placements the robot-arm filter alone rules out."""
+    if not env.arm_collision:
+        return np.zeros_like(free)
+    return free_positions(env, arm=False) & ~free
 
 
 def place(env, r, x, y):
@@ -544,44 +559,19 @@ def place(env, r, x, y):
 
 
 # ---------------------------------------------------------------- robot arm
-def quat_tf(v):
-    """[x, y, z, qx, qy, qz, qw] -> 4x4, as tf2::Transform(Quaternion, Vector3)."""
-    x, y, z, qx, qy, qz, qw = (float(t) for t in v)
-    n = qx * qx + qy * qy + qz * qz + qw * qw
-    s = 2.0 / n
-    R = np.array([
-        [1 - s * (qy * qy + qz * qz), s * (qx * qy - qz * qw), s * (qx * qz + qy * qw)],
-        [s * (qx * qy + qz * qw), 1 - s * (qx * qx + qz * qz), s * (qy * qz - qx * qw)],
-        [s * (qx * qz - qy * qw), s * (qy * qz + qx * qw), 1 - s * (qx * qx + qy * qy)]])
-    return PC.transform(R, [x, y, z])
+quat_tf = PC.quat_tf
 
 
 def cell_m(p):
-    """Metres one grid cell stands for.  The game's cells are scaled down by
-    `box_scale` (a 30 x 25 cm pallet of quarter-size boxes is a 120 x 100 cm
-    pallet), and the robot lives in the real one."""
-    v = CFG['robot'].get('cell_m')
-    if v:
-        return float(v)
-    return float(p['cell_cm']) * max(1.0, float(p['box_scale'] or 1)) / 100.0
+    """Metres one grid cell stands for (see `pack_collision.robot_cell_m`)."""
+    return PC.robot_cell_m(CFG['robot'], p['cell_cm'], p['box_scale'])
 
 
 def arm_checker(st):
     """The session's `ArmPackChecker`, built once for its grid."""
     if st.get('arm') is None:
-        rb = CFG['robot']
-        cpm = 1.0 / cell_m(st['p'])
-        params = PC.arm_params_ur20(cpm)
-        # arm_params_ur20 gives the extensions in cells of the cell's own
-        # 1 cm grid; keep them the same length in metres on this one
-        for lp in (params.upper_arm, params.forearm, params.wrist):
-            lp.extend_front *= cpm / 100.0
-            lp.extend_back *= cpm / 100.0
-        st['arm'] = PC.ArmPackChecker(
-            tool_length_int=int(round(float(rb['tool_length_m']) * cpm)),
-            cell_frame=PC.CellFrame(cpm, cpm, cpm), arm_params=params,
-            ik_solution_number=int(rb['ik_solution']))
-        st['base_from_box'] = quat_tf(rb['base_from_box_tf'])
+        st['arm'], st['base_from_box'] = PC.checker_from_config(
+            CFG['robot'], cell_m(st['p']))
     return st['arm']
 
 
@@ -749,11 +739,13 @@ def board(st):
         'tunder': tunder.astype(int).tolist(),
         'n_types': int(env.n_types),
         'type_constraint': bool(env.type_constraint),
+        'arm_collision': bool(env.arm_collision),
         'floor_type': int(TYPE_FLOOR),
         'item': item[:3].tolist(),
         'item_type': int(item[3]),
         'mask': cand.astype(np.uint8).tolist(),      # the packer's candidate list
         'free': free.astype(np.uint8).tolist(),      # everything you may click
+        'armblock': arm_blocked(env, free).astype(np.uint8).tolist(),
         'zmap': z.astype(int).tolist(),
         'ncand': k,
         'nfree': nfree,
@@ -821,7 +813,8 @@ def new_game(seed, attacker_spec, params, human_pick=True):
                    max_l=p['max_l'], rot=p['rot'], ems=p['ems'],
                    stability=p['stability'], min_support=p['min_support'],
                    n_pick=p['n_pick'], n_types=p['n_types'], types=False,
-                   type_constraint=bool(p['type_constraint']))
+                   type_constraint=bool(p['type_constraint']),
+                   arm_collision=bool(p['arm_collision']), arm_cell_m=cell_m(p))
     env.reset(seq[None])
     st = {'env': env, 'seq': seq, 'p': p, 'att': att, 'alabel': alabel,
           'pallet_id': pid,
@@ -876,7 +869,8 @@ def hand_over(st, spec, p):
                 size_hi=p['size_hi'], max_l=p['max_l'], n_pick=p['n_pick'],
                 rot=p['rot'], ems=p['ems'], stability=p['stability'],
                 min_support=p['min_support'], n_types=p['n_types'],
-                type_constraint=bool(p['type_constraint']))
+                type_constraint=bool(p['type_constraint']),
+                arm_collision=bool(p['arm_collision']), arm_cell_m=cell_m(p))
     return {'label': label, 'util': ep['util'], 'items': ep['items'],
             'placed': ep['placed'], 'placed_types': ep['placed_types'],
             'seconds': time.time() - t0,

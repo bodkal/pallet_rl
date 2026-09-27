@@ -22,7 +22,7 @@ env:
   max_l: 256             # candidate-list cap (leaf nodes); ~32 are used at p90
   max_c: 128             # initial packed-item capacity; it grows if exceeded
   rot: 2                 # 1 = no rotation, 2 = also yawed 90 degrees
-  ems: 1                 # 0 = every position, 1 = EMS corners, 2 = corner cells, 3 = 1|2
+  ems: 3                 # 0 = every position, 1 = EMS corners, 2 = corner cells, 3 = 1|2
   stability: com         # com = centre of mass over support, cdrl = 60%/4 corners
   # Contact-area floor.  0.70 on this problem leaves a median of 4 legal
   # placements and caps DBL at 18% utilisation; 0.30 costs ~2 points against
@@ -36,6 +36,11 @@ env:
   # and a contact patch on one is not.
   n_types: 3
   type_constraint: 1     # 0 keeps type_id in the state but drops the rule
+  # Robot-arm filter: 1 drops every candidate placement the UR20 cannot make
+  # without one of its links hitting the pack, or cannot reach at all (the
+  # IK/capsule check of ar2l/pack_collision.py, set up from `robot:` below).
+  # All candidates are checked in one batch: ~25 ms per step for 64 bins.
+  arm_collision: 1
   # One item-size class per type -- the type *is* the SKU.  `p` is that type's
   # share of the stream (the shares are normalised), `lo`/`hi` its per-axis
   # side bounds; together they have to stay inside `size_lo`/`size_hi`, which
@@ -50,7 +55,7 @@ env:
 train:
   algo: pct               # pct|cppo|rarl|rfmdp|exact|approx|attack
   nb: 10                  # observable items N_B
-  n_pick: 1               # of the N_B, how many are within reach; the rest
+  n_pick: 5               # of the N_B, how many are within reach; the rest
                           # are preview only.  null = all of them.
   iters: 8000             # PPO iterations
   n_env: 64               # parallel bins

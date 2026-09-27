@@ -415,3 +415,20 @@ def test_the_replay_shows_the_arm_the_game_showed():
         rep = G.arm_replay(st, placed, [30, 25, 40])
         for k in ("reachable", "hit", "cells", "size", "pos"):
             assert rep.get(k) == live.get(k), k
+
+
+def test_the_arm_filter_switch_reaches_the_game():
+    """`arm_collision` on the form turns the filter on in the session's bin,
+    and every cell it takes away is reported as the arm's doing."""
+    st = start(bin=[30, 25, 40], size_hi=[12, 10, 10], n_pick=1, nb=1,
+               arm_collision=1)
+    env = st["env"]
+    assert env.arm_collision
+    env.hmap[0, 20:, :] = 38
+    env._invalidate()
+    b = G.board(st)
+    free, block = np.array(b["free"]), np.array(b["armblock"])
+    assert block.any() and not (free & block).any()
+    np.testing.assert_array_equal(free | block, G.free_positions(env, arm=False))
+    _, err = G.validate(dict(BASE, arm_collision=2))
+    assert err

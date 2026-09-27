@@ -255,7 +255,8 @@ class BPPBatch:
                  max_l=None, size_lo=None, size_hi=None, seed=0, ems=None,
                  stability=None, rot=None, min_support=None, n_pick=None,
                  n_types=None, types=None, type_constraint=None,
-                 pick_feasible=None, pool=None, pool_order_random=0.0):
+                 pick_feasible=None, pool=None, pool_order_random=0.0,
+                 arm_collision=None, arm_cell_m=None):
         # `None` means "whatever config.yaml says"; an explicit argument wins
         e = CFG["env"]
         S = e["bin"] if S is None else S
@@ -323,6 +324,15 @@ class BPPBatch:
         if not 0.0 <= self.min_support <= 1.0:
             raise ValueError(f"min_support is a fraction of the item base, "
                              f"got {self.min_support}")
+        # Drop every placement the robot arm cannot make without one of its
+        # links hitting the pack (or cannot reach at all) -- `ar2l.pack_collision`,
+        # set up from `robot:` in config.yaml.  `arm_cell_m` is how many metres
+        # one cell stands for; None derives it from `eval.cell_cm` and
+        # `eval.box_scale`, the grid real orders are read onto.
+        self.arm_collision = bool(e.get("arm_collision", 0)
+                                  if arm_collision is None else arm_collision)
+        self.arm_cell_m = arm_cell_m
+        self._arm = None
         # the contact count costs a second sweep, so only pay for it when a
         # rule actually reads it
         self._needs_count = (self.stability != "com"
@@ -359,6 +369,9 @@ class BPPBatch:
             # different type to the front reuses nothing it should not
             self._type_cache = {}
             self._under_cache = None
+            # arm verdicts keyed by (bin, (sx, sy, sz), x, y): the landing
+            # height follows from the height map, which is what resets them
+            self._arm_cache = {}
 
     def _set_side(self, seq):
         """Largest footprint extent the sweeps must cover, per axis.
@@ -866,7 +879,45 @@ class BPPBatch:
             feas &= self._ems_corners(dims) | self._corner_mask(dims, z)
         if self.type_constraint and self.n_types > 1 and types is not None:
             feas &= self._type_ok(dims, z, types)
+        if self.arm_collision:
+            feas = self._arm_clear(dims, z, feas)
         return feas, z
+
+    def _arm_checker(self):
+        if self._arm is None:
+            from . import pack_collision as PC
+            rb = CFG["robot"]
+            m = self.arm_cell_m or PC.robot_cell_m(
+                rb, CFG["eval"]["cell_cm"], CFG["eval"]["box_scale"])
+            self._arm = PC.checker_from_config(rb, m)
+        return self._arm
+
+    def _arm_clear(self, dims, z, feas):
+        """`feas` less the placements the arm collides on.
+
+        Only the cells every other rule already allows are asked, all bins in
+        one batched check (`ArmPackChecker.collides_batch`), and each answer
+        is kept until the height map changes.  An unreachable pose counts as
+        a collision, as it does on the cell.
+        """
+        bb, xx, yy = np.nonzero(feas)
+        if not len(bb):
+            return feas
+        sizes = dims[bb].astype(int)
+        keys = list(zip(bb.tolist(), map(tuple, sizes.tolist()),
+                        xx.tolist(), yy.tolist()))
+        hit = [self._arm_cache.get(k) for k in keys]
+        todo = np.array([i for i, v in enumerate(hit) if v is None], int)
+        if len(todo):
+            chk, B = self._arm_checker()
+            b, x, y = bb[todo], xx[todo], yy[todo]
+            res = chk.collides_batch(sizes[todo], np.stack([x, y, z[b, x, y]], 1),
+                                     B, self.hmap, b)
+            for i, r in zip(todo.tolist(), res.tolist()):
+                hit[i] = self._arm_cache[keys[i]] = r
+        out = feas.copy()
+        out[bb, xx, yy] = ~np.array(hit, bool)
+        return out
 
     def _support_ratio(self, dims, cxy, cx):
         """Fraction of the footprint that rests on the contact layer.
