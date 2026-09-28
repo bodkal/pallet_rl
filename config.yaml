@@ -53,7 +53,7 @@ env:
     - {p: 1, lo: [2, 2, 2], hi: [12, 12, 10]} 
 
 train:
-  algo: pct               # pct|cppo|rarl|rfmdp|exact|approx|attack
+  algo: select               # pct|cppo|rarl|rfmdp|exact|approx|attack
   nb: 10                  # observable items N_B
   n_pick: 5               # of the N_B, how many are within reach; the rest
                           # are preview only.  null = all of them.
@@ -95,7 +95,7 @@ model:
   # capacity here: the candidate list runs to 32 nodes at p90 and the packed
   # list to ~40, both far short of max_l, so 128/4/2 buys sequence capacity
   # that is never used and costs ~3x the GPU time per iteration.
-  width: 64
+  width: 128
   heads: 1
   layers: 1              # attention blocks
   c_temp: 10.0            # pointer-head temperature c in Eq. 28

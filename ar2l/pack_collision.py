@@ -1218,6 +1218,13 @@ def capsules_hit_packs_b(caps, hms, which, pad=K_CELL_PAD, height_scale=1.0):
     Two exact rejections pick the (placement, column) pairs worth probing: the
     column centre has to lie inside the capsule's inflated AABB, and the
     column has to reach the capsule's lowest point.
+
+    The AABB test passes a contiguous run of columns along each axis, so the
+    pairs it keeps are listed straight from the two runs, in (placement, x, y)
+    order, and the height maps are read only at those pairs.  A row of the
+    run whose tallest column -- a sparse-table range max -- is below the
+    capsule's lowest point cannot pass the height test anywhere, so it is
+    dropped before its cells are listed; that is most of them.
     """
     hms = np.asarray(hms)
     M, nx, ny = hms.shape
@@ -1225,9 +1232,19 @@ def capsules_hit_packs_b(caps, hms, which, pad=K_CELL_PAD, height_scale=1.0):
     hit = np.zeros(N, bool)
     if N == 0:
         return hit
-    H = hms[which].astype(float) * height_scale          # (N, nx, ny)
+    which = np.asarray(which)
     cx = np.arange(nx) + 0.5
     cy = np.arange(ny) + 0.5
+    # tab[j, m, x, y] = max of hms[m, x, y : y + 2^j], for the rows' range max
+    lg = np.zeros(ny + 1, np.int64)
+    for i in range(2, ny + 1):
+        lg[i] = lg[i // 2] + 1
+    tab = np.zeros((lg[ny] + 1,) + hms.shape, hms.dtype)
+    tab[0] = hms
+    for j in range(1, lg[ny] + 1):
+        s = 1 << (j - 1)
+        np.maximum(tab[j - 1][..., : ny - s], tab[j - 1][..., s:],
+                   out=tab[j][..., : ny - s])
     for a, b, ra, rb in caps:
         live = ~hit
         if not live.any():
@@ -1238,12 +1255,31 @@ def capsules_hit_packs_b(caps, hms, which, pad=K_CELL_PAD, height_scale=1.0):
         zf = np.minimum(a[:, 2] - ra, b[:, 2] - rb) - pad
         inx = (cx[None, :] >= lo[:, None, 0] - rmax) & (cx[None, :] <= hi[:, None, 0] + rmax)
         iny = (cy[None, :] >= lo[:, None, 1] - rmax) & (cy[None, :] <= hi[:, None, 1] + rmax)
-        pair = (inx[:, :, None] & iny[:, None, :] & (H >= zf[:, None, None] - 1e-9)
-                & live[:, None, None])
-        k, x, y = np.nonzero(pair)
+        kx, ky = inx.sum(1), iny.sum(1)
+        x0, y0 = inx.argmax(1), iny.argmax(1)
+        # one entry per (placement, x) of the run, kept if any column reaches
+        nr = np.where(live & (ky > 0), kx, 0)
+        k = np.repeat(np.arange(N), nr)
         if not len(k):
             continue
-        h = _column_hits_b(a[k], b[k], rap, rbp, cx[x], cy[y], H[k, x, y])
+        x = x0[k] + np.arange(len(k)) - np.repeat(np.cumsum(nr) - nr, nr)
+        j, m, ya, w = lg[ky[k]], which[k], y0[k], ky[k]
+        top = np.maximum(tab[j, m, x, ya], tab[j, m, x, ya + w - (1 << j)])
+        row = top.astype(float) * height_scale >= zf[k] - 1e-9
+        k, x = k[row], x[row]
+        if not len(k):
+            continue
+        # ... and each kept row expanded into its cells
+        w = ky[k]
+        r = np.repeat(np.arange(len(k)), w)
+        y = y0[k][r] + np.arange(len(r)) - np.repeat(np.cumsum(w) - w, w)
+        k, x = k[r], x[r]
+        h = hms[which[k], x, y].astype(float) * height_scale
+        reach = h >= zf[k] - 1e-9
+        k, x, y, h = k[reach], x[reach], y[reach], h[reach]
+        if not len(k):
+            continue
+        h = _column_hits_b(a[k], b[k], rap, rbp, cx[x], cy[y], h)
         hit[k[h]] = True
     return hit
 
