@@ -219,6 +219,8 @@ def play(seq, policy, attacker=None, nb=1, S=10, stability="com", record=True,
                 "item_type": int(item[3]),
                 "cands": [c[:6] for c in env.candidates(0, k)],
                 "cand_types": [c[6] for c in env.candidates(0, k)],
+                # which orientation each candidate turns the item to
+                "cand_rot": env._lxy[0, :k, 2].tolist(),
                 "probs": prob[0][:k].tolist(),
                 "choice": int(act[0]),
             }

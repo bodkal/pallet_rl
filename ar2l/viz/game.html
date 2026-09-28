@@ -101,11 +101,30 @@ details.par>summary::marker{color:var(--dim)}
   border-radius:4px;padding:0 4px;flex:none}
 .slot.sel .num{border-color:var(--c0);color:var(--c0)}
 .rule{border:0;border-top:1px dashed var(--line);margin:9px 2px}
+/* the conveyor under a replay bin: what was in view at that step */
+.rwin{margin-top:10px}
+.rwin .rwh{font-size:11px;color:var(--dim);margin-bottom:6px}
+.rwin .rws{display:flex;flex-wrap:wrap;gap:6px;align-items:flex-end}
+.rwin .rwt{display:flex;flex-direction:column;align-items:center;gap:3px;padding:5px 6px;
+  border:1px solid var(--line);border-radius:7px;font-size:10.5px;
+  font-variant-numeric:tabular-nums;min-width:34px}
+.rwin .rwt.peek{border-style:dashed;opacity:.62}
+.rwin .rwt.sel{border-color:var(--c0);background:color-mix(in srgb,var(--c0) 12%,transparent)}
+.rwin .rwt .num{color:var(--dim);font-size:10px}
+.rwin .rwt.sel .num{color:var(--c0);font-weight:640}
+.rwin .rwsep{align-self:stretch;border-left:1px dashed var(--line);margin:0 2px}
 #msg{margin-top:9px;min-height:20px;color:var(--dim)}
 
 /* result */
 #result{max-width:1180px;margin:0 auto}
 .duel{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+/* the replay slider rides on top of the two bins it drives, and sticks under
+   the header, so the step and both bins are always on one screen */
+.scrubbar{position:sticky;top:var(--hdr,48px);z-index:4;background:var(--bg);
+  padding:8px 0 8px;margin-bottom:8px;border-bottom:1px solid var(--line)}
+.scrubbar .row{gap:8px;flex-wrap:nowrap}
+.scrubbar input[type=range]{flex:1;min-width:0}
+.scrubbar button{padding:2px 10px;flex:none}
 @media(max-width:820px){.duel{grid-template-columns:1fr}}
 .big{font-size:40px;font-weight:680;letter-spacing:-1px;font-variant-numeric:tabular-nums;line-height:1}
 .verdict{font-size:26px;font-weight:680;letter-spacing:-.4px;margin:0 0 4px}
@@ -351,10 +370,7 @@ table.rc .d{font-size:11px}
 
   <div class="card" style="margin-bottom:14px">
     <h2>Replay &mdash; same instance, same conveyor</h2>
-    <input type="range" id="scrub" min="0" max="1" value="1">
-    <div class="sub" id="scrublab" style="font-variant-numeric:tabular-nums"></div>
-    <div class="sub" id="scrubarm" style="min-height:18px"></div>
-    <label class="row" style="cursor:pointer;margin-top:8px">
+    <label class="row" style="cursor:pointer">
       <input type="checkbox" id="showarm-r" checked> <span>show the robot arm placing
       each box &mdash; checked against the bin as it stood just before</span>
     </label>
@@ -362,19 +378,41 @@ table.rc .d{font-size:11px}
       <span><i style="background:var(--arm)"></i>robot arm, clear</span>
       <span><i style="background:var(--c3)"></i>arm link hitting the pack</span>
     </div>
+    <label class="row" style="cursor:pointer;margin-top:8px">
+      <input type="checkbox" id="showpts" checked> <span>show where the <b>next</b>
+      box could go &mdash; the packer's candidate list for it, one point per
+      placement corner</span>
+    </label>
+    <div class="lg ptslg">
+      <span><svg width="12" height="12" viewBox="0 0 12 12"><circle cx="6" cy="6" r="4" fill="var(--c0)" stroke="#000"/></svg>orientation 1, as it came</span>
+      <span><svg width="12" height="12" viewBox="0 0 12 12"><path d="M6 1L11 6L6 11L1 6Z" fill="none" stroke="var(--c4)" stroke-width="2"/></svg>orientation 2, turned 90&deg;</span>
+      <span><svg width="12" height="12" viewBox="0 0 12 12"><circle cx="6" cy="6" r="4.5" fill="none" stroke="var(--fg)" stroke-width="1.5"/></svg>the one actually taken</span>
+    </div>
     <div class="sub" style="margin-top:6px;opacity:.8">Drag either bin to rotate both together
-      &mdash; same angle, fair comparison. Double-click resets.</div>
+      &mdash; same angle, fair comparison. Double-click resets.
+      The slider sits right above the bins; <kbd>&larr;</kbd>/<kbd>&rarr;</kbd> step it.</div>
   </div>
 
+  <div class="scrubbar">
+    <div class="row">
+      <button type="button" data-step="-1" data-for="scrub" title="previous box">&#9664;</button>
+      <input type="range" id="scrub" min="0" max="1" value="1">
+      <button type="button" data-step="1" data-for="scrub" title="next box">&#9654;</button>
+    </div>
+    <div class="sub" id="scrublab" style="font-variant-numeric:tabular-nums"></div>
+    <div class="sub" id="scrubarm" style="min-height:18px"></div>
+  </div>
   <div class="duel">
     <div class="side" id="side-h">
       <h2 style="font-size:11px;color:var(--dim);letter-spacing:.6px;text-transform:uppercase;margin:0 0 8px">You<span class="crown" id="crown-h"></span></h2>
       <canvas id="iso-h"></canvas>
+      <div class="rwin" id="win-h"></div>
       <div id="stat-h" style="margin-top:10px"></div>
     </div>
     <div class="side" id="side-a">
       <h2 style="font-size:11px;color:var(--dim);letter-spacing:.6px;text-transform:uppercase;margin:0 0 8px"><span id="alab2">Agent</span><span class="crown" id="crown-a"></span></h2>
       <canvas id="iso-a"></canvas>
+      <div class="rwin" id="win-a"></div>
       <div id="stat-a" style="margin-top:10px"></div>
     </div>
   </div>
@@ -442,9 +480,15 @@ table.rc .d{font-size:11px}
       <div id="rc3d" hidden style="margin-top:14px">
         <div class="sub" style="margin-bottom:6px">Click a row to show it here.
           Drag either bin to rotate both; double-click resets.</div>
-        <input type="range" id="rcscrub" min="0" max="1" value="1">
-        <div class="sub" id="rcscrublab" style="font-variant-numeric:tabular-nums"></div>
-        <div class="sub" id="rcscrubarm" style="min-height:18px"></div>
+        <div class="scrubbar">
+          <div class="row">
+            <button type="button" data-step="-1" data-for="rcscrub" title="previous box">&#9664;</button>
+            <input type="range" id="rcscrub" min="0" max="1" value="1">
+            <button type="button" data-step="1" data-for="rcscrub" title="next box">&#9654;</button>
+          </div>
+          <div class="sub" id="rcscrublab" style="font-variant-numeric:tabular-nums"></div>
+          <div class="sub" id="rcscrubarm" style="min-height:18px"></div>
+        </div>
         <div class="lg armlg-r" hidden>
           <span><i style="background:var(--arm)"></i>robot arm, clear</span>
           <span><i style="background:var(--c3)"></i>arm link hitting the pack</span>
@@ -453,11 +497,13 @@ table.rc .d{font-size:11px}
           <div class="side">
             <h2 style="font-size:11px;color:var(--dim);letter-spacing:.6px;text-transform:uppercase;margin:0 0 8px">This game &mdash; <span id="rcl0"></span></h2>
             <canvas id="iso-rc0"></canvas>
+            <div class="rwin" id="win-rc0"></div>
             <div class="sub" id="rcs0" style="margin-top:8px"></div>
           </div>
           <div class="side">
             <h2 style="font-size:11px;color:var(--dim);letter-spacing:.6px;text-transform:uppercase;margin:0 0 8px">Row <span id="rcnum"></span> &mdash; <span id="rcl1"></span></h2>
             <canvas id="iso-rc1"></canvas>
+            <div class="rwin" id="win-rc1"></div>
             <div class="sub" id="rcs1" style="margin-top:8px"></div>
           </div>
         </div>
@@ -798,6 +844,29 @@ function drawIso(cv, boxes, L, W, H, opts){
     g.globalAlpha = 1; g.setLineDash([4,3]);
     faces.forEach(f => poly(f, null, css('--fg'), 1.2));
     g.setLineDash([]);
+  }
+
+  // ---- where the next box could go: one mark per candidate corner ----
+  // orientation 1 a filled dot, orientation 2 a hollow diamond a size larger,
+  // so a corner open to both shows both.  `pointsTaken` is the index the
+  // next step actually chose, ringed.
+  if(opts.points && opts.points.length){
+    const R = Math.max(2.5, Math.min(6, s*0.22));
+    for(const [k, [x,y,z,r]] of opts.points.entries()){
+      const [px,py] = P(x,y,z);
+      g.beginPath();
+      if(r){ const d = R*1.45;
+             g.moveTo(px,py-d); g.lineTo(px+d,py); g.lineTo(px,py+d); g.lineTo(px-d,py); g.closePath();
+             g.strokeStyle = css('--bg'); g.lineWidth = 4; g.stroke();
+             g.strokeStyle = css('--c4'); g.lineWidth = 2; g.stroke(); }
+      else { g.arc(px,py,R,0,7); g.fillStyle = css('--c0'); g.fill();
+             g.strokeStyle = '#000'; g.lineWidth = 1; g.stroke(); }
+      if(k === opts.pointsTaken){
+        g.beginPath(); g.arc(px,py,R*2.2,0,7);
+        g.strokeStyle = css('--bg'); g.lineWidth = 3.5; g.stroke();
+        g.strokeStyle = css('--fg'); g.lineWidth = 1.6; g.stroke();
+      }
+    }
   }
 
   // ---- robot arm ----
@@ -1332,6 +1401,8 @@ async function finish(){
   RES = {
     human: {util: B.util, items: B.items, placed: B.placed,
             placed_types: B.placed_types, skipped: SKIP,
+            cands: r.human_cands || [], taken: r.human_taken || [],
+            windows: r.human_windows || [],
             seconds: (Date.now() - T0) / 1000, reason: REASON || 'ran out of room'},
     agent: r,
   };
@@ -1398,7 +1469,8 @@ function renderResult(){
   $('#rcopp').value = OPP;
   RCROWS = [{label: a.label, util: a.util, items: a.items,
              seconds: a.seconds, changed: [], drift: [],
-             placed: a.placed, placed_types: a.placed_types, params: p}];
+             placed: a.placed, placed_types: a.placed_types, params: p,
+             cands: a.cands, taken: a.taken, windows: a.windows}];
   RCSEL = 0;
   $('#rc3d').hidden = true;
   writeRecalc(p);
@@ -1415,6 +1487,45 @@ function renderResult(){
   }).catch(() => {});
 }
 
+/* After n boxes, the placements the packer had for box n+1: `cands[n]` was
+   recorded just before that box went in, and `taken[n]` is the one it went
+   to (-1 when you put it somewhere off the packer's list). */
+function nextPoints(side, n){
+  if (!$('#showpts').checked || !side.cands || !side.cands[n]) return {};
+  return {points: side.cands[n], pointsTaken: side.taken ? side.taken[n] : -1};
+}
+
+/* The conveyor as it stood when box n+1 was chosen: every box in view, the
+   first k within reach (numbered, solid) and the rest preview (dashed), with
+   the one that went in marked.  Box colours match the 3D blocks: the picked
+   box gets the colour it has once it is in the bin. */
+function drawWindow(el, side, n, k){
+  const win = side.windows && side.windows[n];
+  if (!win || !win.w.length){
+    el.innerHTML = side.windows && side.windows.length
+      ? '<div class="rwh">conveyor &mdash; nothing left to pack</div>' : '';
+    return;
+  }
+  const reach = Math.min(k, win.w.length);
+  const big = Math.max(1, ...win.w.map(w => Math.max(w[0], w[1])));
+  const u = Math.max(1, Math.min(8, Math.floor(46 / big)));
+  el.innerHTML = `<div class="rwh">conveyor before box ${n + 1} &mdash; sees
+      <b>${win.w.length}</b>, can pick from <b>${reach}</b>, packed
+      #${win.pick + 1}</div><div class="rws">`
+    + win.w.map((w, i) => {
+        const cls = 'rwt' + (i >= reach ? ' peek' : '') + (i === win.pick ? ' sel' : '');
+        return (i === reach && reach < win.w.length ? '<span class="rwsep"></span>' : '')
+          + `<div class="${cls}"><span class="num">${i < reach ? i + 1 : '&middot;'}${
+               i === win.pick ? ' packed' : ''}</span><canvas data-i="${i}"></canvas>
+             <span>${w.join('×')}${typed() ? ' ' + 'ABCDEFGHIJKLMNOP'[win.t[i]] : ''}</span></div>`;
+      }).join('') + '</div>';
+  el.querySelectorAll('canvas').forEach(cv => {
+    const i = +cv.dataset.i;
+    drawFootprint(cv, win.w[i], u, i === win.pick ? n : n + 1 + i,
+                  i >= reach, typed() ? win.t[i] : -1);
+  });
+}
+
 function drawReplay(n){
   const h = RES.human.placed.slice(0, n), a = RES.agent.placed.slice(0, n);
   const again = () => drawReplay(parseInt($('#scrub').value, 10));
@@ -1422,10 +1533,14 @@ function drawReplay(n){
         aa = stepArm('a:' + n, RES.agent.placed, n, [LX, LY, LZ], again);
   drawIso($('#iso-h'), h, LX, LY, LZ,
           {highlight: h.length - 1, height: 290, arm: ah,
-           types: typed() ? RES.human.placed_types : null});
+           types: typed() ? RES.human.placed_types : null,
+           ...nextPoints(RES.human, n)});
   drawIso($('#iso-a'), a, LX, LY, LZ,
           {highlight: a.length - 1, height: 290, arm: aa,
-           types: typed() ? RES.agent.placed_types : null});
+           types: typed() ? RES.agent.placed_types : null,
+           ...nextPoints(RES.agent, n)});
+  drawWindow($('#win-h'), RES.human, n, G.params.n_pick);
+  drawWindow($('#win-a'), RES.agent, n, G.params.n_pick);
   armReplayText('#scrubarm', n,
                 RES.human.skipped ? [['agent', RES.agent.placed, aa]]
                                   : [['you', RES.human.placed, ah], ['agent', RES.agent.placed, aa]]);
@@ -1594,7 +1709,9 @@ function drawRcReplay(n){
                         () => drawRcReplay(parseInt($('#rcscrub').value, 10)));
     drawIso($('#iso-rc' + k), pl, bx, by, bz,
             {highlight: pl.length - 1, height: 290, arm,
-             types: typed() ? r.placed_types : null});
+             types: typed() ? r.placed_types : null,
+             ...nextPoints(r, n)});
+    drawWindow($('#win-rc' + k), r, n, r.params.n_pick);
     $('#rcs' + k).textContent = `${(r.util * 100).toFixed(1)}% filled · `
       + `${r.items} boxes · ${bx}\u00d7${by}\u00d7${bz} bin`;
   });
@@ -1686,6 +1803,7 @@ function armToggle(on){
 }
 $('#showarm').onchange = e => armToggle(e.target.checked);
 $('#showarm-r').onchange = e => armToggle(e.target.checked);
+$('#showpts').onchange = () => redrawIsos();
 $('#zoom').oninput = e => setZoom(parseInt(e.target.value, 10));
 $('#zoomfit').onclick = () => setZoom(null);
 try {
@@ -1694,6 +1812,27 @@ try {
 } catch (e) {}
 $('#scrub').oninput = e => drawReplay(parseInt(e.target.value, 10));
 $('#rcscrub').oninput = e => drawRcReplay(parseInt(e.target.value, 10));
+/* step buttons, and the arrow keys for the main replay */
+const stepScrub = (id, d) => {
+  const sc = $('#' + id), v = Math.max(0, Math.min(+sc.max, +sc.value + d));
+  if (v === +sc.value) return;
+  sc.value = v; sc.dispatchEvent(new Event('input'));
+};
+document.querySelectorAll('.scrubbar button[data-step]').forEach(b =>
+  b.onclick = () => stepScrub(b.dataset.for, +b.dataset.step));
+addEventListener('keydown', e => {
+  if ($('#result').hidden || !RES) return;
+  const t = e.target;
+  if (t && t.matches && t.matches('input:not([type=range]),select,textarea')) return;
+  if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+  // a focused slider already moves itself on the arrow keys
+  if (t && t.matches && t.matches('input[type=range]')) return;
+  stepScrub('scrub', e.key === 'ArrowLeft' ? -1 : 1); e.preventDefault();
+});
+/* the bar sticks just under the header, whatever height the header wraps to */
+const setHdr = () => document.documentElement.style.setProperty(
+  '--hdr', ($('header') ? $('header').offsetHeight : 0) + 'px');
+setHdr(); addEventListener('resize', setHdr);
 // a closed <details> has no width to draw into, so redraw once it opens
 $('#rcdet').addEventListener('toggle', () => {
   if ($('#rcdet').open && RCSEL) drawRcReplay(parseInt($('#rcscrub').value, 10));

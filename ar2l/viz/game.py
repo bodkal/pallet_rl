@@ -529,6 +529,35 @@ def arm_blocked(env, free):
     return free_positions(env, arm=False) & ~free
 
 
+def cand_points(env):
+    """[[x, y, z, r]] the packer's candidate list for the item in front.
+
+    What the result screen draws as the "places this box could have gone":
+    the corner the box's footprint starts at, the height it would land at,
+    and the orientation it would be turned to.
+    """
+    k = int(env.obs()['l_mask'][0].sum())
+    lxy, lz = env._lxy[0, :k], env._lz[0, :k]
+    return np.stack([lxy[:, 0], lxy[:, 1], lz, lxy[:, 2]], -1).astype(int).tolist()
+
+
+def trace_points(trace):
+    """`cand_points` for every step of an `A.play` trace."""
+    return [[[int(c[0]), int(c[1]), int(c[2]), int(r)]
+             for c, r in zip(t['cands'], t['cand_rot'])] for t in trace]
+
+
+def trace_windows(trace):
+    """The conveyor at every step of an `A.play` trace, as the result draws it.
+
+    `w`/`t` are the window as it stood before anyone reordered it, and `pick`
+    is the slot of the box that went in -- moved to the front by the attacker
+    or the run's own selector, or the front one when nobody chose.
+    """
+    return [{'w': t['window'], 't': t['window_types'],
+             'pick': t['perm_idx'] or 0} for t in trace]
+
+
 def place(env, r, x, y):
     """Drop the leading item at (orientation r, x, y); False if it cannot rest.
 
@@ -819,7 +848,8 @@ def new_game(seed, attacker_spec, params, human_pick=True):
     st = {'env': env, 'seq': seq, 'p': p, 'att': att, 'alabel': alabel,
           'pallet_id': pid,
           'human_pick': bool(human_pick) and p['n_pick'] > 1,
-          'promoted': None, 'opp_spec': None, 'opp': None}
+          'promoted': None, 'opp_spec': None, 'opp': None,
+          'hcands': [], 'htaken': [], 'hwin': []}
     gid = uuid.uuid4().hex[:12]
     with _LOCK:
         _GAMES[gid] = st
@@ -873,6 +903,10 @@ def hand_over(st, spec, p):
                 arm_collision=bool(p['arm_collision']), arm_cell_m=cell_m(p))
     return {'label': label, 'util': ep['util'], 'items': ep['items'],
             'placed': ep['placed'], 'placed_types': ep['placed_types'],
+            # before box n went in, the placements the packer had for it
+            'cands': trace_points(ep['trace']),
+            'taken': [int(t['choice']) for t in ep['trace']],
+            'windows': trace_windows(ep['trace']),
             'seconds': time.time() - t0,
             'reason': 'ran out of room',
             # who picked the agent's box, so the result screen can say whether
@@ -1026,8 +1060,15 @@ class Handler(BaseHTTPRequestHandler):
                 r, x, y = (int(body[k]) for k in 'rxy')
             except (KeyError, TypeError, ValueError):
                 return self._json({'error': 'a placement is r, x and y'}, 400)
+            pts = cand_points(st['env'])
+            win = {'w': st['win0'][st['wmask0'], :3].tolist(),
+                   't': st['win0'][st['wmask0'], 3].tolist(), 'pick': st['sel']}
             if not place(st['env'], r, x, y):
                 return self._json({'error': 'the box will not rest there'}, 400)
+            st['hcands'].append(pts)
+            st['hwin'].append(win)
+            st['htaken'].append(next((i for i, c in enumerate(pts)
+                                      if (c[3], c[0], c[1]) == (r, x, y)), -1))
             advance(st)
             return self._json({'board': board(st), 'promoted': st['promoted']})
         if p == '/api/arm':
@@ -1048,7 +1089,10 @@ class Handler(BaseHTTPRequestHandler):
             # a policy that fails to load must not take the result screen down
             # with it - the page needs a body it can show as an error
             try:
-                return self._json(opponent(st, body['spec']))
+                return self._json(dict(opponent(st, body['spec']),
+                                       human_cands=st['hcands'],
+                                       human_taken=st['htaken'],
+                                       human_windows=st['hwin']))
             except Exception as e:
                 return self._json({'error': f'{type(e).__name__}: {e}'}, 500)
         if p == '/api/recalc':

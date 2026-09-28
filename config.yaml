@@ -27,7 +27,7 @@ env:
   # Contact-area floor.  0.70 on this problem leaves a median of 4 legal
   # placements and caps DBL at 18% utilisation; 0.30 costs ~2 points against
   # the bare centre-of-mass rule and leaves the action space intact.
-  min_support: 0.30
+  min_support: 0.80
 
   # ---- box types ---------------------------------------------------------
   # Every box carries a type_id, and a box may only be stacked on a box of its
