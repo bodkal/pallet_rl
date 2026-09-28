@@ -100,9 +100,7 @@ Space utilisation on 3000 held-out instances of 150 items; &beta; is the share o
 <!-- RESULTS:end -->
 
 Table 1 is being regenerated against the current action space; the pre-rotation
-version is kept at `results/table1_norot.json`. Everything superseded by the
-rewrite is archived under [`old_run/`](old_run/README.md), which says what was
-kept and why.
+version is kept at `results/table1_norot.json`.
 
 ### How to read this
 

@@ -206,15 +206,21 @@ def _win_max(m, axis, L, kmax=None):
     """
     S = L
     kmax = S if kmax is None else kmax
+    m = np.ascontiguousarray(m)
     out = np.empty((kmax,) + m.shape, m.dtype)
     out[0] = m
+    mf = m.reshape(-1)
     for k in range(1, kmax):
-        cur = out[k - 1].copy()
+        # one contiguous max over the flattened array, shifted by k along the
+        # swept axis; the tail -- windows the axis end cuts short, which the
+        # flat shift fills from the next row -- is then carried over unchanged
+        prev, cur = out[k - 1], out[k]
+        sh = k if axis == 2 else k * m.shape[2]
+        np.maximum(prev.reshape(-1)[:-sh], mf[sh:], out=cur.reshape(-1)[:-sh])
         if axis == 1:
-            cur[:, : S - k] = np.maximum(out[k - 1][:, : S - k], m[:, k:])
+            cur[:, S - k:] = prev[:, S - k:]
         else:
-            cur[:, :, : S - k] = np.maximum(out[k - 1][:, :, : S - k], m[:, :, k:])
-        out[k] = cur
+            cur[:, :, S - k:] = prev[:, :, S - k:]
     return out
 
 
@@ -229,22 +235,26 @@ def _win_maxcount(m, c, axis, L, kmax):
     disjoint columns add up without double counting.
     """
     S = L
+    m = np.ascontiguousarray(m)
     om = np.empty((kmax,) + m.shape, m.dtype)
     oc = np.empty((kmax,) + m.shape, np.int32)
     om[0], oc[0] = m, 1 if c is None else c
+    mf = m.reshape(-1)
+    cf = None if c is None else np.ascontiguousarray(c).reshape(-1)
     for k in range(1, kmax):
-        nm, nc = om[k - 1].copy(), oc[k - 1].copy()
-        if axis == 1:
-            head = np.s_[:, : S - k]
-            am, ac = m[:, k:], 1 if c is None else c[:, k:]
-        else:
-            head = np.s_[:, :, : S - k]
-            am, ac = m[:, :, k:], 1 if c is None else c[:, :, k:]
-        hm, hc = om[k - 1][head], oc[k - 1][head]
-        up = am > hm
-        nm[head] = np.where(up, am, hm)
-        nc[head] = np.where(up, ac, np.where(am == hm, hc + ac, hc))
-        om[k], oc[k] = nm, nc
+        # the flat shift of `_win_max`, then the tail carried over
+        sh = k if axis == 2 else k * m.shape[2]
+        pm, pc = om[k - 1].reshape(-1)[:-sh], oc[k - 1].reshape(-1)[:-sh]
+        am = mf[sh:]
+        # beats the running max: its own count; ties it: the two add up;
+        # loses: the running count stands.  As arithmetic on the two
+        # comparisons, which is several times faster than nested `np.where`.
+        cnt = oc[k].reshape(-1)[:-sh]
+        np.multiply(pc, am <= pm, out=cnt)
+        cnt += (am >= pm) if cf is None else cf[sh:] * (am >= pm)
+        np.maximum(pm, am, out=om[k].reshape(-1)[:-sh])
+        tail = np.s_[:, S - k:] if axis == 1 else np.s_[:, :, S - k:]
+        om[k][tail], oc[k][tail] = om[k - 1][tail], oc[k - 1][tail]
     return om, oc
 
 
@@ -255,7 +265,8 @@ class BPPBatch:
                  max_l=None, size_lo=None, size_hi=None, seed=0, ems=None,
                  stability=None, rot=None, min_support=None, n_pick=None,
                  n_types=None, types=None, type_constraint=None,
-                 pick_feasible=None, pool=None, pool_order_random=0.0):
+                 pick_feasible=None, pool=None, pool_order_random=0.0,
+                 arm_collision=None, arm_cell_m=None):
         # `None` means "whatever config.yaml says"; an explicit argument wins
         e = CFG["env"]
         S = e["bin"] if S is None else S
@@ -323,6 +334,15 @@ class BPPBatch:
         if not 0.0 <= self.min_support <= 1.0:
             raise ValueError(f"min_support is a fraction of the item base, "
                              f"got {self.min_support}")
+        # Drop every placement the robot arm cannot make without one of its
+        # links hitting the pack (or cannot reach at all) -- `ar2l.pack_collision`,
+        # set up from `robot:` in config.yaml.  `arm_cell_m` is how many metres
+        # one cell stands for; None derives it from `eval.cell_cm` and
+        # `eval.box_scale`, the grid real orders are read onto.
+        self.arm_collision = bool(e.get("arm_collision", 0)
+                                  if arm_collision is None else arm_collision)
+        self.arm_cell_m = arm_cell_m
+        self._arm = None
         # the contact count costs a second sweep, so only pay for it when a
         # rule actually reads it
         self._needs_count = (self.stability != "com"
@@ -350,8 +370,14 @@ class BPPBatch:
         """Drop the cached sweeps.  `hmap=False` when only the item changed."""
         self._pos_dirty = True
         # which boxes in the station are placeable depends on the item at each
-        # slot, so a permutation invalidates it even though the bin is untouched
+        # slot, so a change of item drops it even though the bin is untouched
+        # (`permute`, which only reorders the items, reorders it instead)
         self._pick_cache = None
+        # raw `_feas_one` grids per window slot, {slot: ([feas], [z]) per
+        # orientation}, for the bin and items as they stand: `_placeable`
+        # fills them for the station and `_positions` reuses slot 0, or the
+        # other way round, whichever runs first
+        self._slot_fz = {}
         if hmap:
             self._sweep_cache = None
             self._ems_cache = None
@@ -359,6 +385,10 @@ class BPPBatch:
             # different type to the front reuses nothing it should not
             self._type_cache = {}
             self._under_cache = None
+            # arm verdicts keyed by (bin, (sx, sy, sz), x, y): the landing
+            # height follows from the height map, which is what resets them
+            self._arm_keys = np.zeros(0, np.int64)
+            self._arm_hit = np.zeros(0, bool)
 
     def _set_side(self, seq):
         """Largest footprint extent the sweeps must cover, per axis.
@@ -460,7 +490,12 @@ class BPPBatch:
         self._set_side(self.seq)
         self.head[idx] = 0
         self.done[idx] = False
+        # the arm verdicts of every bin that was not reset still hold: they
+        # depend on that bin's height map alone, which is untouched
+        keep = ~np.isin(self._arm_keys // self._arm_bin_stride(), idx)
+        keys, hit = self._arm_keys[keep], self._arm_hit[keep]
         self._invalidate()
+        self._arm_keys, self._arm_hit = keys, hit
 
     # ------------------------------------------------------------- conveyor
     def window(self):
@@ -508,13 +543,17 @@ class BPPBatch:
         out = np.zeros((self.n_env, self.nb), bool)
         alive = ~self.done & (self.head < self.length)
         for i in range(k):
-            dims, types = win[:, i, :3], win[:, i, 3]
-            # an invalid slot is zero-sized, and a zero side would index
-            # window -1; the mask below drops it either way
-            dims = np.maximum(dims, 1)
+            if i not in self._slot_fz:
+                dims, types = win[:, i, :3], win[:, i, 3]
+                # an invalid slot is zero-sized, and a zero side would index
+                # window -1; the mask below drops it either way
+                dims = np.maximum(dims, 1)
+                fz = [self._feas_one(d, types) for d in
+                      ([dims] if self.rot < 2 else [dims, dims[:, [1, 0, 2]]])]
+                self._slot_fz[i] = ([f for f, _ in fz], [z for _, z in fz])
             any_pos = np.zeros(self.n_env, bool)
-            for d in ([dims] if self.rot < 2 else [dims, dims[:, [1, 0, 2]]]):
-                any_pos |= self._feas_one(d, types)[0].any((1, 2))
+            for f in self._slot_fz[i][0]:
+                any_pos |= f.any((1, 2))
             out[:, i] = any_pos & valid[:, i] & alive
         self._pick_cache = out
         return out
@@ -530,7 +569,41 @@ class BPPBatch:
         order = np.argsort(np.where(np.arange(self.nb)[None, :] == idx[:, None],
                                     -1, np.arange(self.nb)[None, :]), axis=1)
         self.seq[self._ar[:, None], off] = win[self._ar[:, None], order]
+        self._permute_caches(idx, order)
+
+    def _permute_caches(self, idx, order):
+        """Carry the per-item caches through `permute` instead of redoing them.
+
+        The bin is untouched and every item is still in the window, only at
+        another slot: new slot `j` of bin `b` holds what old slot
+        `order[b, j]` held, so its placeability and its feasibility grids are
+        that slot's.  A move from past the station, or one that reaches past
+        the end of the sequence (where the window's clamped offsets alias),
+        has nothing cached to carry and drops the caches as before.
+        """
+        pick, slots = self._pick_cache, self._slot_fz
         self._invalidate(hmap=False)
+        moved = idx > 0
+        k = min(self.n_pick, self.nb)
+        if (idx >= k).any() or (self.head + idx >= self.length)[moved].any():
+            return
+        ar = self._ar
+        if pick is not None:
+            self._pick_cache = pick[ar[:, None], order]
+        for j in range(k):
+            src = order[:, j]
+            have = [s for s in np.unique(src).tolist() if s in slots]
+            if len(have) < len(np.unique(src)):
+                continue
+            nf = len(slots[have[0]][0])
+            fs = [slots[have[0]][0][r].copy() for r in range(nf)]
+            zs = [slots[have[0]][1][r].copy() for r in range(nf)]
+            for s in have[1:]:
+                m = src == s
+                for r in range(nf):
+                    fs[r][m] = slots[s][0][r][m]
+                    zs[r][m] = slots[s][1][r][m]
+            self._slot_fz[j] = (fs, zs)
 
     # ------------------------------------------------- empty maximal spaces
     def _ems_list(self):
@@ -567,53 +640,57 @@ class BPPBatch:
         same condition, so only those rows and columns -- O(items) of them,
         not O(S) -- can bound a space.  At S = 70 that is 2.9k candidate
         footprints per bin instead of 6.2M.
+
+        The whole batch goes at once: every bin's candidate x-spans and
+        y-spans are listed flat, each x-span is paired with the y-spans of its
+        own bin, and the floor and the four one-cell extensions of every pair
+        are a handful of gathers.  There are only ~10^4 pairs over 64 bins, so
+        a Python loop over bins and left edges was nearly all overhead.
         """
         Lx, Ly, H = self.Lx, self.Ly, self.hmap
+        n = H.shape[0]
         big = np.int16(self.Lz + 1)           # taller than any column can be
-        cols = []
-        for e in range(self.n_env):
-            h = H[e]
-            x0c = np.flatnonzero(np.r_[True, (h[:-1] > h[1:]).any(1)])
-            x1c = np.flatnonzero(np.r_[(h[1:] > h[:-1]).any(1), True])
-            y0c = np.flatnonzero(np.r_[True, (h[:, :-1] > h[:, 1:]).any(0)])
-            y1c = np.flatnonzero(np.r_[(h[:, 1:] > h[:, :-1]).any(0), True])
-            ax = _win_max(h[None], 1, Lx)[:, 0]       # ax[wx-1, x0, y]
-            ay = _win_max(h[None], 2, Ly)[:, 0]       # ay[wy-1, x, y0]
-            yy0, yy1 = np.meshgrid(y0c, y1c, indexing="ij")
-            m = yy1 >= yy0
-            yy0, yy1, wy = yy0[m], yy1[m], (yy1 - yy0 + 1)[m]
-            for x0 in x0c:
-                x1 = x1c[x1c >= x0]
-                if not x1.size:
-                    continue
-                wx = x1 - x0 + 1                      # (K,)
-                a = ax[wx - 1, x0]                    # (K, Ly) max over the x-span
-                wa = _win_max(a[None], 2, Ly)[:, 0]   # wa[wy-1, k, y0]
-                k = np.arange(wx.size)
-                flr = wa[wy[:, None] - 1, k[None, :], yy0[:, None]]        # (M, K)
-                # the same four one-cell extensions as the exhaustive sweep;
-                # `back`/`front` are the x-span max one row outside, which is
-                # what `a` already holds
-                lo = (np.full(wy.size, big) if x0 == 0
-                      else ay[wy - 1, x0 - 1, yy0])[:, None]
-                hi = np.where(x1 + 1 < Lx,
-                              ay[wy[:, None] - 1,
-                                 np.minimum(x1 + 1, Lx - 1)[None, :],
-                                 yy0[:, None]], big)
-                bk = np.where(yy0[:, None] > 0,
-                              a[k[None, :], np.maximum(yy0 - 1, 0)[:, None]], big)
-                ft = np.where(yy1[:, None] + 1 < Ly,
-                              a[k[None, :], np.minimum(yy1 + 1, Ly - 1)[:, None]], big)
-                f = np.flatnonzero((lo > flr) & (hi > flr) & (bk > flr) & (ft > flr))
-                if f.size:
-                    im, ik = np.unravel_index(f, flr.shape)
-                    cols.append((np.full(f.size, e), np.full(f.size, x0), yy0[im],
-                                 wx[ik], wy[im],
-                                 flr.reshape(-1)[f].astype(np.int32)))
-        if not cols:
+        tru = np.ones((n, 1), bool)
+        x0c = np.concatenate([tru, (H[:, :-1] > H[:, 1:]).any(2)], 1)  # (n, Lx)
+        x1c = np.concatenate([(H[:, 1:] > H[:, :-1]).any(2), tru], 1)
+        y0c = np.concatenate([tru, (H[:, :, :-1] > H[:, :, 1:]).any(1)], 1)
+        y1c = np.concatenate([(H[:, :, 1:] > H[:, :, :-1]).any(1), tru], 1)
+        # every (bin, near edge, far edge) span, in (bin, near, far) order
+        pe, px0, px1 = np.nonzero(x0c[:, :, None] & x1c[:, None, :]
+                                  & np.triu(np.ones((Lx, Lx), bool)))
+        qe, qy0, qy1 = np.nonzero(y0c[:, :, None] & y1c[:, None, :]
+                                  & np.triu(np.ones((Ly, Ly), bool)))
+        if not len(pe) or not len(qe):
             z = np.zeros(0, np.int64)
             return (z,) * 6
-        return tuple(np.concatenate(c) for c in zip(*cols))
+        ax = _win_max(H, 1, Lx)               # ax[wx-1, n, x0, y]  max over x
+        ay = _win_max(H, 2, Ly)               # ay[wy-1, n, x, y0]  max over y
+        pwx = px1 - px0 + 1
+        a = ax[pwx - 1, pe, px0]              # (P, Ly) max over each x-span
+        wa = _win_max(a[None], 2, Ly)[:, 0]   # wa[wy-1, p, y0]
+        # pair each x-span with every y-span of its own bin
+        qcount = np.bincount(qe, minlength=n)
+        qstart = np.cumsum(qcount) - qcount
+        cnt = qcount[pe]
+        p = np.repeat(np.arange(len(pe)), cnt)
+        q = (qstart[pe][p] + np.arange(cnt.sum())
+             - np.repeat(np.cumsum(cnt) - cnt, cnt))
+        e, x0, x1, wx = pe[p], px0[p], px1[p], pwx[p]
+        y0, y1 = qy0[q], qy1[q]
+        wy = y1 - y0 + 1
+        flr = wa[wy - 1, p, y0]
+        # the same four one-cell extensions as the exhaustive sweep;
+        # `back`/`front` are the x-span max one row outside, which is what `a`
+        # already holds
+        lo = np.where(x0 > 0, ay[wy - 1, e, np.maximum(x0 - 1, 0), y0], big)
+        hi = np.where(x1 + 1 < Lx,
+                      ay[wy - 1, e, np.minimum(x1 + 1, Lx - 1), y0], big)
+        bk = np.where(y0 > 0, a[p, np.maximum(y0 - 1, 0)], big)
+        ft = np.where(y1 + 1 < Ly, a[p, np.minimum(y1 + 1, Ly - 1)], big)
+        f = np.flatnonzero((lo > flr) & (hi > flr) & (bk > flr) & (ft > flr))
+        # the order the per-bin loop produced: bin, left edge, y-span, right edge
+        f = f[np.lexsort((x1[f], q[f], x0[f], e[f]))]
+        return (e[f], x0[f], y0[f], wx[f], wy[f], flr[f].astype(np.int32))
 
     def _ems_exhaustive(self):
         """Score every one of the `(Lx(Lx+1)/2)(Ly(Ly+1)/2)` footprints and
@@ -685,29 +762,47 @@ class BPPBatch:
         and it is a corner cell when both its x side and its y side are
         bounded.  The bin wall is a column taller than any `z`.  Stateless, like
         the EMS list, and item-dependent only through the footprint size and
-        `z`, so it is a handful of gathers over the grid.
+        `z`, so it is a handful of window reads over the grid.
+
+        Every column read is the height map shifted by an offset that is the
+        same over the whole grid of one bin -- 0 or 1 at the near side, the
+        footprint side (+1) at the far one -- so each is one block copy per bin
+        out of a wall-padded map rather than a per-cell gather.  A footprint
+        that overruns the bin is never a candidate, and reads False.
         """
-        Lx, Ly = self.Lx, self.Ly
-        p = np.full((self.n_env, Lx + 2, Ly + 2), self.Lz + 1, np.int32)
-        p[:, 1:-1, 1:-1] = self.hmap
-        ar = self._ar[:, None, None]
-        gx = np.arange(Lx)[None, :, None]
-        gy = np.arange(Ly)[None, None, :]
-        sx, sy = dims[:, 0, None, None], dims[:, 1, None, None]
-        # near and far column of the footprint along each axis, and which way
-        # its outside lies; `+ 1` is the padding
-        xs = ((gx + 1, -1), (np.minimum(gx + sx, Lx), 1))
-        ys = ((gy + 1, -1), (np.minimum(gy + sy, Ly), 1))
-        out = np.zeros((self.n_env, Lx, Ly), bool)
-        for cx, dx in xs:
-            for cy, dy in ys:
-                hc = p[ar, cx, cy]
-                nx, ny, nd = p[ar, cx + dx, cy], p[ar, cx, cy + dy], p[ar, cx + dx, cy + dy]
+        Lx, Ly, n = self.Lx, self.Ly, self.n_env
+        sx, sy = dims[:, 0].astype(np.int64), dims[:, 1].astype(np.int64)
+        kx, ky = int(sx.max()), int(sy.max())
+        # wide enough that the far neighbour of an overrunning footprint is
+        # still inside the array; `+ 1` is the near wall
+        p = np.full((n, Lx + kx + 2, Ly + ky + 2), self.Lz + 1, np.int16)
+        p[:, 1:Lx + 1, 1:Ly + 1] = self.hmap
+        win = np.lib.stride_tricks.sliding_window_view(p, (Lx, Ly), axis=(1, 2))
+        ar = self._ar
+
+        def at(ox, oy):
+            """`p[b, gx + ox[b], gy + oy[b]]` over the (Lx, Ly) grid."""
+            if np.isscalar(ox) and np.isscalar(oy):
+                return p[:, ox:ox + Lx, oy:oy + Ly]
+            return win[ar, ox, oy]
+
+        z = z.astype(np.int16)
+        # near and far column of the footprint along each axis, as the offset
+        # of that column and of its outside neighbour
+        xs = ((1, 0), (sx, sx + 1))
+        ys = ((1, 0), (sy, sy + 1))
+        out = np.zeros((n, Lx, Ly), bool)
+        for cx, nbx in xs:
+            for cy, nby in ys:
+                hc = at(cx, cy)
+                nx, ny, nd = at(nbx, cy), at(cx, nby), at(nbx, nby)
                 on = hc == z
                 tx, ty = nx > z, ny > z
                 ex = tx | (on & (nx < z)) | (ty & (nd <= z))
                 ey = ty | (on & (ny < z)) | (tx & (nd <= z))
                 out |= ex & ey
+        out &= np.arange(Lx)[None, :, None] + sx[:, None, None] <= Lx
+        out &= np.arange(Ly)[None, None, :] + sy[:, None, None] <= Ly
         return out
 
     # --------------------------------------------------------- feasibility
@@ -866,7 +961,61 @@ class BPPBatch:
             feas &= self._ems_corners(dims) | self._corner_mask(dims, z)
         if self.type_constraint and self.n_types > 1 and types is not None:
             feas &= self._type_ok(dims, z, types)
+        if self.arm_collision:
+            feas = self._arm_clear(dims, z, feas)
         return feas, z
+
+    def _arm_checker(self):
+        if self._arm is None:
+            from . import pack_collision as PC
+            rb = CFG["robot"]
+            m = self.arm_cell_m or PC.robot_cell_m(
+                rb, CFG["eval"]["cell_cm"], CFG["eval"]["box_scale"])
+            self._arm = PC.checker_from_config(rb, m)
+        return self._arm
+
+    def _arm_bin_stride(self):
+        """The arm-verdict key is `bin * this + (size, x, y)`."""
+        return 1024 ** 3 * self.Lx * self.Ly
+
+    def _arm_clear(self, dims, z, feas):
+        """`feas` less the placements the arm collides on.
+
+        Only the cells every other rule already allows are asked, all bins in
+        one batched check (`ArmPackChecker.collides_batch`), and each answer
+        is kept until the height map changes.  An unreachable pose counts as
+        a collision, as it does on the cell.
+        """
+        bb, xx, yy = np.nonzero(feas)
+        if not len(bb):
+            return feas
+        sizes = dims[bb].astype(np.int64)
+        # one int64 per (bin, item size, x, y), looked up in a sorted table
+        if (sizes >= 1024).any():
+            raise ValueError(f"item side {int(sizes.max())} is too large for "
+                             f"the arm-verdict cache key")
+        key = (bb * self._arm_bin_stride()
+               + (((sizes[:, 0] * 1024 + sizes[:, 1]) * 1024 + sizes[:, 2])
+                  * self.Lx + xx) * self.Ly + yy)
+        pos = np.searchsorted(self._arm_keys, key)
+        found = pos < len(self._arm_keys)
+        found[found] = self._arm_keys[pos[found]] == key[found]
+        hit = np.zeros(len(bb), bool)
+        hit[found] = self._arm_hit[pos[found]]
+        todo = np.flatnonzero(~found)
+        if len(todo):
+            chk, B = self._arm_checker()
+            b, x, y = bb[todo], xx[todo], yy[todo]
+            res = chk.collides_batch(sizes[todo], np.stack([x, y, z[b, x, y]], 1),
+                                     B, self.hmap, b)
+            hit[todo] = res
+            keys = np.concatenate([self._arm_keys, key[todo]])
+            order = np.argsort(keys, kind="stable")
+            self._arm_keys = keys[order]
+            self._arm_hit = np.concatenate([self._arm_hit, res])[order]
+        out = feas.copy()
+        out[bb, xx, yy] = ~hit
+        return out
 
     def _support_ratio(self, dims, cxy, cx):
         """Fraction of the footprint that rests on the contact layer.
@@ -896,9 +1045,17 @@ class BPPBatch:
             return self._pos_cache
         item, types = self.head_item()
         orients = [item] if self.rot < 2 else [item, item[:, [1, 0, 2]]]
+        # the head item is window slot 0 exactly when every bin still has one;
+        # a bin past its end reads a zero-sized slot there instead
+        same = bool((self.head < self.length).all())
+        if same and 0 in self._slot_fz:
+            raw = list(zip(*self._slot_fz[0]))
+        else:
+            raw = [self._feas_one(d, types) for d in orients]
+            if same:
+                self._slot_fz[0] = ([f for f, _ in raw], [z for _, z in raw])
         feas, zs, tu = [], [], []
-        for r, d in enumerate(orients):
-            f, z = self._feas_one(d, types)
+        for r, (d, (f, z)) in enumerate(zip(orients, raw)):
             if r:   # a square footprint is the same placement turned round
                 f = f & (item[:, 0] != item[:, 1])[:, None, None]
             feas.append(f); zs.append(z); tu.append(self._type_under(d, z))

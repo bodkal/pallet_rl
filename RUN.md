@@ -147,87 +147,82 @@ that floor, so reproducing them means turning it off:
 It is accepted by both `ar2l.train` and `ar2l.evaluate`, and a policy must be
 evaluated under the rule it was trained under.
 
-The checkpoints those numbers came from are no longer in `runs/`: they were
-archived to `old_run/runs_nosupport/` when the floor became the default, so
-`runs/` is empty until something is retrained under it. `scripts/eval_all.py`
-and the viewers resolve `runs/<name>`, so scoring an archived policy means
-pointing `ar2l.evaluate --ckpt/--attacker` straight at its file:
-
-```bash
-python3 -m ar2l.evaluate --ckpt old_run/runs_nosupport/ex10_nb10/best.pt \
-    --attacker old_run/runs_nosupport/att_ex10_nb10/best.pt \
-    --nb 10 --n_inst 3000 --min_support 0
-```
+The checkpoints those numbers came from were trained before the floor became
+the default and have since been deleted; retrain under the flag to reproduce them.
 
 ## 1. The strongest policy — what to run
 
-**`--algo exact --alpha 1.0`, exact AR2L at `α = 1`.** It is the best packer in
-`README.md` once anything reorders the conveyor, and it gives up nothing
-nominally: at `N_B = 10` it holds **65.1** utilisation under its own attacker
-against PCT's 64.2, from a nominal 75.4 against PCT's 75.9, and it packs at
-least as many items as PCT in 9 of 10 cells. `--alpha 0.5` is the variant to
-pick if the conveyor is never adversarial — it is the highest nominal number in
-the table at `N_B = 20` (75.7) — and RARL edges ExactAR2L(1.0) out at `N_B = 10`
-under attack (65.7) by training on the attacker's orderings alone, which is the
-trade the paper is arguing against. There is no "bigger" trained net in the
-repo: all three networks are the paper's 65k-parameter transformer, and
-`--width / --heads / --layers` are what would change that (see below).
+**`--algo select --n_pick 5` at `--width 128`, trained on the orders file.**
+The cooperative selector picks which of the 5 reachable boxes goes next, *for*
+the packer, and the packer is trained on the stream it produces. It is the best
+run on the current problem — the real orders of `data/orders_all.csv` on the
+30 × 25 × 40-cell pallet (1 cm cells, boxes divided by 4), 3 box types with
+the stacking rule, `ems: 3` candidates and the UR20 arm filter on — all of
+which are the `config.yaml` defaults now, so the command needs few flags.
 
-Three commands: the packer, its own attacker, and the evaluation.
+Held-out utilisation on the 12 pallets `--holdout 0.2` keeps out of training
+(scored every 250 iterations, 512 instances):
+
+| run | algo | width | `ems` | iters | best held-out | mean of last 8 evals |
+|---|---|---|---|---|---|---|
+| **`arm_pack_124`** | `select` | **128** | 3 | 10000 | **63.2** (it 8250) | **62.2** |
+| `arm_pack_64` | `select` | 64 | 3 | 10000 | 62.4 (it 7500) | 59.3 |
+| `sel_orders` | `select` | 64 | 1 | 5000 | 63.9 (it 2000) | 59.8 |
+
+`sel_orders` peaks higher once, early, then falls back; `arm_pack_124` holds
+its level to the end, which is what to trust with only 12 held-out pallets.
+All three ran at `--min_support 0.3`. (`pct` on random boxes without the
+selector, `runs/pct_types`, reaches 62.1 on its own easier problem; the
+selector on the same random boxes, `runs/sel_types_k5`, 75.7 — the pick is
+worth far more than anything else here.)
+
+Three commands: train, score the held-out pallets, look at one.
 
 ```bash
-# 1. the packer — exact AR2L at alpha = 1, N_B = 10
-python3 -m ar2l.train --name best_nb10 --algo exact --alpha 1.0 --nb 10 \
-    --iters 20000 --eval_every 250 --save_every 250 --resume --min_support 0
+# 1. train — select, width 128, on the orders file (reproduces arm_pack_124)
+python3 -m ar2l.train --name best_orders --algo select --nb 10 --n_pick 5 \
+    --data data/orders_all.csv --pallet_cm 30 25 40 --cell_cm 1 --box_scale 4 \
+    --width 128 --heads 1 --layers 1 --ems 3 --min_support 0.3 \
+    --iters 10000 --eval_every 250 --save_every 250 --resume
 
-# 2. a dedicated attacker against that frozen packer
-python3 -m ar2l.train --name att_best_nb10 --algo attack --nb 10 \
-    --init runs/best_nb10/best.pt --freeze_pack --ent_final 0.001 \
-    --iters 4000 --eval_every 250 --save_every 250 --resume --min_support 0
+# 2. score it: the selector (the `mixer` net of the same checkpoint) picks at beta 100
+python3 -m ar2l.evaluate --ckpt runs/best_orders/best.pt \
+    --attacker runs/best_orders/best.pt --permuter mixer \
+    --data data/orders_all.csv --pallet_cm 30 25 40 --cell_cm 1 --box_scale 4 \
+    --nb 10 --n_pick 5 --min_support 0.3 --beta 0 100 \
+    --per_pallet results/best_orders.csv
 
-# 3. score it on the 3000 held-out instances, nominal through fully attacked
-python3 -m ar2l.evaluate --ckpt runs/best_nb10/best.pt \
-    --attacker runs/att_best_nb10/best.pt --nb 10 --n_inst 3000 --min_support 0
+# 3. watch one pallet packed
+python3 -m ar2l.viz.replay3d --data data/orders_all.csv --pallet_cm 30 25 40 \
+    --seq 0 --policy run:best_orders --attacker mix:best_orders --gif
 ```
 
-`best.pt` is the checkpoint with the best held-out score — nominal utilisation
-for a packer, and for `--algo attack` the *lowest* utilisation it drove the
-frozen packer to. `--resume` picks the run up from `last.pt`, so the same
-command can be re-issued after an interruption or to extend `--iters`.
+For a `select` run the selector acts only at `--beta 100`; at `--beta 0` the
+packer takes the boxes in CSV order, so the difference between the two columns
+is what the pick is worth. `best.pt` is the checkpoint with the best held-out
+selected utilisation; `--resume` picks the run up from `last.pt`.
 
-**Which `--min_support` to train under.** The commands above pass
-`--min_support 0`, which is the rule every number in `README.md` was measured
-under and the only way to compare against them or against the archived runs.
-For a policy meant to drive a real palletiser, **drop the flag from all three
-commands** and take the 80% contact-area default instead — that is the rule the
-simulator now runs by default, and it is the one to train under unless the
-point of the run is the paper's table. The floor costs roughly 15 points of
-utilisation, so its numbers are not comparable to anything in `README.md`;
-what stays comparable is one method against another under the same floor.
+**Things to know before re-running it.**
 
-**What the budget buys.** 4000 iterations is what `README.md` reports; the
-paper runs ~28,000, and the gap in
-[TODO.md](TODO.md#c1-what-is-left-the-attacker-and-only-the-attacker) is
-attributed to the attacker and to that budget, not to network capacity — which
-is why `--iters 20000` above, and why raising `--width`/`--layers` is a lever
-nothing here has measured. Measured on an RTX 4070 Laptop, one run at a time,
-`--n_env 64 --T 30`:
+- **`--min_support`.** The config now defaults to `0.80`; the measured runs
+  above used `0.3`, which is why the commands pass it. Drop the flag (from both
+  commands) to train under the stricter 80% floor — its numbers are then not
+  comparable to the table above.
+- **The arm filter** (`env.arm_collision: 1` in the config) has no flag and is
+  not recorded in `args.json` (TODO D.4), so a run cannot say whether it had
+  it. Evaluate under the same config you trained under.
+- **Cost.** ~13.6 s per iteration on an RTX 4070 Laptop for the command above
+  (13.1 s at width 64), so 10000 iterations is ~38 h. Width 128 costs almost
+  nothing extra; the environment step dominates.
+- **Few pallets overfit.** 47 training pallets, 12 held out: trust the held-out
+  number, not the training `util`. `--order_random 0.2` gives more variety.
 
-| run | ms/iteration | 4000 iters | 20000 iters |
-|---|---|---|---|
-| `--algo exact --nb 10` | 1120 | 1.2 h | 6.2 h |
-| `--algo exact --nb 20` | 1180 | 1.3 h | 6.6 h |
-| `--algo pct --nb 10` | 485 | 0.5 h | 2.7 h |
-| `--algo attack --freeze_pack` | 470 | 0.5 h | 2.6 h |
-
-Exact AR2L is ~2.3× PCT because it runs three PPO updates per iteration
-(attacker, mixture model, packer). The 80% floor costs nothing measurable
-(1120 vs 1122 ms/it). Four runs sharing this GPU take about 1.8× as long each.
-
-**Bigger networks, if you want to try.** `--width 128 --heads 4 --layers 2`
-applies to all three networks at once; the checkpoint records them and
-`ar2l.evaluate` rebuilds the right shape, so nothing else has to be told. The
-paper's 64/1/1 is what every number here was produced with.
+**Other directions, if the problem changes.** On a random stream with an
+adversarial conveyor, `--algo exact --alpha 1.0` is the robust packer of the
+paper reproduction (65.1 under its own attacker at `N_B = 10`, against PCT's
+64.2 — see `README.md`); train its attacker with
+`--algo attack --init runs/<name>/best.pt --freeze_pack --ent_final 0.001` and
+reproduce the paper tables with `--min_support 0` (sections 2–4).
 
 ## 2. Train the packing policies
 
@@ -244,7 +239,11 @@ run up from its last checkpoint.  Single runs can be launched directly:
 python3 -m ar2l.train --name ex10_nb10 --algo exact --alpha 1.0 --nb 10 --iters 4000
 ```
 
-Algorithms: `pct`, `cppo`, `rarl`, `rfmdp`, `exact`, `approx`, `attack`.
+Algorithms: `pct`, `cppo`, `rarl`, `rfmdp`, `exact`, `approx`, `attack`, `select`.
+The grid reproduces the paper, so give it `--extra "--min_support 0"` and the
+paper's problem (`--bin 10 --n_items 150 --size_lo 1 --size_hi 5 --ems 1
+--n_types 1 --n_pick 10 --width 64`, with `types: null` and `arm_collision: 0`
+in a `--config` patch).
 
 ## 3. Train one attacker per policy
 
@@ -346,32 +345,35 @@ unless noted; all of them were run to check that they parse. They are
 copy-pasteable as they stand — delete the lines you do not care about, since
 nothing here has to be passed. What each flag means is in the tables below.
 
-**A packing policy** (`exact`, `pct`, `cppo`, `rarl`, `rfmdp`, `approx`):
+**A packing policy** (`select`, `exact`, `pct`, `cppo`, `rarl`, `rfmdp`, `approx`):
 
 ```bash
 python3 -m ar2l.train \
-  --name best_nb10 --algo exact --nb 10 \
+  --name best_orders --algo select --nb 10 --n_pick 5 \
   --config config.yaml \
   --alpha 1.0 --rho 0.1 --dist_coef 1.0 --cvar_q 0.5 \
-  --iters 20000 --n_env 64 --T 30 \
-  --bin 10 --n_items 150 --size_lo 1 --size_hi 5 --max_l 120 --max_c 80 \
-  --rot 2 --ems 1 --stability com --min_support 0.80 \
+  --data data/orders_all.csv --holdout 0.2 --order_random 0.0 \
+  --pallet_cm 30 25 40 --cell_cm 1.0 --box_scale 4 --box_round nearest \
+  --iters 8000 --n_env 64 --T 30 \
+  --bin 30x24x40 --n_items 120 --size_lo 4 --size_hi 15x10x10 --max_l 256 --max_c 128 \
+  --rot 2 --ems 3 --stability com --min_support 0.80 \
+  --n_types 3 --type_constraint 1 --type_embed 16 \
   --lr 3e-4 --gamma 1.0 --lam 0.95 --epochs 4 --minibatches 4 \
-  --ent_coef 0.01 --ent_final 0.001 --clip 0.2 --vf_coef 0.5 --max_grad 0.5 \
-  --width 64 --heads 1 --layers 1 --c_temp 10.0 \
+  --ent_coef 0.01 --clip 0.2 --vf_coef 0.5 --max_grad 0.5 \
+  --width 128 --heads 1 --layers 1 --c_temp 10.0 \
   --init runs/other/best.pt \
   --seed 0 --device cuda --compile 0 --resume \
-  --eval_every 250 --eval_inst 256 --log_every 50 --save_every 250 --progress auto
+  --eval_every 250 --eval_inst 512 --log_every 50 --save_every 250 --progress auto
 ```
 
-Every value here is the `config.yaml` default except: `--iters` (default 8000), `--ent_final`
-(off by default, and only the attacker's bonus is annealed), `--init` (off by
-default — drop the line to start from scratch), and the four `--eval/--save/--log`
-periods, which the grid runs at 250/256/50/250. `--alpha` is read by `exact` and
-`approx`, `--rho` by `approx` and `rfmdp`, `--dist_coef` by `exact`, `--cvar_q`
-by `cppo`; the rest are accepted and ignored. `--freeze_pack` and `--heur_pack`
-are the two flags left out: they belong to an attacker run, and on a packer run
-they would train nothing.
+Every value here is the `config.yaml` default except `--init` (off by default —
+drop the line to start from scratch). With `--data` an orders CSV and
+`--pallet_cm` set, the bin trained on is the pallet, so `--bin` is ignored.
+`--alpha` is read by `exact` and `approx`, `--rho` by `approx` and `rfmdp`,
+`--dist_coef` by `exact`, `--cvar_q` by `cppo`; the rest are accepted and
+ignored. `--freeze_pack`, `--heur_pack` and `--ent_final` belong to an
+attacker run. The arm filter is `env.arm_collision` in the config only — there
+is no flag.
 
 **An attacker** against that frozen policy — the same flag set, plus those two:
 
@@ -382,13 +384,14 @@ python3 -m ar2l.train \
   --alpha 1.0 --rho 0.1 --dist_coef 1.0 --cvar_q 0.5 \
   --iters 4000 --n_env 64 --T 30 \
   --config config.yaml \
-  --bin 10 --n_items 150 --size_lo 1 --size_hi 5 --max_l 120 --max_c 80 \
-  --rot 2 --ems 1 --stability com --min_support 0.80 \
+  --bin 30x24x40 --n_items 120 --size_lo 4 --size_hi 15x10x10 --max_l 256 --max_c 128 \
+  --rot 2 --ems 3 --stability com --min_support 0.80 \
+  --n_types 3 --type_constraint 1 --type_embed 16 \
   --lr 3e-4 --gamma 1.0 --lam 0.95 --epochs 4 --minibatches 4 \
   --ent_coef 0.01 --ent_final 0.001 --clip 0.2 --vf_coef 0.5 --max_grad 0.5 \
-  --width 64 --heads 1 --layers 1 --c_temp 10.0 \
+  --width 128 --heads 1 --layers 1 --c_temp 10.0 \
   --seed 0 --device cuda --compile 0 --resume \
-  --eval_every 250 --eval_inst 256 --log_every 50 --save_every 250 --progress auto
+  --eval_every 250 --eval_inst 512 --log_every 50 --save_every 250 --progress auto
 ```
 
 `--init` names the packer to attack and `--freeze_pack` holds it fixed and plays
@@ -403,16 +406,22 @@ python3 -m ar2l.evaluate \
   --ckpt runs/best_nb10/best.pt \
   --attacker runs/att_best_nb10/best.pt \
   --config config.yaml \
-  --nb 10 --beta 0 25 50 75 100 \
-  --data data/discrete_test.npy --n_inst 3000 --batch 256 \
-  --rot 2 --min_support 0.80 --seed 0 \
-  --out results/best_nb10.json --device cuda
+  --permuter attacker \
+  --nb 10 --n_pick 5 --beta 0 25 50 75 100 \
+  --data data/pallet_2cm_test.npy --n_inst 3000 --batch 256 \
+  --pallet_cm 30 25 40 --cell_cm 1.0 --box_scale 4 --box_round nearest \
+  --order_random 0.0 --order_seed 0 \
+  --rot 2 --min_support 0.80 --n_types 3 --type_constraint 1 --seed 0 \
+  --per_pallet results/best_nb10.csv --out results/best_nb10.json --device cuda
 ```
 
 `--heuristic dbl` replaces `--ckpt` to score a heuristic. Drop `--attacker` for
-the nominal column alone; it is meaningless on a `pct`, `cppo` or `rfmdp`
-checkpoint, which carry an untrained attacker head. `--rot` and `--min_support`
-must match what the policy was trained under, `--seed` picks which instances
+the nominal column alone; `--permuter mixer` runs the selector of a `select`
+(or the mixture model of an `exact`) checkpoint instead of its attacker. The
+attacker is meaningless on a `pct`, `cppo` or `rfmdp`
+checkpoint, which carry an untrained attacker head. The `--pallet_cm`/`--cell_cm`/
+`--box_scale` line applies only to an orders `.csv`. `--rot`, `--min_support`,
+`--n_pick` and `--n_types` must match what the policy was trained under, `--seed` picks which instances
 each `--beta` subset reorders.
 
 **The grid, end to end** — every flag of each driver:
@@ -503,7 +512,7 @@ named in each table's heading.
 | flag | default | meaning |
 |---|---|---|
 | `--name` | *required* | run directory: `runs/<name>/` holds `args.json`, `log.jsonl`, `best.pt`, `last.pt` |
-| `--algo` | `pct` | `pct`, `cppo`, `rarl`, `rfmdp`, `exact`, `approx`, `attack` |
+| `--algo` | `select` | `pct`, `cppo`, `rarl`, `rfmdp`, `exact`, `approx`, `attack`, `select` |
 | `--iters` | `8000` | PPO iterations. One iteration is `--n_env` × `--T` steps per network trained |
 | `--resume` | off | continue from `runs/<name>/last.pt`, keeping the recorded best score |
 | `--seed` | `0` | seeds the env and torch |
@@ -524,6 +533,10 @@ the rest.
 | `--freeze_pack` | off | `attack` | hold the packer fixed and play it greedily; this is what makes the attacker train against the packer it will be tested against |
 | `--heur_pack` | — | `attack` | attack a heuristic (`dbl`, `bmf`, `lsah`, `onlinebph`, `hmm`, `macs`) instead of a network |
 | `--ent_final` | — | `attack` | anneal the attacker's entropy bonus linearly from `--ent_coef` to this value (the grid uses `0.001`) |
+| `--data` | `data/orders_all.csv` | any | where episodes come from: an orders `.csv` or an instance `.npy`; empty/`null` in the config is the random generator |
+| `--holdout` | `0.2` | any, with `--data` | share of pallets kept out of training for the held-out evals that pick `best.pt` |
+| `--order_random` | `0.0` | any, with `--data` | randomise each drawn pallet's box order, 0..1 |
+| `--pallet_cm` / `--cell_cm` / `--box_scale` / `--box_round` | `30 25 40` / `1.0` / `4` / `nearest` | any, with an orders `.csv` | how the CSV is gridded; `--pallet_cm` is also the bin trained on |
 
 **The environment** (`env:`) — these define the problem, and a policy is only
 comparable to another trained with the same ones.
@@ -531,13 +544,14 @@ comparable to another trained with the same ones.
 | flag | default | meaning |
 |---|---|---|
 | `--nb` | `10` | observable items `N_B`: how far down the conveyor both the packer and the attacker can see |
-| `--bin` | `10` | bin extent; an int for a cube or `WxLxH`, e.g. `60x50x80` |
-| `--n_items` | `150` | items per episode |
-| `--size_lo` / `--size_hi` | `1` / `5` | item side bounds; `--size_hi` also takes `WxLxH` for per-axis caps |
+| `--n_pick` | `5` | of the `N_B`, how many are within reach and can be picked; the rest are preview only |
+| `--bin` | `30x24x40` | bin extent; an int for a cube or `WxLxH`, e.g. `60x50x80` |
+| `--n_items` | `120` | items per episode |
+| `--size_lo` / `--size_hi` | `4` / `15x10x10` | item side bounds; `--size_hi` also takes `WxLxH` for per-axis caps |
 | `--rot` | `2` | orientations offered: `1` = none, `2` = also yawed 90°. Worth +6.7 points on the heuristics |
-| `--ems` | `1` | `1` = candidates are the empty-maximal-space corners, `2` = corner cells of the height map (walls, taller boxes, and the edges of box tops), `3` = both, `0` = every loading position on the grid |
-| `--max_l` | `120` | leaf-node cap, the length of the candidate list. Raise it on a large bin if the EMS corners hit it |
-| `--max_c` | `80` | initial packed-item capacity — the packer's memory of the bin. Not a limit: it doubles when a bin holds more |
+| `--ems` | `3` | `1` = candidates are the empty-maximal-space corners, `2` = corner cells of the height map (walls, taller boxes, and the edges of box tops), `3` = both, `0` = every loading position on the grid |
+| `--max_l` | `256` | leaf-node cap, the length of the candidate list. Raise it on a large bin if the EMS corners hit it |
+| `--max_c` | `128` | initial packed-item capacity — the packer's memory of the bin. Not a limit: it doubles when a bin holds more |
 | `--stability` | `com` | `com` = centre of mass over the support (the identified rule), `cdrl` = the 60%-area/4-corner rule as the paper's citations write it |
 | `--n_types` | `3` | box types. Must match the `types:` size classes in the config; `1` with `types: null` is the pre-type simulator |
 | `--type_constraint` | `1` | `0` keeps `type_id` in the state but lets any box be stacked on any other |
@@ -563,7 +577,7 @@ comparable to another trained with the same ones.
 
 | flag | default | meaning |
 |---|---|---|
-| `--width` / `--heads` / `--layers` | `64` / `1` / `1` | the transformer, shared by all three networks. The paper's size; 65k parameters each |
+| `--width` / `--heads` / `--layers` | `128` / `1` / `1` | the transformer, shared by all three networks. The paper's size is 64/1/1 (65k parameters each) |
 | `--c_temp` | `10.0` | pointer-head temperature `c` of Eq. 28 |
 | `--type_embed` | `16` | width of the trainable box-type embedding, concatenated onto every node's physical features before its element-wise projection |
 
@@ -571,10 +585,10 @@ comparable to another trained with the same ones.
 
 | flag | default | meaning |
 |---|---|---|
-| `--eval_every` | `200` | iterations between held-out evaluations, which is what selects `best.pt` |
-| `--eval_inst` | `256` | instances per held-out evaluation |
+| `--eval_every` | `250` | iterations between held-out evaluations, which is what selects `best.pt` |
+| `--eval_inst` | `512` | instances per held-out evaluation |
 | `--log_every` | `50` | iterations between log lines and `log.jsonl` records |
-| `--save_every` | `200` | iterations between `last.pt` writes |
+| `--save_every` | `250` | iterations between `last.pt` writes |
 | `--progress` | `auto` | progress bar on stderr; `auto` = only on a terminal, so a redirected log stays clean |
 
 ## `python3 -m ar2l.evaluate`
@@ -586,6 +600,7 @@ Defaults from the `eval:` section, plus `env:` for `--rot` / `--min_support`.
 | `--ckpt` | — | packing policy checkpoint; the network shape is read from it |
 | `--config` | — | a YAML file of defaults merged over `config.yaml` |
 | `--heuristic` | — | score a heuristic instead: `dbl`, `bmf`, `lsah`, `onlinebph`, `hmm`, `macs` |
+| `--permuter` | `attacker` | which permutation net inside `--attacker` to run: `attacker`, or `mixer` — the selector a `select` run trains |
 | `--attacker` | — | checkpoint holding the attacker to reorder with. Only `rarl`, `exact`, `approx` and `attack` runs carry a trained one; every other checkpoint holds an unused randomly-initialised head that would report a harmless attack |
 | `--nb` | `10` | observable items; match the policy's |
 | `--beta` | `0 25 50 75 100` | percentage of instances the attacker reorders |
@@ -594,16 +609,21 @@ Defaults from the `eval:` section, plus `env:` for `--rot` / `--min_support`.
 | `--batch` | `256` | bins stepped at once |
 | `--rot` | `2` | orientations; match the policy's |
 | `--min_support` | `env.min_support`, `0.80` | contact-area floor; **match the policy's** |
-| `--n_pick` | `1` | how many of the `N_B` are within reach; **match the policy's** |
+| `--n_pick` | `5` | how many of the `N_B` are within reach; **match the policy's** |
+| `--pallet_cm` / `--cell_cm` / `--box_scale` / `--box_round` | `30 25 40` / `1.0` / `4` / `nearest` | how an orders `.csv` is gridded; **match the training run's** |
+| `--order_random` / `--order_seed` | `0.0` / `0` | randomise each pallet's box order before scoring |
+| `--per_pallet` | — | write one CSV row per pallet and beta: `pallet_id,beta,boxes,placed,util_pct` |
 | `--n_types` | `3` | box types the dataset carries; **match the policy's** |
 | `--type_constraint` | `1` | `0` scores the policy with the stacking rule lifted |
 | `--seed` | `0` | which instances the β subsets pick |
 | `--out` | — | write the metrics to this JSON path |
 | `--device` | `cuda` | |
 
-The CLI evaluates on the 10³ default bin: `--bin`, `--stability` and `--max_l`
-are not exposed here. For a non-cubic bin or the `cdrl` rule, call
-`ar2l.evaluate.run(...)`, which takes `S`, `stability`, `max_l` and `ems`.
+The bin is `env.bin` from the config — or `--pallet_cm` for an orders `.csv` —
+and `--stability`, `--max_l`, `--ems` and the arm filter come from the config
+too: they have no flag here, so evaluate under the config the policy was
+trained under (or pass it with `--config`). `ar2l.evaluate.run(...)` takes `S`,
+`stability`, `max_l` and `ems` directly.
 
 ## `scripts/`
 

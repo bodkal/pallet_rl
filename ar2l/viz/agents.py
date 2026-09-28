@@ -163,7 +163,8 @@ def extent(S):
 def play(seq, policy, attacker=None, nb=1, S=10, stability="com", record=True,
          min_support=None,
          size_hi=None, max_l=None, n_pick=None, rot=None, ems=None,
-         n_types=None, type_constraint=None):
+         n_types=None, type_constraint=None, arm_collision=None,
+         arm_cell_m=None):
     """One episode; returns the trace the viewers draw.
 
     `S` is an int for a cube or an (Lx, Ly, Lz) triple.  `size_hi` bounds the
@@ -183,6 +184,7 @@ def play(seq, policy, attacker=None, nb=1, S=10, stability="com", record=True,
                    min_support=min_support, n_pick=n_pick, rot=rot, ems=ems,
                    n_types=n_types, types=False,
                    type_constraint=type_constraint,
+                   arm_collision=arm_collision, arm_cell_m=arm_cell_m,
                    size_hi=(seq[..., :3].reshape(-1, 3).max(0)
                             if size_hi is None else size_hi),
                    **({} if max_l is None else {"max_l": max_l}))
@@ -217,6 +219,8 @@ def play(seq, policy, attacker=None, nb=1, S=10, stability="com", record=True,
                 "item_type": int(item[3]),
                 "cands": [c[:6] for c in env.candidates(0, k)],
                 "cand_types": [c[6] for c in env.candidates(0, k)],
+                # which orientation each candidate turns the item to
+                "cand_rot": env._lxy[0, :k, 2].tolist(),
                 "probs": prob[0][:k].tolist(),
                 "choice": int(act[0]),
             }

@@ -958,15 +958,19 @@ class ArmPackChecker:
     def refresh(self, hm, x0, y0, nx, ny):
         self.pyramid.refresh(hm, x0, y0, nx, ny)
 
-    def get_arm_joint_tf_for_collision(self, object_size, object_pos, base_from_box):
-        """Joint frames 1..6 in the robot base frame with the tool on top of
-        the item's centre, or [] when IK has no solution."""
+    def get_arm_joints(self, object_size, object_pos, base_from_box):
+        """IK joint angles (rad) with the tool on top of the item's centre,
+        or [] when there is no solution."""
         sx, sy, sz = (int(v) for v in object_size)
         tool_int_point = np.asarray(object_pos, int) + np.array(
             [sx // 2, sy // 2, sz + self.tool_length_int])
         box_from_tool = transform(_TOOL_DOWN, self.cell_frame.int_point_to_world(tool_int_point))
         base_from_tool = np.asarray(base_from_box, float) @ box_from_tool
-        joints = get_inverse_kinematics(base_from_tool, self.ik_solution_number)
+        return get_inverse_kinematics(base_from_tool, self.ik_solution_number)
+
+    def get_arm_joint_tf_for_collision(self, object_size, object_pos, base_from_box):
+        """Joint frames 1..6 in the robot base frame, or [] when IK has no solution."""
+        joints = self.get_arm_joints(object_size, object_pos, base_from_box)
         if not joints:
             return []
         return get_forward_kinematics(joints, (1, 2, 3, 4, 5, 6))
@@ -987,3 +991,336 @@ class ArmPackChecker:
         if caps is None:
             return True, []
         return any_capsule_hits_pyramid(caps, self.pyramid, self.pad), caps
+
+    def collides_batch(self, sizes, poses, base_from_box, hms, which=None):
+        """`is_arm_collid_with_pack(...)[0]` for N placements at once.
+
+        sizes, poses   (N, 3) ints, as `object_size` / `object_pos`
+        hms            (M, nx, ny) height maps, or one (nx, ny)
+        which          (N,) the map each placement is over; all 0 when None
+
+        No pyramid is needed: the maps are read directly.
+        """
+        sizes = np.asarray(sizes, int).reshape(-1, 3)
+        poses = np.asarray(poses, int).reshape(-1, 3)
+        hms = np.asarray(hms)
+        if hms.ndim == 2:
+            hms = hms[None]
+        n = len(sizes)
+        which = np.zeros(n, int) if which is None else np.asarray(which, int)
+        if n == 0:
+            return np.zeros(0, bool)
+        tool = poses + np.stack([sizes[:, 0] // 2, sizes[:, 1] // 2,
+                                 sizes[:, 2] + self.tool_length_int], 1)
+        s = np.array([self.cell_frame.scale_x, self.cell_frame.scale_y,
+                      self.cell_frame.scale_z], np.float32)
+        t = (tool.astype(np.float32) / s).astype(float)
+        box_from_tool = np.zeros((n, 4, 4))
+        box_from_tool[:, :3, :3] = _TOOL_DOWN
+        box_from_tool[:, :3, 3] = t
+        box_from_tool[:, 3, 3] = 1.0
+        B = np.asarray(base_from_box, float)
+        q, ok = lazy_ik_batch(B @ box_from_tool, self.ik_solution_number)
+
+        out = ~ok                     # unreachable counts as a collision
+        idx = np.flatnonzero(ok)
+        if not len(idx):
+            return out
+        jt = fk_batch(q[idx])
+        box_from_world = np.linalg.inv(B)
+        cf, p = self.cell_frame, self.arm_params
+        caps = [
+            _capsules_b(jt[0] @ self.upper_arm_off_a, jt[1] @ self.upper_arm_off_b,
+                        p.upper_arm, box_from_world, cf),
+            _capsules_b(jt[1], jt[2], p.forearm, box_from_world, cf),
+            _capsules_b(jt[3], jt[4], p.wrist, box_from_world, cf),
+        ]
+        out[idx] = capsules_hit_packs_b(caps, hms, which[idx], self.pad,
+                                        cf.height_scale())
+        return out
+
+
+# =============================================================================
+#  Batched: many placements at once
+# =============================================================================
+# The same arithmetic as the scalar path above -- IK, FK, capsules, the column
+# predicate -- over a leading axis of N placements, so a whole candidate list
+# costs a handful of numpy calls instead of N Python loops.  The scalar path
+# stays the reference; `tests/test_pack_collision.py` checks the two agree.
+def _ah_inverse_b(theta, a, d, alpha):
+    """`_ah_inverse` over an (N,) theta -> (N, 4, 4)."""
+    ct, st = np.cos(theta), np.sin(theta)
+    ca, sa = math.cos(alpha), math.sin(alpha)
+    T = np.zeros(theta.shape + (4, 4))
+    T[:, 0, 0], T[:, 0, 1], T[:, 0, 3] = ct, st, -a
+    T[:, 1, 0], T[:, 1, 1], T[:, 1, 2], T[:, 1, 3] = -st * ca, ct * ca, sa, -sa * d
+    T[:, 2, 0], T[:, 2, 1], T[:, 2, 2], T[:, 2, 3] = st * sa, -ct * sa, ca, -ca * d
+    T[:, 3, 3] = 1.0
+    return T
+
+
+def _ah_b(theta, a, d, alpha):
+    """`_ah` over an (N,) theta -> (N, 4, 4)."""
+    ct, st = np.cos(theta), np.sin(theta)
+    ca, sa = math.cos(alpha), math.sin(alpha)
+    T = np.zeros(theta.shape + (4, 4))
+    T[:, 0, 0], T[:, 0, 1], T[:, 0, 2], T[:, 0, 3] = ct, -st * ca, st * sa, a * ct
+    T[:, 1, 0], T[:, 1, 1], T[:, 1, 2], T[:, 1, 3] = st, ct * ca, -ct * sa, a * st
+    T[:, 2, 1], T[:, 2, 2], T[:, 2, 3] = sa, ca, d
+    T[:, 3, 3] = 1.0
+    return T
+
+
+def lazy_ik_batch(goals, solution_number=IK_SOLUTION_NUMBER):
+    """One column of `calc_lazy_inverse_kinematics` for (N, 4, 4) goals.
+
+    -> (joints (N, 6), ok (N,)); a row that is not ok is unreachable and its
+    joints are NaN.
+    """
+    if solution_number not in (0, 1):
+        raise ValueError("solution_number is 0 or 1")
+    i = solution_number
+    d, a, alpha = UR20_D, UR20_A, UR20_ALPHA
+    d3, d5 = d[3], d[5]
+    a1, a2 = a[1], a[2]
+    gol = np.asarray(goals, float)
+    n = len(gol)
+    th = np.full((n, 6), np.nan)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        P_05 = gol @ np.array([0.0, 0.0, -d5, 1.0])
+        half_pi_psi = _HALF_PI + np.arctan2(P_05[:, 1], P_05[:, 0])
+        phi = np.arccos(d3 / np.hypot(P_05[:, 0], P_05[:, 1]))
+        th[:, 0] = half_pi_psi + (phi if i == 0 else -phi)
+        T_16 = _ah_inverse_b(th[:, 0], a[0], d[0], alpha[0]) @ gol
+        th[:, 4] = (-1 if i == 0 else 1) * np.arccos((T_16[:, 2, 3] - d3) / d5)
+
+        # a NaN matrix is no business of the inverse; those rows are dead
+        ok = ~np.isnan(th[:, [0, 4]]).any(1)
+        T_16[~ok] = np.eye(4)
+        T_inv = np.linalg.inv(T_16)
+        s5 = np.sin(th[:, 4])
+        th[:, 5] = np.arctan2(-T_inv[:, 1, 2] / s5, T_inv[:, 0, 2] / s5)
+
+        T_56 = _ah_inverse_b(th[:, 5], a[5], d5, alpha[5])
+        T_45 = _ah_inverse_b(th[:, 4], a[4], d[4], alpha[4])
+        T_14 = T_16 @ T_56 @ T_45
+        P_13 = T_14 @ np.array([0.0, -d3, 0.0, 1.0])
+        P_13_norm = np.sqrt((P_13[:, :3] * P_13[:, :3]).sum(1))
+
+        th[:, 2] = (1 if i == 0 else -1) * np.arccos(
+            (P_13_norm * P_13_norm - (a1 * a1 + a2 * a2)) / (2.0 * a1 * a2))
+        th[:, 1] = (-np.arctan2(P_13[:, 1], -P_13[:, 0])
+                    + np.arcsin(a2 * np.sin(th[:, 2]) / P_13_norm))
+        sgn = -1.0 if i == 1 else 1.0
+        th[:, 1] = np.where(sgn * th[:, 1] < 0, th[:, 1] + sgn * 2.0 * math.pi, th[:, 1])
+
+        T_32 = _ah_inverse_b(th[:, 2], a2, d[2], alpha[2])
+        T_21 = _ah_inverse_b(th[:, 1], a1, d[1], alpha[1])
+        T_34 = T_32 @ T_21 @ T_14
+        th[:, 3] = np.arctan2(T_34[:, 1, 0], T_34[:, 0, 0])
+    ok &= ~np.isnan(th).any(1)
+    th[~ok] = np.nan
+    return th, ok
+
+
+def fk_batch(joints):
+    """`get_forward_kinematics(q, (1..6))` for (N, 6) joints -> (6, N, 4, 4)."""
+    q = np.asarray(joints, float)
+    T = np.broadcast_to(np.eye(4), (len(q), 4, 4))
+    out = []
+    for i in range(6):
+        T = T @ _ah_b(q[:, i], UR20_A[i], UR20_D[i], UR20_ALPHA[i])
+        out.append(T)
+    return np.stack(out)
+
+
+def _to_cell_b(cf, v):
+    """`CellFrame.__call__` over (N, 3) points, with its float32 roundings."""
+    v = np.asarray(v, float).astype(_f32)
+    sx, sy, eps = _f32(cf.scale_x), _f32(cf.scale_y), _f32(cf.eps)
+    return np.stack([(v[:, 0] * sx - eps).astype(float) + cf.shift[0],
+                     (v[:, 1] * sy - eps).astype(float) + cf.shift[1],
+                     (v[:, 2] * sx).astype(float) + cf.shift[2]], 1)
+
+
+def _capsules_b(world_a, world_b, lp, box_from_world, cf):
+    """`build_arm_capsules`'s `make` over (N, 4, 4) frames -> (a, b, ra, rb)."""
+    A = box_from_world @ world_a
+    B = box_from_world @ world_b
+    o = np.asarray(lp.centerline_offset_m, float)
+    o_box = A[:, :3, :3] @ o
+    a = _to_cell_b(cf, A[:, :3, 3] + o_box)
+    b = _to_cell_b(cf, B[:, :3, 3] + o_box)
+    # Capsule.extend
+    dv = b - a
+    L = np.sqrt((dv * dv).sum(1)).astype(_f32)
+    live = L >= 1e-6
+    with np.errstate(divide="ignore"):
+        inv = (_f32(1.0) / np.where(live, L, _f32(1.0))).astype(float)
+    u = dv * inv[:, None]
+    b = np.where(live[:, None], b + u * lp.extend_front, b)
+    a = np.where(live[:, None], a - u * lp.extend_back, a)
+    return a, b, lp.effective_radius(), lp.effective_radius_end()
+
+
+def _column_hits_b(a, b, ra, rb, px, py, h):
+    """`probe_column(...).hit` over matching arrays of (capsule, column) pairs.
+
+    `ra`, `rb` already carry the pad.  The scalar version's branches on the
+    capsule become masks: an absent candidate is NaN, as in `probe_columns`.
+    """
+    dr = rb - ra
+    ax, ay, az = a[:, 0], a[:, 1], a[:, 2]
+    dx, dy, dz = b[:, 0] - ax, b[:, 1] - ay, b[:, 2] - az
+    ex, ey = ax - px, ay - py
+    dd = dx * dx + dy * dy
+    ed = ex * dx + ey * dy
+    ee = ex * ex + ey * ey
+    A = dd - dr * dr
+    B = ed - ra * dr
+    C = ee - ra * ra
+    nan = np.nan
+    with np.errstate(invalid="ignore", divide="ignore"):
+        cand = [np.zeros_like(px), np.ones_like(px),
+                np.where(dd > _TINY, -ed / dd, nan)]
+        bigA = np.abs(A) > _TINY
+        disc = B * B - A * C
+        s = np.sqrt(np.where(bigA & (disc >= 0.0), disc, nan))
+        cand += [(-B - s) / A, (-B + s) / A,
+                 np.where(~bigA & (np.abs(B) > _TINY), -C / (2.0 * B), nan)]
+        bigz = np.abs(dz) > _TINY
+        P = A * (A + dz * dz)
+        Q = 2.0 * B * (A + dz * dz)
+        R = B * B + dz * dz * C
+        bigP = np.abs(P) > _TINY
+        disc = Q * Q - 4.0 * P * R
+        s = np.sqrt(np.where(bigz & bigP & (disc >= 0.0), disc, nan))
+        cand += [(-Q - s) / (2.0 * P), (-Q + s) / (2.0 * P),
+                 np.where(bigz & ~bigP & (np.abs(Q) > _TINY), -R / Q, nan)]
+
+        T = np.clip(np.stack(cand), 0.0, 1.0)
+        qx = ex + T * dx
+        qy = ey + T * dy
+        d2 = qx * qx + qy * qy
+        r = ra + T * dr
+        r2 = r * r
+        ok = ~np.isnan(T) & (d2 <= r2)
+        Z = np.where(ok, az + T * dz - np.sqrt(np.where(ok, r2 - d2, 0.0)), np.inf)
+    return Z.min(0) <= h
+
+
+def capsules_hit_packs_b(caps, hms, which, pad=K_CELL_PAD, height_scale=1.0):
+    """(N,) does any of each placement's capsules hit its own height map?
+
+    `caps` is a list of (a (N, 3), b (N, 3), ra, rb), one per link; `hms` is
+    (M, nx, ny) and `which` (N,) says which map each placement is over.  The
+    answer is the pyramid's: any column of the field whose predicate hits.
+    Two exact rejections pick the (placement, column) pairs worth probing: the
+    column centre has to lie inside the capsule's inflated AABB, and the
+    column has to reach the capsule's lowest point.
+
+    The AABB test passes a contiguous run of columns along each axis, so the
+    pairs it keeps are listed straight from the two runs, in (placement, x, y)
+    order, and the height maps are read only at those pairs.  A row of the
+    run whose tallest column -- a sparse-table range max -- is below the
+    capsule's lowest point cannot pass the height test anywhere, so it is
+    dropped before its cells are listed; that is most of them.
+    """
+    hms = np.asarray(hms)
+    M, nx, ny = hms.shape
+    N = len(which)
+    hit = np.zeros(N, bool)
+    if N == 0:
+        return hit
+    which = np.asarray(which)
+    cx = np.arange(nx) + 0.5
+    cy = np.arange(ny) + 0.5
+    # tab[j, m, x, y] = max of hms[m, x, y : y + 2^j], for the rows' range max
+    lg = np.zeros(ny + 1, np.int64)
+    for i in range(2, ny + 1):
+        lg[i] = lg[i // 2] + 1
+    tab = np.zeros((lg[ny] + 1,) + hms.shape, hms.dtype)
+    tab[0] = hms
+    for j in range(1, lg[ny] + 1):
+        s = 1 << (j - 1)
+        np.maximum(tab[j - 1][..., : ny - s], tab[j - 1][..., s:],
+                   out=tab[j][..., : ny - s])
+    for a, b, ra, rb in caps:
+        live = ~hit
+        if not live.any():
+            break
+        rap, rbp = ra + pad, rb + pad
+        rmax = max(rap, rbp)
+        lo, hi = np.minimum(a, b), np.maximum(a, b)
+        zf = np.minimum(a[:, 2] - ra, b[:, 2] - rb) - pad
+        inx = (cx[None, :] >= lo[:, None, 0] - rmax) & (cx[None, :] <= hi[:, None, 0] + rmax)
+        iny = (cy[None, :] >= lo[:, None, 1] - rmax) & (cy[None, :] <= hi[:, None, 1] + rmax)
+        kx, ky = inx.sum(1), iny.sum(1)
+        x0, y0 = inx.argmax(1), iny.argmax(1)
+        # one entry per (placement, x) of the run, kept if any column reaches
+        nr = np.where(live & (ky > 0), kx, 0)
+        k = np.repeat(np.arange(N), nr)
+        if not len(k):
+            continue
+        x = x0[k] + np.arange(len(k)) - np.repeat(np.cumsum(nr) - nr, nr)
+        j, m, ya, w = lg[ky[k]], which[k], y0[k], ky[k]
+        top = np.maximum(tab[j, m, x, ya], tab[j, m, x, ya + w - (1 << j)])
+        row = top.astype(float) * height_scale >= zf[k] - 1e-9
+        k, x = k[row], x[row]
+        if not len(k):
+            continue
+        # ... and each kept row expanded into its cells
+        w = ky[k]
+        r = np.repeat(np.arange(len(k)), w)
+        y = y0[k][r] + np.arange(len(r)) - np.repeat(np.cumsum(w) - w, w)
+        k, x = k[r], x[r]
+        h = hms[which[k], x, y].astype(float) * height_scale
+        reach = h >= zf[k] - 1e-9
+        k, x, y, h = k[reach], x[reach], y[reach], h[reach]
+        if not len(k):
+            continue
+        h = _column_hits_b(a[k], b[k], rap, rbp, cx[x], cy[y], h)
+        hit[k[h]] = True
+    return hit
+
+
+# =============================================================================
+#  Building a checker from the `robot:` section of config.yaml
+# =============================================================================
+def quat_tf(v):
+    """[x, y, z, qx, qy, qz, qw] -> 4x4, as tf2::Transform(Quaternion, Vector3)."""
+    x, y, z, qx, qy, qz, qw = (float(t) for t in v)
+    n = qx * qx + qy * qy + qz * qz + qw * qw
+    s = 2.0 / n
+    R = np.array([
+        [1 - s * (qy * qy + qz * qz), s * (qx * qy - qz * qw), s * (qx * qz + qy * qw)],
+        [s * (qx * qy + qz * qw), 1 - s * (qx * qx + qz * qz), s * (qy * qz - qx * qw)],
+        [s * (qx * qz - qy * qw), s * (qy * qz + qx * qw), 1 - s * (qx * qx + qy * qy)]])
+    return transform(R, [x, y, z])
+
+
+def robot_cell_m(robot, cell_cm, box_scale):
+    """Metres one grid cell stands for.  `robot['cell_m']` when set; otherwise
+    the grid's cells are `cell_cm` scaled down by `box_scale` (a 30 x 25 cm
+    pallet of quarter-size boxes is a 120 x 100 cm pallet), and the robot
+    lives in the real one."""
+    v = robot.get('cell_m')
+    if v:
+        return float(v)
+    return float(cell_cm) * max(1.0, float(box_scale or 1)) / 100.0
+
+
+def checker_from_config(robot, cell_m):
+    """-> (ArmPackChecker, base_from_box) for a grid of `cell_m` metre cells."""
+    cpm = 1.0 / float(cell_m)
+    params = arm_params_ur20(cpm)
+    # arm_params_ur20 gives the extensions in cells of the cell's own 1 cm
+    # grid; keep them the same length in metres on this one
+    for lp in (params.upper_arm, params.forearm, params.wrist):
+        lp.extend_front *= cpm / 100.0
+        lp.extend_back *= cpm / 100.0
+    chk = ArmPackChecker(
+        tool_length_int=int(round(float(robot['tool_length_m']) * cpm)),
+        cell_frame=CellFrame(cpm, cpm, cpm), arm_params=params,
+        ik_solution_number=int(robot['ik_solution']))
+    return chk, quat_tf(robot['base_from_box_tf'])

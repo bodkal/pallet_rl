@@ -33,6 +33,7 @@ def plain(*a, **kw):
     kw.setdefault("size_hi", 5)
     kw.setdefault("n_types", 1)
     kw.setdefault("types", False)
+    kw.setdefault("arm_collision", False)
     return BPPBatch(*a, **kw)
 
 
@@ -558,3 +559,30 @@ def test_ems_mode_rejects_nonsense():
     for v in (4, -1, "corners"):
         with pytest.raises(ValueError):
             E.ems_mode(v)
+
+
+# ------------------------------------------------------- the robot-arm filter
+def test_the_arm_filter_drops_exactly_the_placements_the_arm_collides_on():
+    """With `arm_collision` on, the feasible set is the plain one less every
+    placement `ArmPackChecker` calls a collision (or cannot reach)."""
+    kw = dict(S=[30, 25, 40], nb=1, rot=2, ems=0, seed=0,
+              size_lo=4, size_hi=[12, 10, 10])
+    item = np.array([[10, 8, 6, 0]] * 4)
+    off, on = plain(1, **kw), plain(1, arm_collision=True, arm_cell_m=0.04, **kw)
+    assert not off.arm_collision
+    for env in (off, on):
+        env.reset(item[None])
+        env.hmap[0, 20:, :] = 20        # a wall of boxes on the robot's side
+        env._invalidate()
+    f0, z, odims, _ = off._positions()
+    f1 = on._positions()[0]
+    chk, B = on._arm_checker()
+    chk.set_heightmap(on.hmap[0])
+    want = f0.copy()
+    for r, x, y in np.argwhere(f0[0]):
+        size = odims[0, r].tolist()
+        if chk.is_arm_collid_with_pack(size, (x, y, z[0, r, x, y]), B)[0]:
+            want[0, r, x, y] = False
+    np.testing.assert_array_equal(f1, want)
+    assert f1.sum() < f0.sum(), "the wall should cost the arm some placements"
+    assert f1.any(), "and leave it some"

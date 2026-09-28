@@ -3,8 +3,9 @@
 <title>AR2L &mdash; you vs. the packer, under attack</title>
 <style>
 :root{--bg:#0f1115;--panel:#171a21;--line:#262b36;--fg:#e6e9ef;--dim:#8b93a7;
-      --c0:#4cc9f0;--c1:#f7b32b;--c2:#57cc99;--c3:#ef476f;--c4:#b892ff;--c5:#ff9770;}
-@media(prefers-color-scheme:light){:root{--bg:#f6f7f9;--panel:#fff;--line:#e2e5ea;--fg:#1a1d23;--dim:#6b7280;}}
+      --c0:#4cc9f0;--c1:#f7b32b;--c2:#57cc99;--c3:#ef476f;--c4:#b892ff;--c5:#ff9770;
+      --arm:#9aa3b5;}
+@media(prefers-color-scheme:light){:root{--bg:#f6f7f9;--panel:#fff;--line:#e2e5ea;--fg:#1a1d23;--dim:#6b7280;--arm:#7d8699;}}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--fg);font:13px/1.45 ui-sans-serif,-apple-system,Segoe UI,Roboto,sans-serif}
 header{display:flex;gap:14px;align-items:baseline;flex-wrap:wrap;padding:13px 20px;
@@ -100,11 +101,30 @@ details.par>summary::marker{color:var(--dim)}
   border-radius:4px;padding:0 4px;flex:none}
 .slot.sel .num{border-color:var(--c0);color:var(--c0)}
 .rule{border:0;border-top:1px dashed var(--line);margin:9px 2px}
+/* the conveyor under a replay bin: what was in view at that step */
+.rwin{margin-top:10px}
+.rwin .rwh{font-size:11px;color:var(--dim);margin-bottom:6px}
+.rwin .rws{display:flex;flex-wrap:wrap;gap:6px;align-items:flex-end}
+.rwin .rwt{display:flex;flex-direction:column;align-items:center;gap:3px;padding:5px 6px;
+  border:1px solid var(--line);border-radius:7px;font-size:10.5px;
+  font-variant-numeric:tabular-nums;min-width:34px}
+.rwin .rwt.peek{border-style:dashed;opacity:.62}
+.rwin .rwt.sel{border-color:var(--c0);background:color-mix(in srgb,var(--c0) 12%,transparent)}
+.rwin .rwt .num{color:var(--dim);font-size:10px}
+.rwin .rwt.sel .num{color:var(--c0);font-weight:640}
+.rwin .rwsep{align-self:stretch;border-left:1px dashed var(--line);margin:0 2px}
 #msg{margin-top:9px;min-height:20px;color:var(--dim)}
 
 /* result */
 #result{max-width:1180px;margin:0 auto}
 .duel{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+/* the replay slider rides on top of the two bins it drives, and sticks under
+   the header, so the step and both bins are always on one screen */
+.scrubbar{position:sticky;top:var(--hdr,48px);z-index:4;background:var(--bg);
+  padding:8px 0 8px;margin-bottom:8px;border-bottom:1px solid var(--line)}
+.scrubbar .row{gap:8px;flex-wrap:nowrap}
+.scrubbar input[type=range]{flex:1;min-width:0}
+.scrubbar button{padding:2px 10px;flex:none}
 @media(max-width:820px){.duel{grid-template-columns:1fr}}
 .big{font-size:40px;font-weight:680;letter-spacing:-1px;font-variant-numeric:tabular-nums;line-height:1}
 .verdict{font-size:26px;font-weight:680;letter-spacing:-.4px;margin:0 0 4px}
@@ -232,6 +252,9 @@ table.rc .d{font-size:11px}
             <option value="cdrl">cdrl &mdash; Zhao et al.</option></select></div>
           <div class="pf"><span>support floor (com only)</span>
             <input id="msup" type="number" min="0" max="1" step="0.05"></div>
+          <div class="pf"><span>robot-arm filter</span><select id="armcol">
+            <option value="0">off &mdash; every placement the rules allow</option>
+            <option value="1">on &mdash; drop placements the arm collides on</option></select></div>
         </div>
         <div class="row" style="margin-top:10px">
           <button id="preset" type="button">Reset to the opponent's own values</button>
@@ -280,6 +303,10 @@ table.rc .d{font-size:11px}
         <h2>Your bin <span class="sub" style="text-transform:none;letter-spacing:0">&mdash; drag to rotate, double-click to reset</span></h2>
         <canvas id="iso3d"></canvas>
         <div class="lg" id="tlg"></div>
+        <div class="lg" id="armlg" hidden>
+          <span><i style="background:var(--arm)"></i>robot arm, clear</span>
+          <span><i style="background:var(--c3)"></i>arm link hitting the pack</span>
+        </div>
       </div>
     </div>
   </div>
@@ -291,6 +318,7 @@ table.rc .d{font-size:11px}
       <div class="sub" id="curinfo"></div>
       <canvas id="curbox"></canvas>
       <div id="hoverinfo" class="sub" style="margin-top:10px;min-height:46px"></div>
+      <div id="arminfo" class="sub" style="min-height:18px"></div>
       <button id="rot" hidden style="width:100%">Rotate 90&deg; <kbd>R</kbd></button>
     </div>
 
@@ -308,6 +336,10 @@ table.rc .d{font-size:11px}
       <label class="row" style="cursor:pointer;margin-bottom:10px">
         <input type="checkbox" id="showems" checked> <span>tell the two kinds apart
         by colour</span>
+      </label>
+      <label class="row" style="cursor:pointer;margin-bottom:10px">
+        <input type="checkbox" id="showarm" checked> <span>show the robot arm placing
+        the box you point at</span>
       </label>
       <button id="resign" style="width:100%;margin-bottom:8px">I'm stuck &mdash; stop here</button>
       <button id="tosetup" style="width:100%">&larr; Back to setup</button>
@@ -338,21 +370,49 @@ table.rc .d{font-size:11px}
 
   <div class="card" style="margin-bottom:14px">
     <h2>Replay &mdash; same instance, same conveyor</h2>
-    <input type="range" id="scrub" min="0" max="1" value="1">
-    <div class="sub" id="scrublab" style="font-variant-numeric:tabular-nums"></div>
+    <label class="row" style="cursor:pointer">
+      <input type="checkbox" id="showarm-r" checked> <span>show the robot arm placing
+      each box &mdash; checked against the bin as it stood just before</span>
+    </label>
+    <div class="lg armlg-r" hidden>
+      <span><i style="background:var(--arm)"></i>robot arm, clear</span>
+      <span><i style="background:var(--c3)"></i>arm link hitting the pack</span>
+    </div>
+    <label class="row" style="cursor:pointer;margin-top:8px">
+      <input type="checkbox" id="showpts" checked> <span>show where the <b>next</b>
+      box could go &mdash; the packer's candidate list for it, one point per
+      placement corner</span>
+    </label>
+    <div class="lg ptslg">
+      <span><svg width="12" height="12" viewBox="0 0 12 12"><circle cx="6" cy="6" r="4" fill="var(--c0)" stroke="#000"/></svg>orientation 1, as it came</span>
+      <span><svg width="12" height="12" viewBox="0 0 12 12"><path d="M6 1L11 6L6 11L1 6Z" fill="none" stroke="var(--c4)" stroke-width="2"/></svg>orientation 2, turned 90&deg;</span>
+      <span><svg width="12" height="12" viewBox="0 0 12 12"><circle cx="6" cy="6" r="4.5" fill="none" stroke="var(--fg)" stroke-width="1.5"/></svg>the one actually taken</span>
+    </div>
     <div class="sub" style="margin-top:6px;opacity:.8">Drag either bin to rotate both together
-      &mdash; same angle, fair comparison. Double-click resets.</div>
+      &mdash; same angle, fair comparison. Double-click resets.
+      The slider sits right above the bins; <kbd>&larr;</kbd>/<kbd>&rarr;</kbd> step it.</div>
   </div>
 
+  <div class="scrubbar">
+    <div class="row">
+      <button type="button" data-step="-1" data-for="scrub" title="previous box">&#9664;</button>
+      <input type="range" id="scrub" min="0" max="1" value="1">
+      <button type="button" data-step="1" data-for="scrub" title="next box">&#9654;</button>
+    </div>
+    <div class="sub" id="scrublab" style="font-variant-numeric:tabular-nums"></div>
+    <div class="sub" id="scrubarm" style="min-height:18px"></div>
+  </div>
   <div class="duel">
     <div class="side" id="side-h">
       <h2 style="font-size:11px;color:var(--dim);letter-spacing:.6px;text-transform:uppercase;margin:0 0 8px">You<span class="crown" id="crown-h"></span></h2>
       <canvas id="iso-h"></canvas>
+      <div class="rwin" id="win-h"></div>
       <div id="stat-h" style="margin-top:10px"></div>
     </div>
     <div class="side" id="side-a">
       <h2 style="font-size:11px;color:var(--dim);letter-spacing:.6px;text-transform:uppercase;margin:0 0 8px"><span id="alab2">Agent</span><span class="crown" id="crown-a"></span></h2>
       <canvas id="iso-a"></canvas>
+      <div class="rwin" id="win-a"></div>
       <div id="stat-a" style="margin-top:10px"></div>
     </div>
   </div>
@@ -396,6 +456,9 @@ table.rc .d{font-size:11px}
           <option value="cdrl">cdrl &mdash; Zhao et al.</option></select></div>
         <div class="pf"><span>support floor (com only)</span>
           <input id="rcmsup" type="number" min="0" max="1" step="0.05"></div>
+        <div class="pf"><span>robot-arm filter</span><select id="rcarmcol">
+          <option value="0">off &mdash; every placement the rules allow</option>
+          <option value="1">on &mdash; drop placements the arm collides on</option></select></div>
         <div class="pf lock pf3"><span>item side &mdash; smallest / largest</span>
           <div class="tri" style="grid-template-columns:1fr 1fr">
             <input id="rclo" disabled><input id="rchi" disabled></div></div>
@@ -417,17 +480,30 @@ table.rc .d{font-size:11px}
       <div id="rc3d" hidden style="margin-top:14px">
         <div class="sub" style="margin-bottom:6px">Click a row to show it here.
           Drag either bin to rotate both; double-click resets.</div>
-        <input type="range" id="rcscrub" min="0" max="1" value="1">
-        <div class="sub" id="rcscrublab" style="font-variant-numeric:tabular-nums"></div>
+        <div class="scrubbar">
+          <div class="row">
+            <button type="button" data-step="-1" data-for="rcscrub" title="previous box">&#9664;</button>
+            <input type="range" id="rcscrub" min="0" max="1" value="1">
+            <button type="button" data-step="1" data-for="rcscrub" title="next box">&#9654;</button>
+          </div>
+          <div class="sub" id="rcscrublab" style="font-variant-numeric:tabular-nums"></div>
+          <div class="sub" id="rcscrubarm" style="min-height:18px"></div>
+        </div>
+        <div class="lg armlg-r" hidden>
+          <span><i style="background:var(--arm)"></i>robot arm, clear</span>
+          <span><i style="background:var(--c3)"></i>arm link hitting the pack</span>
+        </div>
         <div class="duel" style="margin-top:10px">
           <div class="side">
             <h2 style="font-size:11px;color:var(--dim);letter-spacing:.6px;text-transform:uppercase;margin:0 0 8px">This game &mdash; <span id="rcl0"></span></h2>
             <canvas id="iso-rc0"></canvas>
+            <div class="rwin" id="win-rc0"></div>
             <div class="sub" id="rcs0" style="margin-top:8px"></div>
           </div>
           <div class="side">
             <h2 style="font-size:11px;color:var(--dim);letter-spacing:.6px;text-transform:uppercase;margin:0 0 8px">Row <span id="rcnum"></span> &mdash; <span id="rcl1"></span></h2>
             <canvas id="iso-rc1"></canvas>
+            <div class="rwin" id="win-rc1"></div>
             <div class="sub" id="rcs1" style="margin-top:8px"></div>
           </div>
         </div>
@@ -467,6 +543,7 @@ const PF = {
   size_hi: ['#hi0', '#hi1', '#hi2'],
   nb: '#nb', n_pick: '#npick', n_items: '#nitems', max_l: '#maxl',
   rot: '#prot', ems: '#ems', stability: '#stab', min_support: '#msup',
+  arm_collision: '#armcol',
   source: '#src', data: '#data', pallet: '#palpick', order_random: '#ordrnd',
   pallet_cm: ['#pcm0', '#pcm1', '#pcm2'], cell_cm: '#cellcm',
   box_scale: '#bscale', box_round: '#bround',
@@ -485,7 +562,8 @@ const PLABEL = {source: 'box source', data: 'data file', pallet: 'pallet',
   box_scale: 'box scale', box_round: 'box rounding', bin: 'bin', size_lo: 'smallest item side', size_hi: 'largest item side',
   nb: 'window N_B', n_pick: 'reach k', n_items: 'items in the sequence',
   max_l: 'candidate cap', rot: 'orientations', ems: 'action space',
-  stability: 'stability rule', min_support: 'support floor'};
+  stability: 'stability rule', min_support: 'support floor',
+  arm_collision: 'robot-arm filter'};
 
 function readParams(){
   const o = {};
@@ -658,6 +736,16 @@ function drawIso(cv, boxes, L, W, H, opts){
     mnx=Math.min(mnx,a);mxx=Math.max(mxx,a);mny=Math.min(mny,b);mxy=Math.max(mxy,b);};
   for(const x of [0,L]) for(const y of [0,W]) for(const z of [0,H]) fit(x,y,z);
   fit(AX-1.6, AX-1.6, 0); fit(L+EXT, AX, 0); fit(AX, W+EXT, 0); fit(AX, AX, H+EXT);
+  // the arm reaches well outside the bin, and the view zooms out to hold it
+  const ARM = opts.arm && opts.arm.reachable ? opts.arm : null;
+  const fitBall = (e, r) => { for(const dx of [-r,r]) for(const dy of [-r,r]) for(const dz of [-r,r])
+                                fit(e[0]+dx, e[1]+dy, e[2]+dz); };
+  if(ARM){
+    for(const q of ARM.chain) fit(...q);
+    fitBall([ARM.chain[0][0], ARM.chain[0][1], 0], ARM.base_r);
+    fitBall(ARM.chain[0], ARM.base_r);
+    for(const c of ARM.caps){ fitBall(c.a, c.ra); fitBall(c.b, c.rb); }
+  }
   const pad=10, s=Math.min((cw-2*pad)/(mxx-mnx),(ch-2*pad)/(mxy-mny));
   const ox=pad-mnx*s + ((cw-2*pad)-(mxx-mnx)*s)/2, oy=pad-mny*s + ((ch-2*pad)-(mxy-mny)*s)/2;
   const P=(x,y,z)=>{const [a,b]=raw(x,y,z); return [ox+a*s, oy+b*s];};
@@ -744,6 +832,96 @@ function drawIso(cv, boxes, L, W, H, opts){
     }
   }
 
+  // ---- the box being placed, see-through, where the pointer would drop it ----
+  if(opts.ghost){
+    const [x,y,z,l,w,h] = opts.ghost.box, t = opts.ghost.type;
+    const xf = st>=0 ? x+l : x, yf = ct>=0 ? y+w : y;
+    const faces = [[P(x,y,z+h),P(x+l,y,z+h),P(x+l,y+w,z+h),P(x,y+w,z+h)],
+                   [P(xf,y,z),P(xf,y+w,z),P(xf,y+w,z+h),P(xf,y,z+h)],
+                   [P(x,yf,z),P(x+l,yf,z),P(x+l,yf,z+h),P(x,yf,z+h)]];
+    g.globalAlpha = .45;
+    faces.forEach((f, k) => poly(f, boxColor(t, opts.ghost.i, [1,.84,.70][k])));
+    g.globalAlpha = 1; g.setLineDash([4,3]);
+    faces.forEach(f => poly(f, null, css('--fg'), 1.2));
+    g.setLineDash([]);
+  }
+
+  // ---- where the next box could go: one mark per candidate corner ----
+  // orientation 1 a filled dot, orientation 2 a hollow diamond a size larger,
+  // so a corner open to both shows both.  `pointsTaken` is the index the
+  // next step actually chose, ringed.
+  if(opts.points && opts.points.length){
+    const R = Math.max(2.5, Math.min(6, s*0.22));
+    for(const [k, [x,y,z,r]] of opts.points.entries()){
+      const [px,py] = P(x,y,z);
+      g.beginPath();
+      if(r){ const d = R*1.45;
+             g.moveTo(px,py-d); g.lineTo(px+d,py); g.lineTo(px,py+d); g.lineTo(px-d,py); g.closePath();
+             g.strokeStyle = css('--bg'); g.lineWidth = 4; g.stroke();
+             g.strokeStyle = css('--c4'); g.lineWidth = 2; g.stroke(); }
+      else { g.arc(px,py,R,0,7); g.fillStyle = css('--c0'); g.fill();
+             g.strokeStyle = '#000'; g.lineWidth = 1; g.stroke(); }
+      if(k === opts.pointsTaken){
+        g.beginPath(); g.arc(px,py,R*2.2,0,7);
+        g.strokeStyle = css('--bg'); g.lineWidth = 3.5; g.stroke();
+        g.strokeStyle = css('--fg'); g.lineWidth = 1.6; g.stroke();
+      }
+    }
+  }
+
+  // ---- robot arm ----
+  if(ARM){
+    // the columns it collides with: their tops, tinted
+    g.globalAlpha = .7;
+    for(const [x,y,h] of ARM.cells){
+      poly([P(x,y,h),P(x+1,y,h),P(x+1,y+1,h),P(x,y+1,h)], css('--c3'));
+    }
+    g.globalAlpha = 1;
+
+    // Each link on its own opaque layer, composited once at partial alpha: the
+    // pack stays visible through the arm, and two overlapping links do not
+    // darken where they cross.  In an orthographic view a sphere projects to a
+    // circle of the same radius, so a capsule is two end discs and the band
+    // between them -- exact for a straight link, close for a tapered one.
+    const lay = document.createElement('canvas');
+    lay.width = cv.width; lay.height = cv.height;
+    const q = lay.getContext('2d'); q.setTransform(dpr,0,0,dpr,0,0);
+    const capsule = (a, b, ra, rb, fill) => {
+      const pa = P(...a), pb = P(...b), Ra = ra*s, Rb = rb*s;
+      const dx = pb[0]-pa[0], dy = pb[1]-pa[1], n = Math.hypot(dx, dy) || 1;
+      const nx = -dy/n, ny = dx/n;
+      q.fillStyle = fill; q.strokeStyle = 'rgba(0,0,0,.55)'; q.lineWidth = 1.2;
+      q.beginPath(); q.arc(pa[0], pa[1], Ra, 0, 7); q.fill(); q.stroke();
+      q.beginPath(); q.arc(pb[0], pb[1], Rb, 0, 7); q.fill(); q.stroke();
+      q.beginPath();
+      q.moveTo(pa[0]+nx*Ra, pa[1]+ny*Ra); q.lineTo(pb[0]+nx*Rb, pb[1]+ny*Rb);
+      q.lineTo(pb[0]-nx*Rb, pb[1]-ny*Rb); q.lineTo(pa[0]-nx*Ra, pa[1]-ny*Ra);
+      q.closePath(); q.fill();
+      q.beginPath();
+      q.moveTo(pa[0]+nx*Ra, pa[1]+ny*Ra); q.lineTo(pb[0]+nx*Rb, pb[1]+ny*Rb);
+      q.moveTo(pa[0]-nx*Ra, pa[1]-ny*Ra); q.lineTo(pb[0]-nx*Rb, pb[1]-ny*Rb);
+      q.stroke();
+    };
+    const b0 = ARM.chain[0];
+    // the pedestal, as a capsule whose bottom cap rests on the pallet floor
+    const parts = [{a:[b0[0], b0[1], Math.min(ARM.base_r, b0[2])], b:b0,
+                    ra:ARM.base_r, rb:ARM.base_r, fill:css('--line')}]
+      .concat(ARM.caps.map(c => ({...c, fill: c.hit ? css('--c3') : css('--arm')})));
+    const mid = c => depth((c.a[0]+c.b[0])/2, (c.a[1]+c.b[1])/2, (c.a[2]+c.b[2])/2);
+    parts.sort((u, v) => mid(u) - mid(v)).forEach(c => capsule(c.a, c.b, c.ra, c.rb, c.fill));
+
+    // the kinematic chain, base to tool tip, over the links
+    const pts = ARM.chain.map(v => P(...v));
+    q.strokeStyle = css('--fg'); q.lineWidth = 1.6; q.lineJoin = 'round';
+    q.beginPath(); pts.slice(0, -1).forEach((p, i) => i ? q.lineTo(...p) : q.moveTo(...p)); q.stroke();
+    q.setLineDash([3,3]); q.beginPath(); q.moveTo(...pts[pts.length-2]); q.lineTo(...pts[pts.length-1]);
+    q.stroke(); q.setLineDash([]);
+    q.fillStyle = css('--fg');
+    for(const p of pts.slice(0, -1)){ q.beginPath(); q.arc(p[0], p[1], 2.4, 0, 7); q.fill(); }
+
+    g.globalAlpha = .82; g.drawImage(lay, 0, 0, cw, ch); g.globalAlpha = 1;
+  }
+
   // Second pass at low alpha.  Over open space it lands on the identical colour
   // already there and changes nothing; where a box now covers the axis it shows
   // through faintly, so hidden stretches read as hidden instead of floating.
@@ -753,12 +931,7 @@ function drawIso(cv, boxes, L, W, H, opts){
 /* drag any bin to spin them all; double-click puts the camera back */
 let DRAG = null;
 function redrawIsos(){
-  if(!$('#play').hidden && B)
-    drawIso($('#iso3d'), B.placed, LX, LY, LZ,
-            {highlight:B.placed.length-1, height:300,
-             // an untyped run has one type and would come out one colour, so
-             // there the per-box hue is what keeps the blocks apart
-             types: typed() ? B.placed_types : null});
+  if(!$('#play').hidden && B) drawPlay3d();
   if(!$('#result').hidden && RES) drawReplay(parseInt($('#scrub').value,10));
   if(!$('#result').hidden && RES && RCSEL) drawRcReplay(parseInt($('#rcscrub').value,10));
 }
@@ -779,6 +952,85 @@ function bindRotate(sel){
   cv.addEventListener('pointerup', stop);
   cv.addEventListener('pointercancel', stop);
   cv.addEventListener('dblclick', ()=>{ VIEW.th=VIEW0.th; VIEW.ph=VIEW0.ph; redrawIsos(); });
+}
+
+/* ---- the robot arm ------------------------------------------------------
+   Pointing at a cell asks the server to place the held box there with the
+   UR20 (IK, then the capsule check against the height map, the same code the
+   cell runs) and the answer is drawn into the 3D bin.  ARMQ numbers the
+   requests so a slow answer for a cell the pointer has already left is
+   dropped rather than drawn. */
+let ARM = null, ARMQ = 0;
+const armWanted = () => $('#showarm').checked && B && !B.done && HOVER;
+
+function drawPlay3d(){
+  const ok = ARM && armWanted() && ARM.key === `${ORIENT},${HOVER.x},${HOVER.y}`;
+  drawIso($('#iso3d'), B.placed, LX, LY, LZ,
+          {highlight: ok ? -1 : B.placed.length-1, height:300,
+           // an untyped run has one type and would come out one colour, so
+           // there the per-box hue is what keeps the blocks apart
+           types: typed() ? B.placed_types : null,
+           arm: ok ? ARM : null,
+           ghost: ok ? {box: [...ARM.pos, ...ARM.size], i: B.items,
+                        type: typed() ? B.item_type : -1} : null});
+  $('#armlg').hidden = !(ok && ARM.reachable);
+}
+
+function armText(){
+  const el = $('#arminfo');
+  if (!ARM || !armWanted()){ el.innerHTML = ''; return; }
+  if (!ARM.reachable){
+    el.innerHTML = `<span style="color:var(--c3)">arm: no IK solution — the UR20 cannot reach this placement</span>`;
+    return;
+  }
+  const bad = ARM.caps.filter(c => c.hit).map(c => c.name);
+  el.innerHTML = (bad.length
+      ? `<span style="color:var(--c3)">arm: the ${bad.join(', ')} hits the pack`
+        + ` (${ARM.cells.length} columns, up to ${ARM.depth.toFixed(1)} cells deep)</span>`
+      : `<span style="color:var(--c2)">arm: clear of the pack</span>`)
+    + `<br><span style="color:var(--dim)">joints ${ARM.joints_deg.map(v => v.toFixed(0) + '°').join(' ')}</span>`;
+}
+
+async function fetchArm(){
+  const q = ++ARMQ;
+  if (!armWanted()){ ARM = null; armText(); if (B) drawPlay3d(); return; }
+  const key = `${ORIENT},${HOVER.x},${HOVER.y}`;
+  const r = await api('/api/arm', {gid: G.gid, r: ORIENT, x: HOVER.x, y: HOVER.y});
+  if (q !== ARMQ) return;                     // the pointer has moved on
+  ARM = r.error ? null : {...r, key};
+  if (r.error) $('#arminfo').textContent = '⚠ arm: ' + r.error; else armText();
+  drawTop(); drawPlay3d();
+}
+
+/* The replay asks for the arm placing box n against boxes 0..n-1, once per
+   (bin, step): the answers are cached, so scrubbing back and forth costs a
+   request only the first time a step is shown.  A pending step is drawn
+   without the arm and redrawn when its answer lands. */
+const ARMC = new Map();
+let ARMRID = 0;
+function stepArm(key, placed, n, bin, redraw){
+  if (!$('#showarm').checked || !G || n < 1 || placed.length < n) return null;
+  if (ARMC.has(key)) return ARMC.get(key);
+  ARMC.set(key, null);
+  api('/api/arm_replay', {gid: G.gid, placed: placed.slice(0, n), bin})
+    .then(r => { ARMC.set(key, r.error ? null : r); redraw(); })
+    .catch(() => ARMC.delete(key));
+  return null;
+}
+
+function armReplayText(sel, n, sides){
+  const on = $('#showarm').checked;
+  document.querySelectorAll('.armlg-r').forEach(el => el.hidden = !on);
+  if (!on || n < 1){ $(sel).innerHTML = ''; return; }
+  $(sel).innerHTML = 'arm placing box ' + n + ': ' + sides.map(([who, placed, a]) => {
+    const say = placed.length < n ? '<span style="color:var(--dim)">—</span>'
+      : !a ? '<span style="color:var(--dim)">…</span>'
+      : !a.reachable ? '<span style="color:var(--c3)">out of reach</span>'
+      : a.hit ? `<span style="color:var(--c3)">the ${a.caps.filter(c => c.hit)
+                  .map(c => c.name).join(', ')} hits the pack</span>`
+      : '<span style="color:var(--c2)">clear</span>';
+    return `${who} ${say}`;
+  }).join(' &middot; ');
 }
 
 // ---- the box you are placing -------------------------------------------
@@ -898,6 +1150,19 @@ function drawTop(){
     g.globalAlpha = 1;
   }
 
+  // the columns the arm would hit placing this box, crossed out
+  if (HOVER && ARM && ARM.reachable && $('#showarm').checked
+      && ARM.key === `${ORIENT},${HOVER.x},${HOVER.y}`){
+    g.strokeStyle = cvar('--c3'); g.lineWidth = Math.max(1, Math.min(2, C * .15));
+    const m = Math.max(1, C * .2);
+    for (const [x, y] of ARM.cells){
+      g.beginPath();
+      g.moveTo(x * C + m, y * C + m); g.lineTo(x * C + C - m, y * C + C - m);
+      g.moveTo(x * C + C - m, y * C + m); g.lineTo(x * C + m, y * C + C - m);
+      g.stroke();
+    }
+  }
+
   if (HOVER){
     const {x, y} = HOVER, ok = legal(x, y), [l, w] = poseDims();
     const cl = Math.min(l, LX - x), cw = Math.min(w, LY - y);
@@ -955,9 +1220,7 @@ function render(){
 
   drawTop();
   syncZoom();
-  drawIso($('#iso3d'), B.placed, LX, LY, LZ,
-          {highlight:B.placed.length-1, height:300,
-           types: typed() ? B.placed_types : null});
+  drawPlay3d();
   // the legend is the only place the type names and their colours are stated
   // together, so it only earns its line when there is more than one type
   $('#tlg').innerHTML = !typed() ? ''
@@ -1041,12 +1304,15 @@ function onMove(ev){
   HOVER = c;
   if (!changed) return;
   drawTop();
+  fetchArm();
   if (!HOVER){ $('#hoverinfo').textContent = ''; return; }
   const {x, y} = HOVER, [l, w, h] = poseDims(), z = landing(x, y);
   const u = typed() ? under(x, y) : -1;
   const wrongType = typed() && B.type_constraint && z > 0 && u >= 0
                     && u !== B.item_type;
-  const why = (x + l > LX || y + w > LY) ? 'it hangs off the pallet'
+  const armBlocked = B.armblock && B.armblock[ORIENT] && B.armblock[ORIENT][x][y];
+  const why = armBlocked ? 'the robot arm would hit the pack placing it here, or cannot reach it (robot-arm filter on)'
+            : (x + l > LX || y + w > LY) ? 'it hangs off the pallet'
             : (z + h > LZ) ? 'it would poke out through the lid'
             : wrongType ? `it would come to rest on ${TNAME(u)}, and a
                            ${TNAME(B.item_type)} box may only be stacked on its own type`
@@ -1074,6 +1340,7 @@ async function onClick(ev){
   if (res.error){ $('#msg').textContent = '⚠ ' + res.error; return; }
   G.promoted = res.promoted; B = res.board;
   ORIENT = 0; HOVER = null; $('#msg').textContent = ''; $('#hoverinfo').textContent = '';
+  ARM = null; ARMQ++; armText();
   render();
 }
 
@@ -1094,6 +1361,7 @@ async function choose(i){
   if (res.error){ $('#msg').textContent = '⚠ ' + res.error; return; }
   B = res.board;
   ORIENT = 0; HOVER = null; $('#msg').textContent = ''; $('#hoverinfo').textContent = '';
+  ARM = null; ARMQ++; armText();
   render();
 }
 
@@ -1133,9 +1401,12 @@ async function finish(){
   RES = {
     human: {util: B.util, items: B.items, placed: B.placed,
             placed_types: B.placed_types, skipped: SKIP,
+            cands: r.human_cands || [], taken: r.human_taken || [],
+            windows: r.human_windows || [],
             seconds: (Date.now() - T0) / 1000, reason: REASON || 'ran out of room'},
     agent: r,
   };
+  ARMC.clear();
   renderResult();
 }
 
@@ -1198,7 +1469,8 @@ function renderResult(){
   $('#rcopp').value = OPP;
   RCROWS = [{label: a.label, util: a.util, items: a.items,
              seconds: a.seconds, changed: [], drift: [],
-             placed: a.placed, placed_types: a.placed_types, params: p}];
+             placed: a.placed, placed_types: a.placed_types, params: p,
+             cands: a.cands, taken: a.taken, windows: a.windows}];
   RCSEL = 0;
   $('#rc3d').hidden = true;
   writeRecalc(p);
@@ -1215,14 +1487,63 @@ function renderResult(){
   }).catch(() => {});
 }
 
+/* After n boxes, the placements the packer had for box n+1: `cands[n]` was
+   recorded just before that box went in, and `taken[n]` is the one it went
+   to (-1 when you put it somewhere off the packer's list). */
+function nextPoints(side, n){
+  if (!$('#showpts').checked || !side.cands || !side.cands[n]) return {};
+  return {points: side.cands[n], pointsTaken: side.taken ? side.taken[n] : -1};
+}
+
+/* The conveyor as it stood when box n+1 was chosen: every box in view, the
+   first k within reach (numbered, solid) and the rest preview (dashed), with
+   the one that went in marked.  Box colours match the 3D blocks: the picked
+   box gets the colour it has once it is in the bin. */
+function drawWindow(el, side, n, k){
+  const win = side.windows && side.windows[n];
+  if (!win || !win.w.length){
+    el.innerHTML = side.windows && side.windows.length
+      ? '<div class="rwh">conveyor &mdash; nothing left to pack</div>' : '';
+    return;
+  }
+  const reach = Math.min(k, win.w.length);
+  const big = Math.max(1, ...win.w.map(w => Math.max(w[0], w[1])));
+  const u = Math.max(1, Math.min(8, Math.floor(46 / big)));
+  el.innerHTML = `<div class="rwh">conveyor before box ${n + 1} &mdash; sees
+      <b>${win.w.length}</b>, can pick from <b>${reach}</b>, packed
+      #${win.pick + 1}</div><div class="rws">`
+    + win.w.map((w, i) => {
+        const cls = 'rwt' + (i >= reach ? ' peek' : '') + (i === win.pick ? ' sel' : '');
+        return (i === reach && reach < win.w.length ? '<span class="rwsep"></span>' : '')
+          + `<div class="${cls}"><span class="num">${i < reach ? i + 1 : '&middot;'}${
+               i === win.pick ? ' packed' : ''}</span><canvas data-i="${i}"></canvas>
+             <span>${w.join('×')}${typed() ? ' ' + 'ABCDEFGHIJKLMNOP'[win.t[i]] : ''}</span></div>`;
+      }).join('') + '</div>';
+  el.querySelectorAll('canvas').forEach(cv => {
+    const i = +cv.dataset.i;
+    drawFootprint(cv, win.w[i], u, i === win.pick ? n : n + 1 + i,
+                  i >= reach, typed() ? win.t[i] : -1);
+  });
+}
+
 function drawReplay(n){
   const h = RES.human.placed.slice(0, n), a = RES.agent.placed.slice(0, n);
+  const again = () => drawReplay(parseInt($('#scrub').value, 10));
+  const ah = stepArm('h:' + n, RES.human.placed, n, [LX, LY, LZ], again),
+        aa = stepArm('a:' + n, RES.agent.placed, n, [LX, LY, LZ], again);
   drawIso($('#iso-h'), h, LX, LY, LZ,
-          {highlight: h.length - 1, height: 290,
-           types: typed() ? RES.human.placed_types : null});
+          {highlight: h.length - 1, height: 290, arm: ah,
+           types: typed() ? RES.human.placed_types : null,
+           ...nextPoints(RES.human, n)});
   drawIso($('#iso-a'), a, LX, LY, LZ,
-          {highlight: a.length - 1, height: 290,
-           types: typed() ? RES.agent.placed_types : null});
+          {highlight: a.length - 1, height: 290, arm: aa,
+           types: typed() ? RES.agent.placed_types : null,
+           ...nextPoints(RES.agent, n)});
+  drawWindow($('#win-h'), RES.human, n, G.params.n_pick);
+  drawWindow($('#win-a'), RES.agent, n, G.params.n_pick);
+  armReplayText('#scrubarm', n,
+                RES.human.skipped ? [['agent', RES.agent.placed, aa]]
+                                  : [['you', RES.human.placed, ah], ['agent', RES.agent.placed, aa]]);
   $('#scrublab').textContent = n === 0 ? 'empty bins — drag to replay'
     : RES.human.skipped ? `after box ${n}:  agent ${a.length} placed`
     : `after box ${n}:  you ${h.length} placed`
@@ -1240,6 +1561,7 @@ const RPF = {
   bin: ['#rcbin0', '#rcbin1', '#rcbin2'],
   nb: '#rcnb', n_pick: '#rcnpick', max_l: '#rcmaxl',
   rot: '#rcrot', ems: '#rcems', stability: '#rcstab', min_support: '#rcmsup',
+  arm_collision: '#rcarmcol',
 };
 let RCROWS = [];
 let RCSEL = 0;           // the row shown in 3D beside this game's; 0 = none yet
@@ -1382,9 +1704,14 @@ function drawRcReplay(n){
   const sides = [RCROWS[0], RCROWS[RCSEL]];
   sides.forEach((r, k) => {
     const pl = r.placed.slice(0, n), [bx, by, bz] = r.params.bin;
+    r._aid = r._aid || ++ARMRID;              // rows are replaced, not edited
+    const arm = stepArm(`rc${r._aid}:${n}`, r.placed, n, [bx, by, bz],
+                        () => drawRcReplay(parseInt($('#rcscrub').value, 10)));
     drawIso($('#iso-rc' + k), pl, bx, by, bz,
-            {highlight: pl.length - 1, height: 290,
-             types: typed() ? r.placed_types : null});
+            {highlight: pl.length - 1, height: 290, arm,
+             types: typed() ? r.placed_types : null,
+             ...nextPoints(r, n)});
+    drawWindow($('#win-rc' + k), r, n, r.params.n_pick);
     $('#rcs' + k).textContent = `${(r.util * 100).toFixed(1)}% filled · `
       + `${r.items} boxes · ${bx}\u00d7${by}\u00d7${bz} bin`;
   });
@@ -1393,6 +1720,8 @@ function drawRcReplay(n){
   $('#rcl1').textContent = sides[1].label
     + ((sides[1].changed || []).length ? ' \u00b7 ' + rcsay(sides[1].changed) : '');
   const [a, b] = sides.map(r => Math.min(n, r.placed.length));
+  armReplayText('#rcscrubarm', n, sides.map((r, k) =>
+    [k ? `row ${RCSEL}` : 'this game', r.placed, ARMC.get(`rc${r._aid}:${n}`)]));
   $('#rcscrublab').textContent = n === 0 ? 'empty bins \u2014 drag to replay'
     : `after box ${n}:  this game ${a} placed`
       + (a < n ? ' (had already stopped)' : '')
@@ -1431,6 +1760,7 @@ async function fresh(seed, skip){
   if (r.error){ $('#setupmsg').innerHTML =
       `<span style="color:var(--c3)">${(r.errors || [r.error]).join('; ')}</span>`; return; }
   G = r; B = r.board; LX = B.Lx; LY = B.Ly; LZ = B.Lz; ORIENT = 0; HOVER = null; OPP = $('#opp').value;
+  ARM = null; ARMQ++; $('#arminfo').innerHTML = '';
   const pal = r.pallet_id != null ? `  ·  pallet ${r.pallet_id} (${r.params.n_items} boxes)` : '';
   RES = null; REASON = null; BUSY = false; T0 = Date.now();
   VIEW.th = VIEW0.th; VIEW.ph = VIEW0.ph;
@@ -1463,6 +1793,17 @@ for (const sel of Object.values(RPF).flat())
   $(sel).addEventListener('input', rcCheck);
 $('#hint').onchange = drawTop;
 $('#showems').onchange = drawTop;
+function armToggle(on){
+  $('#showarm').checked = $('#showarm-r').checked = on;
+  fetchArm();
+  if (RES && !$('#result').hidden){
+    drawReplay(parseInt($('#scrub').value, 10));
+    if (RCSEL) drawRcReplay(parseInt($('#rcscrub').value, 10));
+  }
+}
+$('#showarm').onchange = e => armToggle(e.target.checked);
+$('#showarm-r').onchange = e => armToggle(e.target.checked);
+$('#showpts').onchange = () => redrawIsos();
 $('#zoom').oninput = e => setZoom(parseInt(e.target.value, 10));
 $('#zoomfit').onclick = () => setZoom(null);
 try {
@@ -1471,6 +1812,27 @@ try {
 } catch (e) {}
 $('#scrub').oninput = e => drawReplay(parseInt(e.target.value, 10));
 $('#rcscrub').oninput = e => drawRcReplay(parseInt(e.target.value, 10));
+/* step buttons, and the arrow keys for the main replay */
+const stepScrub = (id, d) => {
+  const sc = $('#' + id), v = Math.max(0, Math.min(+sc.max, +sc.value + d));
+  if (v === +sc.value) return;
+  sc.value = v; sc.dispatchEvent(new Event('input'));
+};
+document.querySelectorAll('.scrubbar button[data-step]').forEach(b =>
+  b.onclick = () => stepScrub(b.dataset.for, +b.dataset.step));
+addEventListener('keydown', e => {
+  if ($('#result').hidden || !RES) return;
+  const t = e.target;
+  if (t && t.matches && t.matches('input:not([type=range]),select,textarea')) return;
+  if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+  // a focused slider already moves itself on the arrow keys
+  if (t && t.matches && t.matches('input[type=range]')) return;
+  stepScrub('scrub', e.key === 'ArrowLeft' ? -1 : 1); e.preventDefault();
+});
+/* the bar sticks just under the header, whatever height the header wraps to */
+const setHdr = () => document.documentElement.style.setProperty(
+  '--hdr', ($('header') ? $('header').offsetHeight : 0) + 'px');
+setHdr(); addEventListener('resize', setHdr);
 // a closed <details> has no width to draw into, so redraw once it opens
 $('#rcdet').addEventListener('toggle', () => {
   if ($('#rcdet').open && RCSEL) drawRcReplay(parseInt($('#rcscrub').value, 10));

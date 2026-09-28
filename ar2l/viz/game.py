@@ -35,6 +35,14 @@ evaluation, one pallet per game (a chosen one, or one dealt by the seed), its
 box order randomised by `order_random`.  A run trained on a data file presets
 the form to that file and those settings.
 
+Pointing at a cell also shows the UR20 placing the box there, in the 3D bin:
+its IK pose, the link capsules of `ar2l.pack_collision` (red where one hits the
+pack) and the columns it hits, crossed out on the top view -- the same check
+the real cell runs.  Where the robot stands, the tool length and how big a
+cell is in metres live under `robot:` in `config.yaml`.  With the robot-arm
+filter on (`env.arm_collision`, or the form's switch) a placement the arm
+cannot make is not a legal one at all -- for you, the packer and the opponent.
+
 The result screen can then recalculate: the same boxes in the same order, the
 agent replayed under parameters you edit, one row per setting.  The three
 fields that feed the draw itself - `n_items`, `size_lo`, `size_hi` - are held
@@ -55,6 +63,7 @@ from urllib.parse import parse_qs, urlparse
 
 import numpy as np
 
+from .. import pack_collision as PC
 from ..config import CFG
 from ..env import BPPBatch, TYPE_FLOOR, sample_items, type_classes
 from ..orders import (ROUNDING, box_divisor, load_orders, orders_bin,
@@ -74,7 +83,7 @@ CLI: dict = {}
 #: triples; `PARAM_KEYS` adds where the boxes come from, below
 GAME_KEYS = ('bin', 'n_items', 'size_lo', 'size_hi', 'nb', 'n_pick',
              'max_l', 'rot', 'ems', 'stability', 'min_support',
-             'n_types', 'type_constraint')
+             'n_types', 'type_constraint', 'arm_collision')
 TRIPLES = ('bin', 'size_lo', 'size_hi')
 
 #: where the boxes come from: the generator, or a file of real pallets and how
@@ -168,7 +177,8 @@ def defaults():
          'stability': str(e['stability']),
          'min_support': float(e['min_support']),
          'n_types': int(e['n_types']),
-         'type_constraint': int(e['type_constraint'])}
+         'type_constraint': int(e['type_constraint']),
+         'arm_collision': int(e.get('arm_collision', 0))}
     ev = CFG['eval']
     p.update({'source': 'orders' if t.get('data') else 'random',
               'data': str(t.get('data') or ''),
@@ -218,7 +228,7 @@ def run_params(spec):
         return p
     a = info['args']
     for k in ('n_items', 'max_l', 'rot', 'ems', 'stability', 'min_support',
-              'nb', 'n_types', 'type_constraint'):
+              'nb', 'n_types', 'type_constraint', 'arm_collision'):
         if a.get(k) is not None:
             p[k] = a[k]
     for k in TRIPLES:
@@ -301,6 +311,7 @@ def validate(raw):
     p['ems'] = whole('ems', 0, 3, 'EMS filter')
     p['n_types'] = whole('n_types', 1, 16, 'box types')
     p['type_constraint'] = whole('type_constraint', 0, 1, 'stacking rule')
+    p['arm_collision'] = whole('arm_collision', 0, 1, 'robot-arm filter')
 
     # ---- where the boxes come from ----------------------------------------
     src = str(raw.get('source', p['source']))
@@ -471,8 +482,11 @@ def mismatch(p, spec):
 
 
 # -------------------------------------------------------------------- board
-def free_positions(env):
+def free_positions(env, arm=True):
     """(R, S, S) every placement the box would rest in, EMS filter off.
+
+    `arm=False` also lifts the robot-arm filter, so the page can tell a cell
+    the arm rules out from one the box would not rest in.
 
     The policy's action space is the corners of the empty maximal spaces, but
     a human packing by hand is not bound to it: anything that lands stably and
@@ -480,13 +494,14 @@ def free_positions(env):
     sweep `_positions` runs, with `ems` off, so the square-footprint and
     terminal-state filters still apply.
     """
-    ems = env.ems                        # restore what it *was*: the game can
-    env.ems = 0                          # itself be run with --ems 0
+    ems, armc = env.ems, env.arm_collision   # restore what it *was*: the game
+    env.ems = 0                              # can itself be run with --ems 0
+    env.arm_collision = armc and arm
     env._invalidate(hmap=False)          # the height map is unchanged; only the filter
     try:
         return env._positions()[0][0].copy()
     finally:
-        env.ems = ems
+        env.ems, env.arm_collision = ems, armc
         env._invalidate(hmap=False)
 
 
@@ -505,6 +520,42 @@ def grids(env):
     k = int(env.obs()['l_mask'][0].sum())   # refreshes the candidate table first
     cand, z, odims, tunder = env._positions()
     return cand[0], free_positions(env), z[0], odims[0], k, tunder[0]
+
+
+def arm_blocked(env, free):
+    """(R, S, S) the placements the robot-arm filter alone rules out."""
+    if not env.arm_collision:
+        return np.zeros_like(free)
+    return free_positions(env, arm=False) & ~free
+
+
+def cand_points(env):
+    """[[x, y, z, r]] the packer's candidate list for the item in front.
+
+    What the result screen draws as the "places this box could have gone":
+    the corner the box's footprint starts at, the height it would land at,
+    and the orientation it would be turned to.
+    """
+    k = int(env.obs()['l_mask'][0].sum())
+    lxy, lz = env._lxy[0, :k], env._lz[0, :k]
+    return np.stack([lxy[:, 0], lxy[:, 1], lz, lxy[:, 2]], -1).astype(int).tolist()
+
+
+def trace_points(trace):
+    """`cand_points` for every step of an `A.play` trace."""
+    return [[[int(c[0]), int(c[1]), int(c[2]), int(r)]
+             for c, r in zip(t['cands'], t['cand_rot'])] for t in trace]
+
+
+def trace_windows(trace):
+    """The conveyor at every step of an `A.play` trace, as the result draws it.
+
+    `w`/`t` are the window as it stood before anyone reordered it, and `pick`
+    is the slot of the box that went in -- moved to the front by the attacker
+    or the run's own selector, or the front one when nobody chose.
+    """
+    return [{'w': t['window'], 't': t['window_types'],
+             'pick': t['perm_idx'] or 0} for t in trace]
 
 
 def place(env, r, x, y):
@@ -534,6 +585,109 @@ def place(env, r, x, y):
         env.ems, env.max_l = ems, max_l
         env._invalidate(hmap=False)
     return True
+
+
+# ---------------------------------------------------------------- robot arm
+quat_tf = PC.quat_tf
+
+
+def cell_m(p):
+    """Metres one grid cell stands for (see `pack_collision.robot_cell_m`)."""
+    return PC.robot_cell_m(CFG['robot'], p['cell_cm'], p['box_scale'])
+
+
+def arm_checker(st):
+    """The session's `ArmPackChecker`, built once for its grid."""
+    if st.get('arm') is None:
+        st['arm'], st['base_from_box'] = PC.checker_from_config(
+            CFG['robot'], cell_m(st['p']))
+    return st['arm']
+
+
+def arm_view(st, r, x, y):
+    """The arm placing the held box at (orientation r, x, y), for the 3D view."""
+    env = st['env']
+    _, z, odims, _ = env._positions()
+    if not (0 <= r < odims.shape[1] and 0 <= x < env.Lx and 0 <= y < env.Ly):
+        return {'error': 'no such placement'}
+    size = [int(v) for v in odims[0, r]]
+    pos = [int(x), int(y), int(z[0, r, x, y])]
+    return arm_pose(st, env.hmap[0].astype(int), size, pos)
+
+
+def replay_hmap(placed, S):
+    """The height map a list of placed [x, y, z, l, w, h] boxes leaves in bin S."""
+    hm = np.zeros((int(S[0]), int(S[1])), int)
+    for x, y, z, l, w, h in placed:
+        blk = hm[x:x + l, y:y + w]
+        np.maximum(blk, z + h, out=blk)
+    return hm
+
+
+def arm_replay(st, placed, S):
+    """The arm placing the last of `placed`, against the pack the others left.
+
+    A replay step is "box n has just gone in", so the arm is checked against
+    the bin as it stood a moment before -- boxes 0..n-1 -- exactly as the live
+    game checks the box you are holding against the bin as it is.
+    """
+    try:
+        placed = [[int(v) for v in b] for b in placed]
+        S = [int(v) for v in S]
+        if not placed or any(len(b) != 6 for b in placed) or len(S) != 3:
+            raise ValueError
+    except (TypeError, ValueError):
+        return {'error': 'a replay step is a list of [x, y, z, l, w, h] and a bin'}
+    *before, (x, y, z, l, w, h) = placed
+    return arm_pose(st, replay_hmap(before, S), [l, w, h], [x, y, z])
+
+
+def arm_pose(st, hm, size, pos):
+    """The arm placing a `size` box at `pos` over height map `hm`.
+
+    Everything comes back in the bin's cell coordinates, through the same
+    `CellFrame` the collision check uses, so what is drawn is what was tested:
+    the link capsules (each flagged if it hits the pack), the kinematic chain
+    from the robot base to the tool tip, and the columns the arm collides with.
+    """
+    chk = arm_checker(st)
+    B = st['base_from_box']
+    chk.set_heightmap(hm)
+    joints = chk.get_arm_joints(size, pos, B)
+    out = {'size': size, 'pos': pos}
+    if not joints:
+        out['reachable'] = False
+        return out
+    joint_tf = PC.get_forward_kinematics(joints, (1, 2, 3, 4, 5, 6))
+
+    box_from_base = np.linalg.inv(B)
+    cf = chk.cell_frame
+    to_cell = lambda T: cf((box_from_base @ T)[:3, 3]).tolist()
+    tool = joint_tf[5] @ PC.transform(t=[0.0, 0.0, float(CFG['robot']['tool_length_m'])])
+    chain = [to_cell(np.eye(4))] + [to_cell(T) for T in joint_tf] + [to_cell(tool)]
+
+    caps = PC.build_arm_capsules(joint_tf, box_from_base, chk.upper_arm_off_a,
+                                 chk.upper_arm_off_b, chk.arm_params, cf)
+    hs = cf.height_scale()
+    mask = PC.collision_mask(caps, hm, chk.pad, hs)
+    out.update({
+        'reachable': True,
+        'hit': bool(PC.any_capsule_hits_pyramid(caps, chk.pyramid, chk.pad)),
+        'caps': [{'name': n, 'a': c.a.tolist(), 'b': c.b.tolist(),
+                  'ra': c.ra, 'rb': c.rb,
+                  'hit': bool(chk.pyramid.hits(c, chk.pad))}
+                 for n, c in zip(('upper arm', 'forearm', 'wrist'), caps)],
+        'chain': chain,
+        # the pedestal, drawn from the base down to the pallet floor: joint 0's
+        # 0.45 m diameter from UrKin::get_joints_diameter
+        'base_r': 0.225 * cf.scale_x,
+        # the columns it hits, with their heights, so a replay (which has no
+        # height map of its own on the page) can still tint their tops
+        'cells': [[int(x), int(y), int(hm[x, y])] for x, y in np.argwhere(mask > 0)],
+        'depth': PC.max_penetration_depth(caps, hm, chk.pad, hs),
+        'joints_deg': np.degrees(joints).round(1).tolist(),
+    })
+    return out
 
 
 # -------------------------------------------------------------- pick station
@@ -614,11 +768,13 @@ def board(st):
         'tunder': tunder.astype(int).tolist(),
         'n_types': int(env.n_types),
         'type_constraint': bool(env.type_constraint),
+        'arm_collision': bool(env.arm_collision),
         'floor_type': int(TYPE_FLOOR),
         'item': item[:3].tolist(),
         'item_type': int(item[3]),
         'mask': cand.astype(np.uint8).tolist(),      # the packer's candidate list
         'free': free.astype(np.uint8).tolist(),      # everything you may click
+        'armblock': arm_blocked(env, free).astype(np.uint8).tolist(),
         'zmap': z.astype(int).tolist(),
         'ncand': k,
         'nfree': nfree,
@@ -686,12 +842,14 @@ def new_game(seed, attacker_spec, params, human_pick=True):
                    max_l=p['max_l'], rot=p['rot'], ems=p['ems'],
                    stability=p['stability'], min_support=p['min_support'],
                    n_pick=p['n_pick'], n_types=p['n_types'], types=False,
-                   type_constraint=bool(p['type_constraint']))
+                   type_constraint=bool(p['type_constraint']),
+                   arm_collision=bool(p['arm_collision']), arm_cell_m=cell_m(p))
     env.reset(seq[None])
     st = {'env': env, 'seq': seq, 'p': p, 'att': att, 'alabel': alabel,
           'pallet_id': pid,
           'human_pick': bool(human_pick) and p['n_pick'] > 1,
-          'promoted': None, 'opp_spec': None, 'opp': None}
+          'promoted': None, 'opp_spec': None, 'opp': None,
+          'hcands': [], 'htaken': [], 'hwin': []}
     gid = uuid.uuid4().hex[:12]
     with _LOCK:
         _GAMES[gid] = st
@@ -741,9 +899,14 @@ def hand_over(st, spec, p):
                 size_hi=p['size_hi'], max_l=p['max_l'], n_pick=p['n_pick'],
                 rot=p['rot'], ems=p['ems'], stability=p['stability'],
                 min_support=p['min_support'], n_types=p['n_types'],
-                type_constraint=bool(p['type_constraint']))
+                type_constraint=bool(p['type_constraint']),
+                arm_collision=bool(p['arm_collision']), arm_cell_m=cell_m(p))
     return {'label': label, 'util': ep['util'], 'items': ep['items'],
             'placed': ep['placed'], 'placed_types': ep['placed_types'],
+            # before box n went in, the placements the packer had for it
+            'cands': trace_points(ep['trace']),
+            'taken': [int(t['choice']) for t in ep['trace']],
+            'windows': trace_windows(ep['trace']),
             'seconds': time.time() - t0,
             'reason': 'ran out of room',
             # who picked the agent's box, so the result screen can say whether
@@ -897,15 +1060,39 @@ class Handler(BaseHTTPRequestHandler):
                 r, x, y = (int(body[k]) for k in 'rxy')
             except (KeyError, TypeError, ValueError):
                 return self._json({'error': 'a placement is r, x and y'}, 400)
+            pts = cand_points(st['env'])
+            win = {'w': st['win0'][st['wmask0'], :3].tolist(),
+                   't': st['win0'][st['wmask0'], 3].tolist(), 'pick': st['sel']}
             if not place(st['env'], r, x, y):
                 return self._json({'error': 'the box will not rest there'}, 400)
+            st['hcands'].append(pts)
+            st['hwin'].append(win)
+            st['htaken'].append(next((i for i, c in enumerate(pts)
+                                      if (c[3], c[0], c[1]) == (r, x, y)), -1))
             advance(st)
             return self._json({'board': board(st), 'promoted': st['promoted']})
+        if p == '/api/arm':
+            try:
+                r, x, y = (int(body[k]) for k in 'rxy')
+            except (KeyError, TypeError, ValueError):
+                return self._json({'error': 'an arm pose is r, x and y'}, 400)
+            try:
+                return self._json(arm_view(st, r, x, y))
+            except Exception as e:
+                return self._json({'error': f'{type(e).__name__}: {e}'}, 500)
+        if p == '/api/arm_replay':
+            try:
+                return self._json(arm_replay(st, body.get('placed'), body.get('bin')))
+            except Exception as e:
+                return self._json({'error': f'{type(e).__name__}: {e}'}, 500)
         if p == '/api/agent':
             # a policy that fails to load must not take the result screen down
             # with it - the page needs a body it can show as an error
             try:
-                return self._json(opponent(st, body['spec']))
+                return self._json(dict(opponent(st, body['spec']),
+                                       human_cands=st['hcands'],
+                                       human_taken=st['htaken'],
+                                       human_windows=st['hwin']))
             except Exception as e:
                 return self._json({'error': f'{type(e).__name__}: {e}'}, 500)
         if p == '/api/recalc':

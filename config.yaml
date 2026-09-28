@@ -22,12 +22,12 @@ env:
   max_l: 256             # candidate-list cap (leaf nodes); ~32 are used at p90
   max_c: 128             # initial packed-item capacity; it grows if exceeded
   rot: 2                 # 1 = no rotation, 2 = also yawed 90 degrees
-  ems: 1                 # 0 = every position, 1 = EMS corners, 2 = corner cells, 3 = 1|2
+  ems: 3                 # 0 = every position, 1 = EMS corners, 2 = corner cells, 3 = 1|2
   stability: com         # com = centre of mass over support, cdrl = 60%/4 corners
   # Contact-area floor.  0.70 on this problem leaves a median of 4 legal
   # placements and caps DBL at 18% utilisation; 0.30 costs ~2 points against
   # the bare centre-of-mass rule and leaves the action space intact.
-  min_support: 0.30
+  min_support: 0.80
 
   # ---- box types ---------------------------------------------------------
   # Every box carries a type_id, and a box may only be stacked on a box of its
@@ -36,6 +36,11 @@ env:
   # and a contact patch on one is not.
   n_types: 3
   type_constraint: 1     # 0 keeps type_id in the state but drops the rule
+  # Robot-arm filter: 1 drops every candidate placement the UR20 cannot make
+  # without one of its links hitting the pack, or cannot reach at all (the
+  # IK/capsule check of ar2l/pack_collision.py, set up from `robot:` below).
+  # All candidates are checked in one batch: ~25 ms per step for 64 bins.
+  arm_collision: 1
   # One item-size class per type -- the type *is* the SKU.  `p` is that type's
   # share of the stream (the shares are normalised), `lo`/`hi` its per-axis
   # side bounds; together they have to stay inside `size_lo`/`size_hi`, which
@@ -48,9 +53,9 @@ env:
     - {p: 1, lo: [2, 2, 2], hi: [12, 12, 10]} 
 
 train:
-  algo: pct               # pct|cppo|rarl|rfmdp|exact|approx|attack
+  algo: select               # pct|cppo|rarl|rfmdp|exact|approx|attack
   nb: 10                  # observable items N_B
-  n_pick: 1               # of the N_B, how many are within reach; the rest
+  n_pick: 5               # of the N_B, how many are within reach; the rest
                           # are preview only.  null = all of them.
   iters: 8000             # PPO iterations
   n_env: 64               # parallel bins
@@ -90,7 +95,7 @@ model:
   # capacity here: the candidate list runs to 32 nodes at p90 and the packed
   # list to ~40, both far short of max_l, so 128/4/2 buys sequence capacity
   # that is never used and costs ~3x the GPU time per iteration.
-  width: 64
+  width: 128
   heads: 1
   layers: 1              # attention blocks
   c_temp: 10.0            # pointer-head temperature c in Eq. 28
@@ -136,3 +141,18 @@ eval:
   # moves a box ~5 places in a 50-box pallet.  `order_seed` fixes the draw.
   order_random: 0.0
   order_seed: 0
+
+robot:
+  # The UR20 drawn over the game's 3D bin, and the reach check it runs
+  # (ar2l/pack_collision.py, a port of the cell's C++).
+  # Robot base -> box origin, as the cell's tmp_base_from_box: x, y, z in
+  # metres, then the quaternion qx, qy, qz, qw.
+  base_from_box_tf: [-0.50777000000000005, 1.5415239999999999, -1, 0, 0, -0.70753916586098198, 0.70666309052477838]
+  # Flange to the tool's contact face, metres -- KinematicData::tool_length.
+  # A placeholder until the real gripper is measured.
+  tool_length_m: 0.35
+  # Metres per grid cell.  null derives it from the game's grid:
+  # eval.cell_cm * eval.box_scale / 100, i.e. the real size a scaled-down
+  # cell stands for (1 cm * 4 = 4 cm with the shipped values).
+  cell_m: null
+  ik_solution: 1          # the lazy IK branch the cell runs
