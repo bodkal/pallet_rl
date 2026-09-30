@@ -83,7 +83,7 @@ CLI: dict = {}
 #: triples; `PARAM_KEYS` adds where the boxes come from, below
 GAME_KEYS = ('bin', 'n_items', 'size_lo', 'size_hi', 'nb', 'n_pick',
              'max_l', 'rot', 'ems', 'stability', 'min_support',
-             'n_types', 'type_constraint', 'arm_collision')
+             'n_types', 'type_constraint', 'arm_collision', 'base_x_moves')
 TRIPLES = ('bin', 'size_lo', 'size_hi')
 
 #: where the boxes come from: the generator, or a file of real pallets and how
@@ -178,7 +178,8 @@ def defaults():
          'min_support': float(e['min_support']),
          'n_types': int(e['n_types']),
          'type_constraint': int(e['type_constraint']),
-         'arm_collision': int(e.get('arm_collision', 0))}
+         'arm_collision': int(e.get('arm_collision', 0)),
+         'base_x_moves': PC.base_x_moves(CFG['robot'])}
     ev = CFG['eval']
     p.update({'source': 'orders' if t.get('data') else 'random',
               'data': str(t.get('data') or ''),
@@ -312,6 +313,17 @@ def validate(raw):
     p['n_types'] = whole('n_types', 1, 16, 'box types')
     p['type_constraint'] = whole('type_constraint', 0, 1, 'stacking rule')
     p['arm_collision'] = whole('arm_collision', 0, 1, 'robot-arm filter')
+    mv = raw.get('base_x_moves', p['base_x_moves'])
+    try:
+        if isinstance(mv, str):
+            mv = [t for t in mv.replace(',', ' ').split()]
+        if not 1 <= len(mv) <= 32:
+            raise ValueError
+        mv = PC.base_x_moves({'base_x_moves': list(mv)})
+        p['base_x_moves'] = mv
+    except (TypeError, ValueError):
+        err.append('arm base x moves: 1 to 32 numbers between -1 and 1, '
+                   'tried in order')
 
     # ---- where the boxes come from ----------------------------------------
     src = str(raw.get('source', p['source']))
@@ -442,10 +454,12 @@ def compared_keys(p):
     With an orders file the item bounds and `n_items` are the file's, not
     settings, and the file itself (and how it is read) is compared instead.
     """
+    # a run does not record `base_x_moves`, so there is nothing to compare it on
+    keys = tuple(k for k in GAME_KEYS if k != 'base_x_moves')
     if p['source'] == 'orders':
-        return tuple(k for k in GAME_KEYS
+        return tuple(k for k in keys
                      if k not in ('size_lo', 'size_hi', 'n_items')) + RUN_SOURCE_KEYS
-    return GAME_KEYS + ('source',)
+    return keys + ('source',)
 
 
 def diff_params(p, want, keys=PARAM_KEYS):
@@ -461,6 +475,10 @@ def diff_params(p, want, keys=PARAM_KEYS):
             except ValueError:
                 pass
         if a != b:
+            if k == 'base_x_moves':
+                out.append({'key': k, 'is': ', '.join(f'{t:g}' for t in a),
+                            'was': ', '.join(f'{t:g}' for t in b)})
+                continue
             fmt = (lambda v: 'x'.join(f'{t:g}' if isinstance(t, float) else str(t)
                                       for t in v)
                    if isinstance(v, (list, tuple)) else
@@ -553,9 +571,55 @@ def trace_windows(trace):
     `w`/`t` are the window as it stood before anyone reordered it, and `pick`
     is the slot of the box that went in -- moved to the front by the attacker
     or the run's own selector, or the front one when nobody chose.
+    `probs` is the picker's probability for each box in view, or None when
+    nobody chose.
     """
     return [{'w': t['window'], 't': t['window_types'],
-             'pick': t['perm_idx'] or 0} for t in trace]
+             'pick': t['perm_idx'] or 0,
+             'probs': None if t['perm_probs'] is None
+                      else rounded(t['perm_probs'][:len(t['window'])])}
+            for t in trace]
+
+
+def final_window(ep):
+    """[the conveyor as the episode left it], or [] when it ran empty.
+
+    `pick` is -1: nothing was packed from it.
+    """
+    if not ep.get('final_window'):
+        return []
+    return [{'w': ep['final_window'], 't': ep['final_window_types'],
+             'pick': -1, 'probs': None}]
+
+
+def rounded(p):
+    """Probabilities as the page shows them: four places is plenty."""
+    return [round(float(v), 4) for v in p]
+
+
+def human_final(st):
+    """`final_window` for your side: the strip as it stood when you stopped."""
+    if not st['wmask0'].any():
+        return []
+    return [{'w': st['win0'][st['wmask0'], :3].tolist(),
+             't': st['win0'][st['wmask0'], 3].tolist(), 'pick': -1,
+             'probs': (None if st['pprobs'] is None else
+                       rounded(st['pprobs'][:int(st['wmask0'].sum())]))}]
+
+
+def pack_probs(st):
+    """The opponent packer's probability for every point of `cand_points`.
+
+    None when there is no opponent to ask or nowhere left to go.  The policy
+    reads `env.obs()` itself, so the list it scores is the one `cand_points`
+    returns for the same position.
+    """
+    pol, env = st.get('pol'), st['env']
+    if pol is None or env.done[0] or not env.n_feasible()[0]:
+        return None
+    _, prob = pol(env)
+    k = int(env.obs()['l_mask'][0].sum())
+    return rounded(prob[0][:k])
 
 
 def place(env, r, x, y):
@@ -624,7 +688,7 @@ def replay_hmap(placed, S):
     return hm
 
 
-def arm_replay(st, placed, S):
+def arm_replay(st, placed, S, moves=None):
     """The arm placing the last of `placed`, against the pack the others left.
 
     A replay step is "box n has just gone in", so the arm is checked against
@@ -639,22 +703,31 @@ def arm_replay(st, placed, S):
     except (TypeError, ValueError):
         return {'error': 'a replay step is a list of [x, y, z, l, w, h] and a bin'}
     *before, (x, y, z, l, w, h) = placed
-    return arm_pose(st, replay_hmap(before, S), [l, w, h], [x, y, z])
+    return arm_pose(st, replay_hmap(before, S), [l, w, h], [x, y, z], moves)
 
 
-def arm_pose(st, hm, size, pos):
+def arm_pose(st, hm, size, pos, moves=None):
     """The arm placing a `size` box at `pos` over height map `hm`.
 
     Everything comes back in the bin's cell coordinates, through the same
     `CellFrame` the collision check uses, so what is drawn is what was tested:
     the link capsules (each flagged if it hits the pack), the kinematic chain
     from the robot base to the tool tip, and the columns the arm collides with.
+    The base stands at the first of `moves` (the session's `base_x_moves`
+    when None) that clears the pack, as the env's filter does, or at the
+    first one when none does.
     """
     chk = arm_checker(st)
-    B = st['base_from_box']
     chk.set_heightmap(hm)
+    moves = PC.base_x_moves({'base_x_moves': st['p']['base_x_moves']
+                             if moves is None else moves})
+    bases = PC.moved_bases(st['base_from_box'], moves,
+                           hm.shape[1] / chk.cell_frame.scale_y)
+    k = next((i for i, Bi in enumerate(bases)
+              if not chk.is_arm_collid_with_pack(size, pos, Bi)[0]), 0)
+    B = bases[k]
     joints = chk.get_arm_joints(size, pos, B)
-    out = {'size': size, 'pos': pos}
+    out = {'size': size, 'pos': pos, 'base_move': moves[k]}
     if not joints:
         out['reachable'] = False
         return out
@@ -783,6 +856,13 @@ def board(st):
         'nb': int(env.nb),
         'n_pick': int(env.n_pick),
         'sel': int(st['sel']),
+        'pick_probs': (None if st['pprobs'] is None
+                       else rounded(st['pprobs'][:int(st['wmask0'].sum())])),
+        'pick_by': st['plabel'],
+        # the opponent's packer over the packer's candidate list for the box
+        # being packed: [x, y, z, r] and its probability, index for index
+        'cands': cand_points(env),
+        'cand_probs': pack_probs(st),
         'picks': picks,                # placements open to each reachable box
         'human_pick': bool(st['human_pick']),
         'placed': (env.packed[0, : env.n_packed[0]] * env.scale)
@@ -801,13 +881,20 @@ def board(st):
 def advance(st):
     """Let the attacker reorder the conveyor, then freeze it for the page."""
     env = st['env']
+    st['pprobs'] = None
     if st['att'] is not None and not env.done[0]:
-        idx, _ = st['att'](env)
-        st['promoted'] = int(idx[0])
+        idx, pp = st['att'](env)
+        i = st['promoted'] = int(idx[0])
         env.permute(idx)
+        # the attacker scored the window before it moved box i to the front;
+        # reorder its scores the same way so they line up with the strip
+        pp = pp[0]
+        st['pprobs'] = np.concatenate([pp[i:i + 1], np.delete(pp, i)])
     else:
         st['promoted'] = None
     snapshot(st)
+    if st['pprobs'] is None and st.get('picker') is not None and not env.done[0]:
+        st['pprobs'] = st['picker'](env)[1][0]
 
 
 def deal_pallet(p, seed):
@@ -824,7 +911,7 @@ def deal_pallet(p, seed):
     return seq, i, ids[i]
 
 
-def new_game(seed, attacker_spec, params, human_pick=True):
+def new_game(seed, attacker_spec, params, human_pick=True, opp_spec=None):
     att, alabel, _ = A.load_attacker(attacker_spec, DEVICE)
     p = dict(params)
     pid = None
@@ -843,13 +930,27 @@ def new_game(seed, attacker_spec, params, human_pick=True):
                    stability=p['stability'], min_support=p['min_support'],
                    n_pick=p['n_pick'], n_types=p['n_types'], types=False,
                    type_constraint=bool(p['type_constraint']),
-                   arm_collision=bool(p['arm_collision']), arm_cell_m=cell_m(p))
+                   arm_collision=bool(p['arm_collision']), arm_cell_m=cell_m(p),
+                   arm_moves=p['base_x_moves'])
     env.reset(seq[None])
     st = {'env': env, 'seq': seq, 'p': p, 'att': att, 'alabel': alabel,
           'pallet_id': pid,
           'human_pick': bool(human_pick) and p['n_pick'] > 1,
           'promoted': None, 'opp_spec': None, 'opp': None,
-          'hcands': [], 'htaken': [], 'hwin': []}
+          'hcands': [], 'htaken': [], 'hwin': [], 'hprobs': [],
+          'pol': None, 'picker': None, 'plabel': None}
+    # the opponent, asked at every position what it would do there: its
+    # packer scores your candidate points, and with no attacker on a select
+    # run's own picker scores the boxes in reach
+    if opp_spec:
+        try:
+            st['pol'] = A.load_policy(opp_spec, DEVICE)[0]
+            if att is None:
+                st['picker'], st['plabel'] = opp_permuter(st, opp_spec)
+        except Exception:
+            st['pol'] = st['picker'] = None
+    if att is not None:
+        st['plabel'] = alabel
     gid = uuid.uuid4().hex[:12]
     with _LOCK:
         _GAMES[gid] = st
@@ -900,13 +1001,15 @@ def hand_over(st, spec, p):
                 rot=p['rot'], ems=p['ems'], stability=p['stability'],
                 min_support=p['min_support'], n_types=p['n_types'],
                 type_constraint=bool(p['type_constraint']),
-                arm_collision=bool(p['arm_collision']), arm_cell_m=cell_m(p))
+                arm_collision=bool(p['arm_collision']), arm_cell_m=cell_m(p),
+                arm_moves=p['base_x_moves'])
     return {'label': label, 'util': ep['util'], 'items': ep['items'],
             'placed': ep['placed'], 'placed_types': ep['placed_types'],
             # before box n went in, the placements the packer had for it
             'cands': trace_points(ep['trace']),
             'taken': [int(t['choice']) for t in ep['trace']],
-            'windows': trace_windows(ep['trace']),
+            'cand_probs': [rounded(t['probs']) for t in ep['trace']],
+            'windows': trace_windows(ep['trace']) + final_window(ep),
             'seconds': time.time() - t0,
             'reason': 'ran out of room',
             # who picked the agent's box, so the result screen can say whether
@@ -1041,7 +1144,8 @@ class Handler(BaseHTTPRequestHandler):
             if err:
                 return self._json({'error': err[0], 'errors': err}, 400)
             gid, st = new_game(body.get('seed', 0), body.get('attacker'),
-                               params, body.get('human_pick', True))
+                               params, body.get('human_pick', True),
+                               body.get('opponent'))
             return self._json({'gid': gid, 'board': board(st),
                                'params': st['p'], 'pallet_id': st['pallet_id'],
                                'promoted': st['promoted'], 'alabel': st['alabel']})
@@ -1062,11 +1166,15 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({'error': 'a placement is r, x and y'}, 400)
             pts = cand_points(st['env'])
             win = {'w': st['win0'][st['wmask0'], :3].tolist(),
-                   't': st['win0'][st['wmask0'], 3].tolist(), 'pick': st['sel']}
+                   't': st['win0'][st['wmask0'], 3].tolist(), 'pick': st['sel'],
+                   'probs': (None if st['pprobs'] is None else
+                             rounded(st['pprobs'][:int(st['wmask0'].sum())]))}
+            probs = pack_probs(st)
             if not place(st['env'], r, x, y):
                 return self._json({'error': 'the box will not rest there'}, 400)
             st['hcands'].append(pts)
             st['hwin'].append(win)
+            st['hprobs'].append(probs)
             st['htaken'].append(next((i for i, c in enumerate(pts)
                                       if (c[3], c[0], c[1]) == (r, x, y)), -1))
             advance(st)
@@ -1082,7 +1190,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({'error': f'{type(e).__name__}: {e}'}, 500)
         if p == '/api/arm_replay':
             try:
-                return self._json(arm_replay(st, body.get('placed'), body.get('bin')))
+                return self._json(arm_replay(st, body.get('placed'), body.get('bin'),
+                                             body.get('moves')))
             except Exception as e:
                 return self._json({'error': f'{type(e).__name__}: {e}'}, 500)
         if p == '/api/agent':
@@ -1092,7 +1201,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(dict(opponent(st, body['spec']),
                                        human_cands=st['hcands'],
                                        human_taken=st['htaken'],
-                                       human_windows=st['hwin']))
+                                       human_windows=st['hwin'] + human_final(st),
+                                       human_cand_probs=st['hprobs']))
             except Exception as e:
                 return self._json({'error': f'{type(e).__name__}: {e}'}, 500)
         if p == '/api/recalc':

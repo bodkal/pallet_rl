@@ -1310,6 +1310,22 @@ def robot_cell_m(robot, cell_cm, box_scale):
     return float(cell_cm) * max(1.0, float(box_scale or 1)) / 100.0
 
 
+def base_x_moves(robot):
+    """`robot['base_x_moves']` as floats, [0.0] when unset."""
+    moves = [float(v) for v in (robot.get('base_x_moves') or [0.0])]
+    bad = [v for v in moves if not -1.0 <= v <= 1.0]
+    if bad:
+        raise ValueError(f"robot.base_x_moves must lie in -1..1, got {bad}")
+    return moves
+
+
+def moved_bases(base_from_box, moves, pallet_y_m):
+    """`base_from_box` with the base slid `v * pallet_y_m / 2` along its own
+    x axis, one 4x4 per `v` in `moves`."""
+    return [transform(t=[-v * pallet_y_m / 2.0, 0.0, 0.0]) @ base_from_box
+            for v in moves]
+
+
 def checker_from_config(robot, cell_m):
     """-> (ArmPackChecker, base_from_box) for a grid of `cell_m` metre cells."""
     cpm = 1.0 / float(cell_m)

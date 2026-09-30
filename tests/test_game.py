@@ -370,7 +370,8 @@ def test_the_quaternion_is_read_as_tf2_reads_it():
 
 def test_the_arm_drawn_is_the_arm_that_was_checked():
     """`arm_view` reports what `ArmPackChecker` decides for the same pose."""
-    st = start(bin=[30, 25, 40], size_hi=[12, 10, 10], n_pick=1, nb=1)
+    st = start(bin=[30, 25, 40], size_hi=[12, 10, 10], n_pick=1, nb=1,
+               base_x_moves=[0])
     env = st["env"]
     env.hmap[0, 20:, :] = 38          # a wall of boxes on the robot's side
     env._invalidate()
@@ -432,3 +433,33 @@ def test_the_arm_filter_switch_reaches_the_game():
     np.testing.assert_array_equal(free | block, G.free_positions(env, arm=False))
     _, err = G.validate(dict(BASE, arm_collision=2))
     assert err
+
+
+def test_the_base_x_moves_are_the_sessions_own():
+    """`base_x_moves` on the form reaches the session's env and its arm view,
+    is read from a typed list, and a recalculation can move it on the same
+    boxes."""
+    p, err = G.validate(dict(BASE, base_x_moves="0, -1  1"))
+    assert not err and p["base_x_moves"] == [0.0, -1.0, 1.0]
+    for bad in ("0, 2", "", "a", [0] * 33):
+        assert G.validate(dict(BASE, base_x_moves=bad))[1], bad
+    kw = dict(bin=[30, 25, 40], size_hi=[12, 10, 10], n_pick=1, nb=1,
+              arm_collision=1)
+    fixed, moving = (start(base_x_moves=mv, **kw)
+                     for mv in ([0], [0, -0.5, 0.5, -1, 1]))
+    assert moving["env"].arm_moves == [0, -0.5, 0.5, -1, 1]
+    for st in (fixed, moving):
+        st["env"].hmap[0, 20:, :] = 20
+        st["env"]._invalidate()
+    f0 = np.array(G.board(fixed)["free"])
+    f1 = np.array(G.board(moving)["free"])
+    assert (f1 & ~f0).any() and not (f0 & ~f1).any()
+    # a cell only the moved base makes: the arm is drawn from that base
+    x, y = np.argwhere((f1 & ~f0)[0])[0]
+    v = G.arm_view(moving, 0, int(x), int(y))
+    assert not v["hit"] and v["base_move"] != 0
+    assert G.arm_view(fixed, 0, int(x), int(y))["base_move"] == 0
+    q, err = G.recalc_params(fixed, {"base_x_moves": [0, 1]})
+    assert not err and q["base_x_moves"] == [0.0, 1.0]
+    assert {"key": "base_x_moves", "is": "0, 1", "was": "0"} in G.diff_params(
+        q, fixed["p"], G.RECALC_KEYS)

@@ -266,7 +266,7 @@ class BPPBatch:
                  stability=None, rot=None, min_support=None, n_pick=None,
                  n_types=None, types=None, type_constraint=None,
                  pick_feasible=None, pool=None, pool_order_random=0.0,
-                 arm_collision=None, arm_cell_m=None):
+                 arm_collision=None, arm_cell_m=None, arm_moves=None):
         # `None` means "whatever config.yaml says"; an explicit argument wins
         e = CFG["env"]
         S = e["bin"] if S is None else S
@@ -338,10 +338,15 @@ class BPPBatch:
         # links hitting the pack (or cannot reach at all) -- `ar2l.pack_collision`,
         # set up from `robot:` in config.yaml.  `arm_cell_m` is how many metres
         # one cell stands for; None derives it from `eval.cell_cm` and
-        # `eval.box_scale`, the grid real orders are read onto.
+        # `eval.box_scale`, the grid real orders are read onto.  `arm_moves`
+        # is where the base may slide to rescue a placement, as
+        # `robot.base_x_moves`; None reads that.
         self.arm_collision = bool(e.get("arm_collision", 0)
                                   if arm_collision is None else arm_collision)
         self.arm_cell_m = arm_cell_m
+        from . import pack_collision as PC
+        self.arm_moves = PC.base_x_moves(
+            CFG["robot"] if arm_moves is None else {"base_x_moves": arm_moves})
         self._arm = None
         # the contact count costs a second sweep, so only pay for it when a
         # rule actually reads it
@@ -385,10 +390,12 @@ class BPPBatch:
             # different type to the front reuses nothing it should not
             self._type_cache = {}
             self._under_cache = None
-            # arm verdicts keyed by (bin, (sx, sy, sz), x, y): the landing
-            # height follows from the height map, which is what resets them
+            # arm verdicts keyed by (bin, (sx, sy, sz), x, y): the index into
+            # `robot.base_x_moves` of the first base move that makes the
+            # placement, -1 for none.  The landing height follows from the
+            # height map, which is what resets them
             self._arm_keys = np.zeros(0, np.int64)
-            self._arm_hit = np.zeros(0, bool)
+            self._arm_move = np.zeros(0, np.int8)
 
     def _set_side(self, seq):
         """Largest footprint extent the sweeps must cover, per axis.
@@ -493,9 +500,9 @@ class BPPBatch:
         # the arm verdicts of every bin that was not reset still hold: they
         # depend on that bin's height map alone, which is untouched
         keep = ~np.isin(self._arm_keys // self._arm_bin_stride(), idx)
-        keys, hit = self._arm_keys[keep], self._arm_hit[keep]
+        keys, move = self._arm_keys[keep], self._arm_move[keep]
         self._invalidate()
-        self._arm_keys, self._arm_hit = keys, hit
+        self._arm_keys, self._arm_move = keys, move
 
     # ------------------------------------------------------------- conveyor
     def window(self):
@@ -972,6 +979,8 @@ class BPPBatch:
             m = self.arm_cell_m or PC.robot_cell_m(
                 rb, CFG["eval"]["cell_cm"], CFG["eval"]["box_scale"])
             self._arm = PC.checker_from_config(rb, m)
+            self._arm_bases = PC.moved_bases(self._arm[1], self.arm_moves,
+                                             self.Ly * m)
         return self._arm
 
     def _arm_bin_stride(self):
@@ -984,7 +993,9 @@ class BPPBatch:
         Only the cells every other rule already allows are asked, all bins in
         one batched check (`ArmPackChecker.collides_batch`), and each answer
         is kept until the height map changes.  An unreachable pose counts as
-        a collision, as it does on the cell.
+        a collision, as it does on the cell.  A placement that collides from
+        where the base stands is tried again from each of
+        `robot.base_x_moves` in turn, and is dropped only if all of them fail.
         """
         bb, xx, yy = np.nonzero(feas)
         if not len(bb):
@@ -1000,21 +1011,29 @@ class BPPBatch:
         pos = np.searchsorted(self._arm_keys, key)
         found = pos < len(self._arm_keys)
         found[found] = self._arm_keys[pos[found]] == key[found]
-        hit = np.zeros(len(bb), bool)
-        hit[found] = self._arm_hit[pos[found]]
+        move = np.full(len(bb), -1, np.int8)
+        move[found] = self._arm_move[pos[found]]
         todo = np.flatnonzero(~found)
         if len(todo):
-            chk, B = self._arm_checker()
+            chk, _ = self._arm_checker()
             b, x, y = bb[todo], xx[todo], yy[todo]
-            res = chk.collides_batch(sizes[todo], np.stack([x, y, z[b, x, y]], 1),
-                                     B, self.hmap, b)
-            hit[todo] = res
+            poses = np.stack([x, y, z[b, x, y]], 1)
+            res = np.full(len(todo), -1, np.int8)
+            left = np.arange(len(todo))   # still colliding from every base so far
+            for k, B in enumerate(self._arm_bases):
+                hit = chk.collides_batch(sizes[todo[left]], poses[left], B,
+                                         self.hmap, b[left])
+                res[left[~hit]] = k
+                left = left[hit]
+                if not len(left):
+                    break
+            move[todo] = res
             keys = np.concatenate([self._arm_keys, key[todo]])
             order = np.argsort(keys, kind="stable")
             self._arm_keys = keys[order]
-            self._arm_hit = np.concatenate([self._arm_hit, res])[order]
+            self._arm_move = np.concatenate([self._arm_move, res])[order]
         out = feas.copy()
-        out[bb, xx, yy] = ~hit
+        out[bb, xx, yy] = move >= 0
         return out
 
     def _support_ratio(self, dims, cxy, cx):

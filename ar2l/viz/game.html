@@ -45,6 +45,28 @@ main{padding:16px 20px 48px;max-width:1400px;margin:0 auto}
 .dims{font-size:23px;font-weight:660;font-variant-numeric:tabular-nums;letter-spacing:-.3px}
 .qb{display:flex;align-items:center;gap:9px}
 .qb canvas{border-radius:2px;flex:none}
+/* the picker's probability, a small number sitting on top of a conveyor box */
+.cvw{position:relative;display:inline-flex;flex-direction:column;align-items:center;flex:none}
+.pp{font-size:9.5px;line-height:1;font-weight:640;color:var(--c1);
+  font-variant-numeric:tabular-nums;margin-bottom:2px}
+.pp.top{color:var(--c0)}
+/* the replay bin with its top points beside it */
+.isorow{display:flex;gap:8px;align-items:flex-start}
+.isocv{flex:1;min-width:0}
+.rpts{flex:none;width:118px}
+.rpts .rwh{font-size:10.5px;color:var(--dim);margin-bottom:2px}
+.plist.short li{grid-template-columns:16px 1fr auto;padding:1px 3px;font-size:10.5px}
+.plist.short li .rk{font-size:9px;line-height:13px}
+/* the packer's probabilities over the candidate points, best first */
+.plist{list-style:none;margin:6px 0 0;padding:0;font-size:11.5px;
+  font-variant-numeric:tabular-nums}
+.plist li{display:grid;grid-template-columns:20px 1fr auto;gap:1px 6px;align-items:center;
+  padding:2px 4px;border-radius:5px}
+.plist li .rk{font-size:10px;color:var(--bg);background:var(--c1);border-radius:8px;
+  text-align:center;line-height:15px;font-weight:640}
+.plist li.cur{background:color-mix(in srgb,var(--c2) 16%,transparent)}
+.plist li.tk{outline:1.5px solid var(--fg)}
+.plist li .bar{height:3px;background:var(--c1);border-radius:2px;grid-column:2/4;opacity:.7}
 kbd{border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:1px 5px;
   font:11px ui-monospace,monospace;color:var(--fg)}
 .hint{color:var(--dim);font-size:11.5px;line-height:1.6}
@@ -205,11 +227,11 @@ table.rc .d{font-size:11px}
             <option value="-1">a random pallet (dealt by the seed)</option></select></div>
           <div class="pf osrc"><span>order randomness &mdash; 0 file, 1 random</span>
             <input id="ordrnd" type="number" min="0" max="1" step="0.05"></div>
-          <div class="pf pf3 osrc ocsv"><span>pallet L &times; W &times; H cm &mdash; empty: the bin below</span>
+          <div class="pf pf3 osrc ocsv"><span>pallet L &times; W &times; H cm &mdash; empty: the run's own bin</span>
             <div class="tri"><input id="pcm0" type="number" min="0" step="any">
               <input id="pcm1" type="number" min="0" step="any">
               <input id="pcm2" type="number" min="0" step="any"></div></div>
-          <div class="pf osrc ocsv"><span>cell size, cm</span>
+          <div class="pf" hidden><span>cell size, cm</span>
             <input id="cellcm" type="number" min="0.001" step="any"></div>
           <div class="pf osrc ocsv"><span>box scale &mdash; divide every side</span>
             <input id="bscale" type="number" min="0" step="any"></div>
@@ -219,15 +241,15 @@ table.rc .d{font-size:11px}
             <option value="nearest">nearest &mdash; 1.5 &rarr; 1</option></select></div>
         </div>
         <div class="pg">
-          <div class="pf pf3"><span>bin &mdash; x &times; y &times; z cells</span>
+          <div class="pf pf3" hidden><span>bin &mdash; x &times; y &times; z cells</span>
             <div class="tri"><input id="bin0" type="number" min="1" step="1">
               <input id="bin1" type="number" min="1" step="1">
               <input id="bin2" type="number" min="1" step="1"></div></div>
-          <div class="pf pf3"><span>item side &mdash; smallest</span>
+          <div class="pf pf3 orand"><span>item side &mdash; smallest</span>
             <div class="tri"><input id="lo0" type="number" min="1" step="1">
               <input id="lo1" type="number" min="1" step="1">
               <input id="lo2" type="number" min="1" step="1"></div></div>
-          <div class="pf pf3"><span>item side &mdash; largest</span>
+          <div class="pf pf3 orand"><span>item side &mdash; largest</span>
             <div class="tri"><input id="hi0" type="number" min="1" step="1">
               <input id="hi1" type="number" min="1" step="1">
               <input id="hi2" type="number" min="1" step="1"></div></div>
@@ -235,7 +257,7 @@ table.rc .d{font-size:11px}
             <input id="nb" type="number" min="1" step="1"></div>
           <div class="pf"><span>reach k &mdash; boxes you may pick</span>
             <input id="npick" type="number" min="1" step="1"></div>
-          <div class="pf"><span>items in the sequence</span>
+          <div class="pf" hidden><span>items in the sequence</span>
             <input id="nitems" type="number" min="1" step="1"></div>
           <div class="pf"><span>candidate cap N<sub>L</sub></span>
             <input id="maxl" type="number" min="1" step="1"></div>
@@ -255,6 +277,8 @@ table.rc .d{font-size:11px}
           <div class="pf"><span>robot-arm filter</span><select id="armcol">
             <option value="0">off &mdash; every placement the rules allow</option>
             <option value="1">on &mdash; drop placements the arm collides on</option></select></div>
+          <div class="pf"><span>arm base x moves (-1..1, tried in order)</span>
+            <input id="armmoves" type="text" placeholder="0, -0.5, 0.5, -1, 1"></div>
         </div>
         <div class="row" style="margin-top:10px">
           <button id="preset" type="button">Reset to the opponent's own values</button>
@@ -300,7 +324,7 @@ table.rc .d{font-size:11px}
         <div id="msg"></div>
       </div>
       <div class="card">
-        <h2>Your bin <span class="sub" style="text-transform:none;letter-spacing:0">&mdash; drag to rotate, double-click to reset</span></h2>
+        <h2>Your bin <span class="sub" style="text-transform:none;letter-spacing:0">&mdash; drag to rotate, scroll to zoom, shift-drag to pan, double-click to reset</span></h2>
         <canvas id="iso3d"></canvas>
         <div class="lg" id="tlg"></div>
         <div class="lg" id="armlg" hidden>
@@ -327,6 +351,12 @@ table.rc .d{font-size:11px}
         style="text-transform:none;letter-spacing:0"></span></h2>
       <div id="slots"></div>
       <div class="sub" id="note" style="margin-top:9px;min-height:32px"></div>
+    </div>
+
+    <div class="card" style="margin-top:12px" id="ptscard" hidden>
+      <h2>Agent's placement odds <span class="sub" id="ptssub"
+        style="text-transform:none;letter-spacing:0"></span></h2>
+      <div id="ptslist"></div>
     </div>
     <div class="card" style="margin-top:12px">
       <h2>Controls</h2>
@@ -389,7 +419,8 @@ table.rc .d{font-size:11px}
       <span><svg width="12" height="12" viewBox="0 0 12 12"><circle cx="6" cy="6" r="4.5" fill="none" stroke="var(--fg)" stroke-width="1.5"/></svg>the one actually taken</span>
     </div>
     <div class="sub" style="margin-top:6px;opacity:.8">Drag either bin to rotate both together
-      &mdash; same angle, fair comparison. Double-click resets.
+      &mdash; same angle, fair comparison. Scroll to zoom, shift-drag (or right-drag) to pan.
+      Double-click resets.
       The slider sits right above the bins; <kbd>&larr;</kbd>/<kbd>&rarr;</kbd> step it.</div>
   </div>
 
@@ -405,13 +436,15 @@ table.rc .d{font-size:11px}
   <div class="duel">
     <div class="side" id="side-h">
       <h2 style="font-size:11px;color:var(--dim);letter-spacing:.6px;text-transform:uppercase;margin:0 0 8px">You<span class="crown" id="crown-h"></span></h2>
-      <canvas id="iso-h"></canvas>
+      <div class="isorow"><div class="rpts" id="pts-h"></div>
+        <div class="isocv"><canvas id="iso-h"></canvas></div></div>
       <div class="rwin" id="win-h"></div>
       <div id="stat-h" style="margin-top:10px"></div>
     </div>
     <div class="side" id="side-a">
       <h2 style="font-size:11px;color:var(--dim);letter-spacing:.6px;text-transform:uppercase;margin:0 0 8px"><span id="alab2">Agent</span><span class="crown" id="crown-a"></span></h2>
-      <canvas id="iso-a"></canvas>
+      <div class="isorow"><div class="rpts" id="pts-a"></div>
+        <div class="isocv"><canvas id="iso-a"></canvas></div></div>
       <div class="rwin" id="win-a"></div>
       <div id="stat-a" style="margin-top:10px"></div>
     </div>
@@ -433,7 +466,7 @@ table.rc .d{font-size:11px}
           <button id="rcpreset" type="button">Fill in that run's own parameters</button></div>
       </div>
       <div class="pg">
-        <div class="pf pf3"><span>bin &mdash; x &times; y &times; z cells</span>
+        <div class="pf pf3" hidden><span>bin &mdash; x &times; y &times; z cells</span>
           <div class="tri"><input id="rcbin0" type="number" min="1" step="1">
             <input id="rcbin1" type="number" min="1" step="1">
             <input id="rcbin2" type="number" min="1" step="1"></div></div>
@@ -459,10 +492,12 @@ table.rc .d{font-size:11px}
         <div class="pf"><span>robot-arm filter</span><select id="rcarmcol">
           <option value="0">off &mdash; every placement the rules allow</option>
           <option value="1">on &mdash; drop placements the arm collides on</option></select></div>
+        <div class="pf"><span>arm base x moves (-1..1, tried in order)</span>
+          <input id="rcarmmoves" type="text" placeholder="0, -0.5, 0.5, -1, 1"></div>
         <div class="pf lock pf3"><span>item side &mdash; smallest / largest</span>
           <div class="tri" style="grid-template-columns:1fr 1fr">
             <input id="rclo" disabled><input id="rchi" disabled></div></div>
-        <div class="pf lock"><span>items in the sequence</span>
+        <div class="pf lock" hidden><span>items in the sequence</span>
           <input id="rcitems" disabled></div>
       </div>
       <div class="opt">These last three are what <code>sample_items</code> draws
@@ -479,7 +514,8 @@ table.rc .d{font-size:11px}
       <table class="rc" id="rctab" hidden></table>
       <div id="rc3d" hidden style="margin-top:14px">
         <div class="sub" style="margin-bottom:6px">Click a row to show it here.
-          Drag either bin to rotate both; double-click resets.</div>
+          Drag either bin to rotate both, scroll to zoom, shift-drag to pan;
+          double-click resets.</div>
         <div class="scrubbar">
           <div class="row">
             <button type="button" data-step="-1" data-for="rcscrub" title="previous box">&#9664;</button>
@@ -496,13 +532,15 @@ table.rc .d{font-size:11px}
         <div class="duel" style="margin-top:10px">
           <div class="side">
             <h2 style="font-size:11px;color:var(--dim);letter-spacing:.6px;text-transform:uppercase;margin:0 0 8px">This game &mdash; <span id="rcl0"></span></h2>
-            <canvas id="iso-rc0"></canvas>
+            <div class="isorow"><div class="rpts" id="pts-rc0"></div>
+              <div class="isocv"><canvas id="iso-rc0"></canvas></div></div>
             <div class="rwin" id="win-rc0"></div>
             <div class="sub" id="rcs0" style="margin-top:8px"></div>
           </div>
           <div class="side">
             <h2 style="font-size:11px;color:var(--dim);letter-spacing:.6px;text-transform:uppercase;margin:0 0 8px">Row <span id="rcnum"></span> &mdash; <span id="rcl1"></span></h2>
-            <canvas id="iso-rc1"></canvas>
+            <div class="isorow"><div class="rpts" id="pts-rc1"></div>
+              <div class="isocv"><canvas id="iso-rc1"></canvas></div></div>
             <div class="rwin" id="win-rc1"></div>
             <div class="sub" id="rcs1" style="margin-top:8px"></div>
           </div>
@@ -543,7 +581,7 @@ const PF = {
   size_hi: ['#hi0', '#hi1', '#hi2'],
   nb: '#nb', n_pick: '#npick', n_items: '#nitems', max_l: '#maxl',
   rot: '#prot', ems: '#ems', stability: '#stab', min_support: '#msup',
-  arm_collision: '#armcol',
+  arm_collision: '#armcol', base_x_moves: '#armmoves',
   source: '#src', data: '#data', pallet: '#palpick', order_random: '#ordrnd',
   pallet_cm: ['#pcm0', '#pcm1', '#pcm2'], cell_cm: '#cellcm',
   box_scale: '#bscale', box_round: '#bround',
@@ -555,6 +593,10 @@ const EMSTEXT = {1: 'the corners of the empty maximal spaces',
   3: 'the empty-maximal-space corners and the corner cells'};
 const PSTR = new Set(['stability', 'source', 'data', 'box_round']);
 const PFLOAT = new Set(['min_support', 'order_random', 'cell_cm', 'box_scale']);
+/* a list of numbers typed as "0, -0.5, 0.5"; the server checks the values */
+const PNUMS = new Set(['base_x_moves']);
+const readList = v => v.split(/[\s,]+/).filter(t => t !== '').map(Number);
+const showList = v => (v || []).join(', ');
 /* what an orders file decides, so the form shows it rather than takes it */
 const DERIVED = ['size_lo', 'size_hi', 'n_items'];
 const PLABEL = {source: 'box source', data: 'data file', pallet: 'pallet',
@@ -563,7 +605,7 @@ const PLABEL = {source: 'box source', data: 'data file', pallet: 'pallet',
   nb: 'window N_B', n_pick: 'reach k', n_items: 'items in the sequence',
   max_l: 'candidate cap', rot: 'orientations', ems: 'action space',
   stability: 'stability rule', min_support: 'support floor',
-  arm_collision: 'robot-arm filter'};
+  arm_collision: 'robot-arm filter', base_x_moves: 'arm base x moves'};
 
 function readParams(){
   const o = {};
@@ -574,6 +616,7 @@ function readParams(){
     }
     else if (Array.isArray(sel)) o[k] = sel.map(t => parseInt($(t).value, 10));
     else if (PSTR.has(k)) o[k] = $(sel).value;
+    else if (PNUMS.has(k)) o[k] = readList($(sel).value);
     else if (PFLOAT.has(k)) o[k] = parseFloat($(sel).value);
     else o[k] = parseInt($(sel).value, 10);
   }
@@ -586,6 +629,7 @@ function writeParams(p){
     if (k === 'pallet') setPallet(p[k]);
     else if (Array.isArray(sel))
       sel.forEach((t, i) => $(t).value = p[k] == null ? '' : p[k][i]);
+    else if (PNUMS.has(k)) $(sel).value = showList(p[k]);
     else $(sel).value = p[k];
   }
   syncPick(); syncSource();
@@ -620,6 +664,7 @@ function syncSource(){
   const csv = /\.csv$/i.test($('#data').value.trim());
   document.querySelectorAll('.osrc').forEach(el => el.hidden = !orders);
   document.querySelectorAll('.ocsv').forEach(el => el.hidden = !orders || !csv);
+  document.querySelectorAll('.orand').forEach(el => el.hidden = orders);
   const pcm = ['#pcm0', '#pcm1', '#pcm2'].some(t => $(t).value.trim() !== '');
   for (const k of DERIVED)
     (Array.isArray(PF[k]) ? PF[k] : [PF[k]]).forEach(t => $(t).disabled = orders);
@@ -708,10 +753,12 @@ function heightColor(h){
   return `rgb(${c[0]} ${c[1]} ${c[2]})`;
 }
 /* ================= isometric 3D ================= */
-// azimuth/elevation, shared by every bin.  th = -45deg puts the origin corner on
+// azimuth/elevation, shared by every bin.  th = 135deg puts the origin corner on
 // the left of the silhouette, so all three axes fall outside the packed boxes.
-const VIEW  = {th: -Math.PI/4, ph: 35*Math.PI/180};
-const VIEW0 = {th: VIEW.th, ph: VIEW.ph};
+// `zoom` scales the fitted view about the canvas centre and `px`/`py` pan it,
+// in CSS pixels -- shared like the angle, so the bins stay comparable.
+const VIEW  = {th: 3*Math.PI/4, ph: 35*Math.PI/180, zoom: 1, px: 0, py: 0};
+const VIEW0 = {...VIEW};
 
 function drawIso(cv, boxes, L, W, H, opts){
   opts = opts || {};
@@ -726,7 +773,8 @@ function drawIso(cv, boxes, L, W, H, opts){
 
   // free axonometric camera: spin about the vertical axis (th), tilt down (ph).
   const st=Math.sin(VIEW.th), ct=Math.cos(VIEW.th), sp=Math.sin(VIEW.ph), cp=Math.cos(VIEW.ph);
-  const raw   = (x,y,z)=>[x*ct - y*st, (x*st + y*ct)*sp - z*cp];
+  // screen-right is (-ct, st, 0) so right x up = the camera direction: right-handed
+  const raw   = (x,y,z)=>[y*st - x*ct, (x*st + y*ct)*sp - z*cp];
   const depth = (x,y,z)=>(x*st + y*ct)*cp + z*sp;      // bigger = nearer the camera
   const AX = -0.9, EXT = 1.6;                          // axes sit just outside the bin
 
@@ -746,8 +794,10 @@ function drawIso(cv, boxes, L, W, H, opts){
     fitBall(ARM.chain[0], ARM.base_r);
     for(const c of ARM.caps){ fitBall(c.a, c.ra); fitBall(c.b, c.rb); }
   }
-  const pad=10, s=Math.min((cw-2*pad)/(mxx-mnx),(ch-2*pad)/(mxy-mny));
-  const ox=pad-mnx*s + ((cw-2*pad)-(mxx-mnx)*s)/2, oy=pad-mny*s + ((ch-2*pad)-(mxy-mny)*s)/2;
+  const pad=10, s0=Math.min((cw-2*pad)/(mxx-mnx),(ch-2*pad)/(mxy-mny));
+  const ox0=pad-mnx*s0 + ((cw-2*pad)-(mxx-mnx)*s0)/2, oy0=pad-mny*s0 + ((ch-2*pad)-(mxy-mny)*s0)/2;
+  const s=s0*VIEW.zoom, ox=cw/2 + (ox0-cw/2)*VIEW.zoom + VIEW.px,
+        oy=ch/2 + (oy0-ch/2)*VIEW.zoom + VIEW.py;
   const P=(x,y,z)=>{const [a,b]=raw(x,y,z); return [ox+a*s, oy+b*s];};
 
   // GHOST > 0 while painting the pass that goes *over* the boxes
@@ -861,6 +911,14 @@ function drawIso(cv, boxes, L, W, H, opts){
              g.strokeStyle = css('--c4'); g.lineWidth = 2; g.stroke(); }
       else { g.arc(px,py,R,0,7); g.fillStyle = css('--c0'); g.fill();
              g.strokeStyle = '#000'; g.lineWidth = 1; g.stroke(); }
+      const rk = opts.pointRanks && opts.pointRanks.get(k);
+      if(rk){
+        g.font = '700 10px ui-sans-serif,system-ui,sans-serif';
+        g.textAlign = 'left'; g.textBaseline = 'bottom';
+        g.lineWidth = 3; g.strokeStyle = css('--bg');
+        g.strokeText(rk, px + R + 1, py - 1);
+        g.fillStyle = css('--c1'); g.fillText(rk, px + R + 1, py - 1);
+      }
       if(k === opts.pointsTaken){
         g.beginPath(); g.arc(px,py,R*2.2,0,7);
         g.strokeStyle = css('--bg'); g.lineWidth = 3.5; g.stroke();
@@ -939,19 +997,39 @@ function bindRotate(sel){
   const cv = $(sel); if(!cv) return;
   cv.style.cursor = 'grab'; cv.style.touchAction = 'none';
   cv.addEventListener('pointerdown', e=>{
-    DRAG = {x:e.clientX, y:e.clientY, th:VIEW.th, ph:VIEW.ph};
+    // shift-drag, or the middle/right button, pans instead of rotating
+    DRAG = {x:e.clientX, y:e.clientY, th:VIEW.th, ph:VIEW.ph, px:VIEW.px, py:VIEW.py,
+            pan: e.shiftKey || e.button === 1 || e.button === 2};
     cv.setPointerCapture(e.pointerId); cv.style.cursor='grabbing'; e.preventDefault();
   });
   cv.addEventListener('pointermove', e=>{
     if(!DRAG) return;
-    VIEW.th = DRAG.th + (e.clientX-DRAG.x)*0.011;
-    VIEW.ph = Math.max(0.10, Math.min(1.50, DRAG.ph - (e.clientY-DRAG.y)*0.009));
+    if(DRAG.pan){
+      VIEW.px = DRAG.px + (e.clientX-DRAG.x);
+      VIEW.py = DRAG.py + (e.clientY-DRAG.y);
+    } else {
+      VIEW.th = DRAG.th + (e.clientX-DRAG.x)*0.011;
+      VIEW.ph = Math.max(0.10, Math.min(1.50, DRAG.ph - (e.clientY-DRAG.y)*0.009));
+    }
     redrawIsos();
   });
   const stop = e=>{ if(DRAG){ DRAG=null; cv.style.cursor='grab'; } };
   cv.addEventListener('pointerup', stop);
   cv.addEventListener('pointercancel', stop);
-  cv.addEventListener('dblclick', ()=>{ VIEW.th=VIEW0.th; VIEW.ph=VIEW0.ph; redrawIsos(); });
+  cv.addEventListener('contextmenu', e=>e.preventDefault());
+  // the wheel zooms about the cursor: the point under it stays put
+  cv.addEventListener('wheel', e=>{
+    e.preventDefault();
+    const r = cv.getBoundingClientRect();
+    const mx = e.clientX - r.left - r.width/2, my = e.clientY - r.top - r.height/2;
+    const z = Math.max(1, Math.min(12, VIEW.zoom * Math.exp(-e.deltaY*0.0015)));
+    const k = z / VIEW.zoom;
+    VIEW.px = mx - (mx - VIEW.px)*k; VIEW.py = my - (my - VIEW.py)*k;
+    if(z === 1){ VIEW.px = 0; VIEW.py = 0; }     // all the way out is the fitted view
+    VIEW.zoom = z;
+    redrawIsos();
+  }, {passive:false});
+  cv.addEventListener('dblclick', ()=>{ Object.assign(VIEW, VIEW0); redrawIsos(); });
 }
 
 /* ---- the robot arm ------------------------------------------------------
@@ -987,7 +1065,9 @@ function armText(){
   el.innerHTML = (bad.length
       ? `<span style="color:var(--c3)">arm: the ${bad.join(', ')} hits the pack`
         + ` (${ARM.cells.length} columns, up to ${ARM.depth.toFixed(1)} cells deep)</span>`
-      : `<span style="color:var(--c2)">arm: clear of the pack</span>`)
+      : `<span style="color:var(--c2)">arm: clear of the pack`
+        + (ARM.base_move ? ` (base moved ${ARM.base_move > 0 ? '+' : ''}${ARM.base_move})` : '')
+        + `</span>`)
     + `<br><span style="color:var(--dim)">joints ${ARM.joints_deg.map(v => v.toFixed(0) + '°').join(' ')}</span>`;
 }
 
@@ -1008,11 +1088,11 @@ async function fetchArm(){
    without the arm and redrawn when its answer lands. */
 const ARMC = new Map();
 let ARMRID = 0;
-function stepArm(key, placed, n, bin, redraw){
+function stepArm(key, placed, n, bin, redraw, moves){
   if (!$('#showarm').checked || !G || n < 1 || placed.length < n) return null;
   if (ARMC.has(key)) return ARMC.get(key);
   ARMC.set(key, null);
-  api('/api/arm_replay', {gid: G.gid, placed: placed.slice(0, n), bin})
+  api('/api/arm_replay', {gid: G.gid, placed: placed.slice(0, n), bin, moves})
     .then(r => { ARMC.set(key, r.error ? null : r); redraw(); })
     .catch(() => ARMC.delete(key));
   return null;
@@ -1150,6 +1230,23 @@ function drawTop(){
     g.globalAlpha = 1;
   }
 
+  // the agent's likeliest points for this box, numbered by rank; only those
+  // in the orientation you are holding, since the board is drawn for it
+  const top = topPoints(B.cands, B.cand_probs, NTOP);
+  if (top.length){
+    const rr = Math.max(5, Math.min(9, C * .42));
+    g.font = `700 ${Math.round(rr * 1.15)}px ui-sans-serif,system-ui,sans-serif`;
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    top.forEach((t, k) => {
+      if (t.r !== ORIENT) return;
+      const cx = t.x * C + C / 2, cy = t.y * C + C / 2;
+      g.beginPath(); g.arc(cx, cy, rr, 0, 7);
+      g.fillStyle = cvar('--c1'); g.fill();
+      g.strokeStyle = '#000'; g.lineWidth = 1; g.stroke();
+      g.fillStyle = '#fff'; g.fillText(k + 1, cx, cy + .5);
+    });
+  }
+
   // the columns the arm would hit placing this box, crossed out
   if (HOVER && ARM && ARM.reachable && $('#showarm').checked
       && ARM.key === `${ORIENT},${HOVER.x},${HOVER.y}`){
@@ -1182,6 +1279,31 @@ const TFILL = t => t < 0 ? cvar('--panel') : boxColor(t, 0);
 // a swatch rather than coloured text: "white" cannot be written in white
 const TSW   = t => `<span class="tsw" style="background:${TFILL(t)}"></span>`;
 const typed = () => B && B.n_types > 1;
+// a probability in the few characters a badge has room for
+const PCT = p => p >= .995 ? '100%' : p >= .1 ? Math.round(p * 100) + '%'
+               : p >= .001 ? (p * 100).toFixed(1) + '%' : '<0.1%';
+const NTOP = 5;
+/* The `n` likeliest candidate points, best first: {i, x, y, z, r, p}, where i
+   is the index into the candidate list (and so into `taken`). */
+function topPoints(pts, probs, n){
+  if (!pts || !probs || !probs.length) return [];
+  return probs.map((p, i) => ({i, p, x: pts[i][0], y: pts[i][1], z: pts[i][2], r: pts[i][3]}))
+    .sort((a, b) => b.p - a.p).slice(0, n);
+}
+function pointList(top, total, taken, cur){
+  if (!top.length) return '';
+  return `<ol class="plist">` + top.map((t, k) => {
+      const cls = (t.i === taken ? ' tk' : '') + (cur && cur(t) ? ' cur' : '');
+      return `<li class="${cls}" title="candidate ${t.i + 1} of ${total}"><span class="rk">${k + 1}</span>
+        <span>(${t.x}, ${t.y}) z ${t.z}${t.r ? ' · turned' : ''}${t.i === taken ? ' · taken' : ''}</span>
+        <b>${PCT(t.p)}</b><span class="bar" style="width:${Math.max(1, t.p * 100)}%"></span></li>`;
+    }).join('') + '</ol>'
+    + (total > top.length ? `<div class="sub" style="margin-top:4px">top ${top.length} of
+        ${total} candidates</div>` : '');
+}
+// the probability badge that sits on top of a conveyor box
+const ppBadge = (probs, i) => probs && probs[i] != null
+  ? `<span class="pp${probs[i] === Math.max(...probs) ? ' top' : ''}">${PCT(probs[i])}</span>` : '';
 // what the item the page is holding would come to rest on at (x, y)
 const under = (x, y) => B.tunder[ORIENT][x][y];
 
@@ -1253,7 +1375,7 @@ function render(){
               : 'in reach';
     return `<div class="${cls}" data-i="${i}"><span class="qb">
       ${reach ? `<span class="num">${i + 1}</span>` : ''}
-      <canvas data-i="${i}"></canvas> ${w.join('×')}${
+      <span class="cvw">${reach ? ppBadge(B.pick_probs, i) : ''}<canvas data-i="${i}"></canvas></span> ${w.join('×')}${
         typed() ? ` ${TSW(B.window_types[i])}<b style="font-weight:640"
                      >${'ABCDEFGHIJKLMNOP'[B.window_types[i]]}</b>` : ''}</span>
       <span class="tag">${tag}</span></div>`
@@ -1282,6 +1404,15 @@ function render(){
   $('#note').textContent = anote
     + (B.human_pick && B.n_pick > 1
        ? ` · the pick is yours: any of the first ${B.n_pick}` : '');
+  if (B.pick_probs && B.n_pick > 1)
+    $('#note').textContent += ` · the % on each box is ${B.pick_by || 'the picker'}'s
+      probability of picking it`;
+  const top = B.done ? [] : topPoints(B.cands, B.cand_probs, NTOP);
+  $('#ptscard').hidden = !top.length;
+  $('#ptssub').textContent = top.length ? `— ${OPP.replace('run:', '').replace('heur:', '')}
+    for this box; numbered on the top view (current orientation)` : '';
+  $('#ptslist').innerHTML = pointList(top, B.cands ? B.cands.length : 0, -1,
+    t => HOVER && t.x === HOVER.x && t.y === HOVER.y && t.r === ORIENT);
   if (B.done){
     HOVER = null; $('#hoverinfo').textContent = '';
     REASON = REASON || 'no stable placement left';
@@ -1318,12 +1449,18 @@ function onMove(ev){
                            ${TNAME(B.item_type)} box may only be stacked on its own type`
             : 'not enough support underneath — less than 80% of the base would rest on what is below it';
   const ok = legal(x, y);
+  const ci = B.cands ? B.cands.findIndex(c => c[0] === x && c[1] === y && c[3] === ORIENT) : -1;
+  const odds = ci >= 0 && B.cand_probs
+    ? `<br>agent's probability for this point: <b>${PCT(B.cand_probs[ci])}</b>` : '';
+  $('#ptslist').innerHTML = pointList(topPoints(B.cands, B.cand_probs, NTOP),
+    B.cands ? B.cands.length : 0, -1, t => t.x === x && t.y === y && t.r === ORIENT);
   $('#hoverinfo').innerHTML = `<b>(${x}, ${y})</b> → lands at z = ${z}, top at ${z + h}`
     + (typed() ? ` · on ${TSW(u)}${TNAME(u)}` : '') + `<br>`
     + (!ok ? `<span style="color:var(--c3)">illegal — ${why}</span>`
        : cand(x, y) ? `<span style="color:var(--c2)">legal — click to drop</span>`
        : `<span style="color:var(--c2)">legal — click to drop</span>
-          <span style="color:var(--c4)">· the packer is never offered this one</span>`);
+          <span style="color:var(--c4)">· the packer is never offered this one</span>`)
+    + odds;
 }
 
 async function api(p, body){
@@ -1403,6 +1540,7 @@ async function finish(){
             placed_types: B.placed_types, skipped: SKIP,
             cands: r.human_cands || [], taken: r.human_taken || [],
             windows: r.human_windows || [],
+            cand_probs: r.human_cand_probs || [],
             seconds: (Date.now() - T0) / 1000, reason: REASON || 'ran out of room'},
     agent: r,
   };
@@ -1470,7 +1608,8 @@ function renderResult(){
   RCROWS = [{label: a.label, util: a.util, items: a.items,
              seconds: a.seconds, changed: [], drift: [],
              placed: a.placed, placed_types: a.placed_types, params: p,
-             cands: a.cands, taken: a.taken, windows: a.windows}];
+             cands: a.cands, taken: a.taken, windows: a.windows,
+             cand_probs: a.cand_probs}];
   RCSEL = 0;
   $('#rc3d').hidden = true;
   writeRecalc(p);
@@ -1492,7 +1631,24 @@ function renderResult(){
    to (-1 when you put it somewhere off the packer's list). */
 function nextPoints(side, n){
   if (!$('#showpts').checked || !side.cands || !side.cands[n]) return {};
-  return {points: side.cands[n], pointsTaken: side.taken ? side.taken[n] : -1};
+  const top = topPoints(side.cands[n], side.cand_probs && side.cand_probs[n], NTOP);
+  return {points: side.cands[n], pointsTaken: side.taken ? side.taken[n] : -1,
+          pointRanks: new Map(top.map((t, k) => [t.i, k + 1]))};
+}
+
+/* The agent's probability for each of those points, best first, as a list
+   whose numbers match the ones drawn next to the points in the bin. */
+function drawPoints(el, side, n){
+  const pts = side.cands && side.cands[n], pr = side.cand_probs && side.cand_probs[n];
+  const top = $('#showpts').checked ? topPoints(pts, pr, NTOP) : [];
+  const taken = side.taken ? side.taken[n] : -1;
+  el.innerHTML = top.length
+    ? `<div class="rwh">box ${n + 1} &middot; top ${top.length}</div><ol class="plist short">`
+      + top.map((t, k) => `<li class="${t.i === taken ? 'tk' : ''}"
+          title="(${t.x}, ${t.y}) z ${t.z}${t.r ? ', turned' : ''}${t.i === taken ? ', taken' : ''}"
+          ><span class="rk">${k + 1}</span><span>${t.x},${t.y},${t.z}${t.r ? '↻' : ''}</span
+          ><b>${PCT(t.p)}</b></li>`).join('') + '</ol>'
+    : '';
 }
 
 /* The conveyor as it stood when box n+1 was chosen: every box in view, the
@@ -1500,7 +1656,9 @@ function nextPoints(side, n){
    the one that went in marked.  Box colours match the 3D blocks: the picked
    box gets the colour it has once it is in the bin. */
 function drawWindow(el, side, n, k){
-  const win = side.windows && side.windows[n];
+  // a side that stopped before step n keeps showing what it was left with
+  const ws = side.windows || [], last = ws[ws.length - 1];
+  const win = ws[n] || (last && last.pick < 0 && n >= ws.length ? last : null);
   if (!win || !win.w.length){
     el.innerHTML = side.windows && side.windows.length
       ? '<div class="rwh">conveyor &mdash; nothing left to pack</div>' : '';
@@ -1509,14 +1667,17 @@ function drawWindow(el, side, n, k){
   const reach = Math.min(k, win.w.length);
   const big = Math.max(1, ...win.w.map(w => Math.max(w[0], w[1])));
   const u = Math.max(1, Math.min(8, Math.floor(46 / big)));
-  el.innerHTML = `<div class="rwh">conveyor before box ${n + 1} &mdash; sees
+  el.innerHTML = (win.pick < 0
+      ? `<div class="rwh">conveyor left at the end &mdash; <b>${win.w.length}</b> in view,
+         none of the <b>${reach}</b> in reach could be placed`
+      : `<div class="rwh">conveyor before box ${n + 1} &mdash; sees
       <b>${win.w.length}</b>, can pick from <b>${reach}</b>, packed
-      #${win.pick + 1}</div><div class="rws">`
+      #${win.pick + 1}`) + `${win.probs ? ' &middot; % = the picker\'s probability' : ''}</div><div class="rws">`
     + win.w.map((w, i) => {
         const cls = 'rwt' + (i >= reach ? ' peek' : '') + (i === win.pick ? ' sel' : '');
         return (i === reach && reach < win.w.length ? '<span class="rwsep"></span>' : '')
           + `<div class="${cls}"><span class="num">${i < reach ? i + 1 : '&middot;'}${
-               i === win.pick ? ' packed' : ''}</span><canvas data-i="${i}"></canvas>
+               i === win.pick ? ' packed' : ''}</span>${i < reach ? ppBadge(win.probs, i) : ''}<canvas data-i="${i}"></canvas>
              <span>${w.join('×')}${typed() ? ' ' + 'ABCDEFGHIJKLMNOP'[win.t[i]] : ''}</span></div>`;
       }).join('') + '</div>';
   el.querySelectorAll('canvas').forEach(cv => {
@@ -1541,6 +1702,8 @@ function drawReplay(n){
            ...nextPoints(RES.agent, n)});
   drawWindow($('#win-h'), RES.human, n, G.params.n_pick);
   drawWindow($('#win-a'), RES.agent, n, G.params.n_pick);
+  drawPoints($('#pts-h'), RES.human, n);
+  drawPoints($('#pts-a'), RES.agent, n);
   armReplayText('#scrubarm', n,
                 RES.human.skipped ? [['agent', RES.agent.placed, aa]]
                                   : [['you', RES.human.placed, ah], ['agent', RES.agent.placed, aa]]);
@@ -1561,7 +1724,7 @@ const RPF = {
   bin: ['#rcbin0', '#rcbin1', '#rcbin2'],
   nb: '#rcnb', n_pick: '#rcnpick', max_l: '#rcmaxl',
   rot: '#rcrot', ems: '#rcems', stability: '#rcstab', min_support: '#rcmsup',
-  arm_collision: '#rcarmcol',
+  arm_collision: '#rcarmcol', base_x_moves: '#rcarmmoves',
 };
 let RCROWS = [];
 let RCSEL = 0;           // the row shown in 3D beside this game's; 0 = none yet
@@ -1571,6 +1734,7 @@ function readRecalc(){
   for (const [k, sel] of Object.entries(RPF)){
     if (Array.isArray(sel)) o[k] = sel.map(t => parseInt($(t).value, 10));
     else if (k === 'stability') o[k] = $(sel).value;
+    else if (PNUMS.has(k)) o[k] = readList($(sel).value);
     else if (k === 'min_support') o[k] = parseFloat($(sel).value);
     else o[k] = parseInt($(sel).value, 10);
   }
@@ -1588,6 +1752,7 @@ function recalcAll(){
 function writeRecalc(p){
   for (const [k, sel] of Object.entries(RPF)){
     if (Array.isArray(sel)) sel.forEach((t, i) => $(t).value = p[k][i]);
+    else if (PNUMS.has(k)) $(sel).value = showList(p[k]);
     else $(sel).value = p[k];
   }
   $('#rclo').value = p.size_lo.join('\u00d7');
@@ -1603,6 +1768,7 @@ function markRecalc(){
   for (const [k, sel] of Object.entries(RPF)){
     const off = Array.isArray(sel)
       ? sel.some((t, i) => parseInt($(t).value, 10) !== was[k][i])
+      : PNUMS.has(k) ? String(readList($(sel).value)) !== String(was[k])
       : String($(sel).value) !== String(was[k]);
     (Array.isArray(sel) ? sel : [sel]).forEach(t =>
       $(t).closest('.pf').classList.toggle('moved', off));
@@ -1706,12 +1872,14 @@ function drawRcReplay(n){
     const pl = r.placed.slice(0, n), [bx, by, bz] = r.params.bin;
     r._aid = r._aid || ++ARMRID;              // rows are replaced, not edited
     const arm = stepArm(`rc${r._aid}:${n}`, r.placed, n, [bx, by, bz],
-                        () => drawRcReplay(parseInt($('#rcscrub').value, 10)));
+                        () => drawRcReplay(parseInt($('#rcscrub').value, 10)),
+                        r.params.base_x_moves);
     drawIso($('#iso-rc' + k), pl, bx, by, bz,
             {highlight: pl.length - 1, height: 290, arm,
              types: typed() ? r.placed_types : null,
              ...nextPoints(r, n)});
     drawWindow($('#win-rc' + k), r, n, r.params.n_pick);
+    drawPoints($('#pts-rc' + k), r, n);
     $('#rcs' + k).textContent = `${(r.util * 100).toFixed(1)}% filled · `
       + `${r.items} boxes · ${bx}\u00d7${by}\u00d7${bz} bin`;
   });
@@ -1756,14 +1924,15 @@ async function fresh(seed, skip){
   SEED = (seed === undefined || seed === null) ? Date.now() % 100000 : seed;
   const r = await api('/api/new', {attacker: $('#att').value, seed: SEED,
                                    params: readParams(),
-                                   human_pick: $('#hpick').checked});
+                                   human_pick: $('#hpick').checked,
+                                   opponent: $('#opp').value});
   if (r.error){ $('#setupmsg').innerHTML =
       `<span style="color:var(--c3)">${(r.errors || [r.error]).join('; ')}</span>`; return; }
   G = r; B = r.board; LX = B.Lx; LY = B.Ly; LZ = B.Lz; ORIENT = 0; HOVER = null; OPP = $('#opp').value;
   ARM = null; ARMQ++; $('#arminfo').innerHTML = '';
   const pal = r.pallet_id != null ? `  ·  pallet ${r.pallet_id} (${r.params.n_items} boxes)` : '';
   RES = null; REASON = null; BUSY = false; T0 = Date.now();
-  VIEW.th = VIEW0.th; VIEW.ph = VIEW0.ph;
+  Object.assign(VIEW, VIEW0);
   $('#who').textContent = `${B.Lx}×${B.Ly}×${B.Lz}  ·  N_B ${B.nb}, k ${B.n_pick}`
     + `  ·  attacker: ${r.alabel}  ·  opponent: `
     + OPP.replace('run:', '').replace('heur:', '') + pal;

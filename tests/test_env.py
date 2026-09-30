@@ -562,9 +562,10 @@ def test_ems_mode_rejects_nonsense():
 
 
 # ------------------------------------------------------- the robot-arm filter
-def test_the_arm_filter_drops_exactly_the_placements_the_arm_collides_on():
+def test_the_arm_filter_drops_exactly_the_placements_the_arm_collides_on(monkeypatch):
     """With `arm_collision` on, the feasible set is the plain one less every
     placement `ArmPackChecker` calls a collision (or cannot reach)."""
+    monkeypatch.setitem(E.CFG["robot"], "base_x_moves", [0])
     kw = dict(S=[30, 25, 40], nb=1, rot=2, ems=0, seed=0,
               size_lo=4, size_hi=[12, 10, 10])
     item = np.array([[10, 8, 6, 0]] * 4)
@@ -586,3 +587,41 @@ def test_the_arm_filter_drops_exactly_the_placements_the_arm_collides_on():
     np.testing.assert_array_equal(f1, want)
     assert f1.sum() < f0.sum(), "the wall should cost the arm some placements"
     assert f1.any(), "and leave it some"
+
+
+def test_a_placement_the_arm_misses_is_kept_when_a_base_move_makes_it(monkeypatch):
+    """With `robot.base_x_moves`, a placement is dropped only when the arm
+    collides from every listed base; one that fails from the middle but clears
+    from a moved base stays open."""
+    from ar2l import pack_collision as PC
+    moves = [0, -0.5, 0.5, -1, 1]
+    kw = dict(S=[30, 25, 40], nb=1, rot=2, ems=0, seed=0,
+              size_lo=4, size_hi=[12, 10, 10])
+    item = np.array([[10, 8, 6, 0]] * 4)
+    envs = {}
+    for name, mv in (("fixed", [0]), ("moving", moves)):
+        monkeypatch.setitem(E.CFG["robot"], "base_x_moves", mv)
+        env = plain(1, arm_collision=True, arm_cell_m=0.04, **kw)
+        env.reset(item[None])
+        env.hmap[0, 20:, :] = 20        # a wall of boxes on the robot's side
+        env._invalidate()
+        envs[name] = (env, env._positions())
+    env, (f1, z, odims, _) = envs["moving"]
+    fixed = envs["fixed"][1][0]
+    chk, B = env._arm_checker()
+    chk.set_heightmap(env.hmap[0])
+    bases = PC.moved_bases(B, moves, env.Ly * 0.04)
+    plain_f = plain(1, **kw)
+    plain_f.reset(item[None])
+    plain_f.hmap[0, 20:, :] = 20
+    plain_f._invalidate()
+    f0 = plain_f._positions()[0]
+    want = f0.copy()
+    for r, x, y in np.argwhere(f0[0]):
+        size = odims[0, r].tolist()
+        if all(chk.is_arm_collid_with_pack(size, (x, y, z[0, r, x, y]), Bi)[0]
+               for Bi in bases):
+            want[0, r, x, y] = False
+    np.testing.assert_array_equal(f1, want)
+    assert (f1 & ~fixed).any(), "some placement should need the base to move"
+    assert not (fixed & ~f1).any(), "moving the base never loses a placement"
