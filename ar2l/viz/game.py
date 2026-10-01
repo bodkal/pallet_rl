@@ -48,10 +48,15 @@ agent replayed under parameters you edit, one row per setting.  The three
 fields that feed the draw itself - `n_items`, `size_lo`, `size_hi` - are held
 at the game's own values there, because changing one deals a different
 sequence and the row would no longer be measuring the field you moved.
+
+The "Big experiment" tab packs every pallet file of a folder, under the setup
+form's rules, onto as many pallets as each file takes, and writes one report
+per file (`ar2l.viz.experiment`), with a live progress bar per file.
 """
 from __future__ import annotations
 
 import argparse
+import glob
 import json
 import os
 import sys
@@ -69,6 +74,8 @@ from ..env import BPPBatch, TYPE_FLOOR, sample_items, type_classes
 from ..orders import (ROUNDING, box_divisor, load_orders, orders_bin,
                       randomize_order)
 from . import agents as A
+from . import compare as C
+from . import experiment as X
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = A.ROOT
@@ -1073,6 +1080,93 @@ def recalc(st, spec, p):
     return out
 
 
+def exp_params(raw):
+    """-> (params, errors) for the big experiment: the setup form's rules.
+
+    The boxes come from the experiment's own folder, so the form's source and
+    item bounds say nothing here; everything else is checked as for a game.
+    """
+    p, err = validate(dict(raw or {}, source='random'))
+    err = [e for e in err if not e.startswith(('item side', 'largest item side'))]
+    if p['n_types'] < 3:
+        err.append('box types: the files carry types 1 to 3, so at least 3')
+    return p, err
+
+
+#: what the experiment's form carries, and so what drift is judged on there
+EXP_KEYS = ('nb', 'n_pick', 'max_l', 'rot', 'ems', 'stability', 'min_support',
+            'type_constraint', 'arm_collision', 'pallet_cm', 'box_scale',
+            'box_round')
+
+
+def exp_mismatch(p, spec):
+    """Which of the experiment's fields `p` moved away from the run `spec`.
+
+    A run trained on the generator never read a pallet in cm, so the fields
+    that read the files are only compared for a run trained on data.
+    """
+    if not spec or spec in ('none', 'random') or spec.startswith('heur:'):
+        return []
+    info = A.run_info(spec.split(':')[1])
+    keys = EXP_KEYS if info and info['args'].get('data') else EXP_KEYS[:9]
+    return diff_params(p, run_params(spec), keys)
+
+
+def cmp_reports(folder, picks=None):
+    """What the Compare tab draws: every report of `folder`, its experiments
+    cut down to `picks` (their `compare.key`; None keeps all), and who won.
+
+    `keys` lists every experiment of the folder whatever is picked, so the
+    page can offer them all: by first position run at, with how many files
+    hold it and how many blocks (a name run twice in a file is two).
+    """
+    src = X.resolve(folder)
+    if not os.path.isdir(src):
+        raise ValueError(f'no such folder: {folder}')
+    keys, files = {}, []
+    for f in sorted(glob.glob(os.path.join(src, '*.csv'))):
+        exps = C.read_report(f)
+        for e in exps:
+            k = keys.setdefault(C.key(e), {'key': C.key(e), 'named': bool(e['name']),
+                                           'first': e['num'], 'files': 0,
+                                           'blocks': 0, '_last': None})
+            k['first'] = min(k['first'], e['num'])
+            k['blocks'] += 1
+            if k['_last'] != f:
+                k['files'], k['_last'] = k['files'] + 1, f
+        exps = [e for e in exps if picks is None or C.key(e) in picks]
+        if not exps:
+            continue
+        win, best = C.winners(exps)
+        files.append({'file': os.path.basename(f),
+                      'win': [C.key(exps[j]) for j in win], 'best': list(best),
+                      'exps': [{'key': C.key(e), 'num': e['num'], 'time': e['time'],
+                                'boxes': e['boxes'], 'params': e['params'],
+                                'pallets': [{'id': int(r['pallet_id']),
+                                             'boxes': int(r[C.BOXES]),
+                                             'volume': float(r[C.VOLUME])}
+                                            for r in e['rows']]}
+                               for e in exps]})
+    return {'dir': X._show(src),
+            'keys': [{n: v for n, v in k.items() if n != '_last'} for k in
+                     sorted(keys.values(), key=lambda k: (k['first'], k['key']))],
+            'files': files}
+
+
+def cmp_delete(folder, names):
+    """Delete the experiments run under `names` from every report of `folder`."""
+    if X.writing(folder):
+        raise ValueError('an experiment is writing to this folder; '
+                         'wait for it or stop it first')
+    src = X.resolve(folder)
+    out = {}
+    for f in sorted(glob.glob(os.path.join(src, '*.csv'))):
+        n = C.delete_named(f, names)
+        if n:
+            out[os.path.basename(f)] = n
+    return out
+
+
 class QuietServer(ThreadingHTTPServer):
     """A browser refresh aborts the in-flight response; that is not an error."""
     daemon_threads = True
@@ -1122,6 +1216,20 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({'params': run_params(spec)})
             except Exception as e:
                 return self._json({'error': f'{type(e).__name__}: {e}'}, 500)
+        if p == '/api/cmp':
+            q = parse_qs(u.query, keep_blank_values=True)
+            # `pick` is a JSON list of keys; left out, every experiment is kept
+            picks = (set(json.loads(q['pick'][0] or '[]')) if 'pick' in q
+                     else None)
+            try:
+                return self._json(cmp_reports((q.get('dir') or [''])[0], picks))
+            except ValueError as e:
+                return self._json({'error': str(e)}, 400)
+        if p == '/api/exp/status':
+            q = parse_qs(u.query)
+            s = X.status((q.get('job') or [''])[0])
+            return self._json(s or {'error': 'no experiment has run yet'},
+                              200 if s else 404)
         self.send_error(404)
 
     def do_POST(self):
@@ -1149,6 +1257,37 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({'gid': gid, 'board': board(st),
                                'params': st['p'], 'pallet_id': st['pallet_id'],
                                'promoted': st['promoted'], 'alabel': st['alabel']})
+        if p == '/api/exp/check':
+            params, err = exp_params(body.get('params'))
+            return self._json({'params': params, 'errors': err,
+                               'mismatch': [] if err else
+                               exp_mismatch(params, body.get('spec'))})
+        if p == '/api/exp/start':
+            params, err = exp_params(body.get('params'))
+            if err:
+                return self._json({'error': err[0], 'errors': err}, 400)
+            try:
+                seed = int(body.get('seed') or 0)
+            except (TypeError, ValueError):
+                return self._json({'error': 'order seed: a whole number'}, 400)
+            try:
+                jid = X.start(body.get('dir') or '', body.get('out') or '',
+                              body.get('spec') or 'random', params,
+                              cell_m(params), DEVICE, body.get('name') or '',
+                              seed=seed)
+            except ValueError as e:
+                return self._json({'error': str(e)}, 400)
+            return self._json({'job': jid})
+        if p == '/api/cmp/delete':
+            names = [n for n in body.get('names') or [] if str(n).strip()]
+            if not names:
+                return self._json({'error': 'no experiment named to delete'}, 400)
+            try:
+                return self._json({'removed': cmp_delete(body.get('dir') or '', names)})
+            except (ValueError, OSError) as e:
+                return self._json({'error': str(e)}, 400)
+        if p == '/api/exp/stop':
+            return self._json({'ok': X.stop(body.get('job'))})
         st = _GAMES.get(body.get('gid'))
         if st is None:
             return self._json({'error': 'that game has expired'}, 404)

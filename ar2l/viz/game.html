@@ -188,16 +188,136 @@ table.rc .d{font-size:11px}
 .spin{display:inline-block;width:13px;height:13px;border:2px solid var(--line);
   border-top-color:var(--c0);border-radius:50%;animation:sp .7s linear infinite;vertical-align:-2px}
 @keyframes sp{to{transform:rotate(360deg)}}
+/* tabs */
+nav.tabs{display:flex;gap:2px;align-self:stretch;margin:-13px 0 -13px 10px;position:relative}
+nav.tabs button{border:0;border-radius:0;background:none;color:var(--dim);padding:13px 14px;
+  font-weight:560;position:relative}
+nav.tabs button:hover:not(:disabled){color:var(--fg)}
+nav.tabs button.on{color:var(--fg)}
+nav.tabs .ink{position:absolute;bottom:-1px;height:2px;background:var(--c0);border-radius:2px;
+  transition:left .28s cubic-bezier(.3,.7,.2,1),width .28s cubic-bezier(.3,.7,.2,1)}
+nav.tabs .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--c2);
+  margin-left:6px;vertical-align:1px;animation:xbeat 1.2s ease-in-out infinite}
+
+/* the big experiment */
+#exp{max-width:980px;margin:22px auto}
+#exp .card+.card,#exp .card+#xfiles{margin-top:12px}
+.xg{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media(max-width:640px){.xg{grid-template-columns:1fr}}
+.xg .pf.wide{grid-column:1/-1}
+#xpardet{margin-top:14px}
+#xperr{color:var(--c3);white-space:pre-line}
+#xpwarn{color:var(--c1)}
+#xmsg{color:var(--c3);white-space:pre-line}
+.xsum{display:flex;gap:22px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px}
+.xsum .big{font-size:34px}
+.xsum .k{color:var(--dim);font-size:10px;text-transform:uppercase;letter-spacing:.5px}
+.xsum .v{font-size:18px;font-weight:640;font-variant-numeric:tabular-nums}
+.xall{height:10px;border-radius:6px;background:var(--line);overflow:hidden;position:relative}
+.xall>i{display:block;height:100%;width:0;border-radius:6px;
+  background:linear-gradient(90deg,var(--c0),var(--c4));
+  transition:width .6s cubic-bezier(.3,.7,.2,1)}
+.xall.run>i::after,.xbar.run::after{content:"";position:absolute;inset:0;
+  background:linear-gradient(100deg,transparent 30%,rgba(255,255,255,.28) 50%,transparent 70%);
+  background-size:220% 100%;animation:xsheen 1.8s linear infinite}
+.xf{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:11px 14px;
+  margin-bottom:8px;transition:border-color .3s,opacity .3s,transform .3s;
+  animation:xin .4s both cubic-bezier(.3,.7,.2,1)}
+.xf.queued{opacity:.5}
+.xf.running{border-color:color-mix(in srgb,var(--c0) 55%,var(--line));
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--c0) 12%,transparent)}
+.xf.error{border-color:var(--c3)}
+.xh{display:flex;gap:9px;align-items:center;flex-wrap:wrap}
+.xh b{font-weight:600}
+.xh .xn{margin-left:auto;font-variant-numeric:tabular-nums;color:var(--dim);font-size:12px}
+.xh .xn b{color:var(--fg)}
+.xst{width:18px;height:18px;flex:none;border-radius:50%;display:grid;place-items:center;
+  font-size:11px;font-weight:700;border:2px solid var(--line);color:var(--bg)}
+.xf.running .xst{border-color:var(--line);border-top-color:var(--c0);animation:sp .8s linear infinite}
+.xf.done .xst{background:var(--c2);border-color:var(--c2);animation:xpop .45s both cubic-bezier(.3,1.6,.5,1)}
+.xf.error .xst,.xf.stopped .xst{background:var(--c3);border-color:var(--c3)}
+.xbar{display:flex;height:14px;border-radius:7px;background:var(--line);overflow:hidden;
+  margin:9px 0 7px;position:relative;gap:2px}
+.xbar .seg{height:100%;width:0;flex:none;position:relative;
+  transition:width .5s cubic-bezier(.3,.7,.2,1),filter .3s}
+.xbar .seg:first-child{border-radius:7px 0 0 7px}
+.xbar .seg.cur{background-image:repeating-linear-gradient(-45deg,rgba(255,255,255,.26) 0 6px,transparent 6px 12px);
+  background-size:17px 17px;animation:xstripe .6s linear infinite}
+.xf.done .xbar::after{content:"";position:absolute;inset:0;
+  background:linear-gradient(100deg,transparent 30%,rgba(255,255,255,.45) 50%,transparent 70%);
+  background-size:220% 100%;animation:xsheen 1s ease-out 1 both}
+.xpal{display:flex;gap:6px;flex-wrap:wrap;min-height:4px}
+.xchip{display:inline-flex;gap:6px;align-items:center;font-size:11px;padding:2px 8px 2px 6px;
+  border:1px solid var(--line);border-radius:10px;font-variant-numeric:tabular-nums;color:var(--dim);
+  animation:xpop .4s both cubic-bezier(.3,1.6,.5,1)}
+.xchip i{width:8px;height:8px;border-radius:2px}
+.xchip b{color:var(--fg);font-weight:600}
+.xchip.cur{border-style:dashed}
+.xerr{color:var(--c3);font-size:12px;margin-top:4px}
+.xout{font:11px ui-monospace,monospace;color:var(--dim);margin-top:5px}
+/* compare the reports */
+#cmp{max-width:1100px;margin:22px auto;padding:0 16px}
+#cmp .card+.card{margin-top:12px}
+.cbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.cbar input[type=text]{flex:1;min-width:220px}
+.cks{display:flex;flex-direction:column;gap:2px;margin-top:4px}
+.ck{display:flex;gap:10px;align-items:center;padding:6px 8px;border-radius:8px;cursor:pointer}
+.ck:hover{background:color-mix(in srgb,var(--fg) 5%,transparent)}
+.ck input{margin:0;width:15px;height:15px;accent-color:var(--c0)}
+.ck i{width:11px;height:11px;border-radius:3px;flex:none}
+.ck b{font-weight:560}
+.ck .sub{margin-left:auto;font-variant-numeric:tabular-nums}
+.ck.unnamed b{font-style:italic;color:var(--dim)}
+#cmsg{white-space:pre-line}
+#cmsg.err{color:var(--c3)}
+button.del:hover:not(:disabled){border-color:var(--c3);color:var(--c3)}
+.cwins{display:grid;grid-template-columns:minmax(120px,max-content) 1fr;gap:7px 12px;align-items:center}
+.cwins .lab{font-weight:560;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cwins .trk{display:flex;align-items:center;gap:8px;font-variant-numeric:tabular-nums;font-size:12px;color:var(--dim)}
+.cwins .trk em{display:flex;height:14px;min-width:2px;border-radius:0 4px 4px 0;overflow:hidden;
+  background:var(--line)}
+.cwins .trk b{color:var(--fg)}
+.ctab{overflow-x:auto;margin-top:6px}
+.ctab table{border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums}
+.ctab th{font-weight:560;color:var(--dim);padding:4px 8px;text-align:center;white-space:nowrap}
+.ctab th:first-child,.ctab td:first-child{text-align:left;padding-left:0}
+.ctab td{padding:3px 8px;border-top:1px solid var(--line);text-align:center;white-space:nowrap}
+.ctab td:first-child a{color:var(--fg);text-decoration:none}
+.ctab td:first-child a:hover{color:var(--c0)}
+.ctab td.res{color:var(--dim);text-align:left}
+.cdot{display:inline-block;width:12px;height:12px;border-radius:50%}
+.cdot.lose{width:6px;height:6px;background:var(--line)}
+details.cf{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 16px;margin-top:10px}
+details.cf>summary{cursor:pointer;display:flex;gap:10px;align-items:center;flex-wrap:wrap;list-style:none}
+details.cf>summary::-webkit-details-marker{display:none}
+details.cf>summary::before{content:"\25B8";color:var(--dim);transition:transform .2s}
+details.cf[open]>summary::before{transform:rotate(90deg)}
+details.cf>summary b{font-size:14px}
+.cwin{display:inline-block;color:#fff;font-weight:600;font-size:11px;padding:2px 9px;border-radius:9px}
+.cchart{margin-top:10px}
+.cchart h3{font-size:12px;margin:0 0 4px;font-weight:600}
+.cchart svg{width:100%;height:auto;display:block;overflow:visible}
+.cchart svg text{font:10px ui-sans-serif,-apple-system,Segoe UI,Roboto,sans-serif;fill:var(--dim)}
+.cchart svg text.v{fill:var(--fg);font-weight:600;font-size:9.5px}
+.cchart svg rect.b:hover{filter:brightness(1.15)}
+@keyframes xstripe{to{background-position:17px 0}}
+@keyframes xsheen{from{background-position:120% 0}to{background-position:-120% 0}}
+@keyframes xpop{from{transform:scale(.4);opacity:0}to{transform:scale(1);opacity:1}}
+@keyframes xin{from{transform:translateY(6px);opacity:0}}
+@keyframes xbeat{50%{opacity:.35;transform:scale(.75)}}
+@media(prefers-reduced-motion:reduce){#exp *,#exp *::after,nav.tabs *{animation:none!important;transition:none!important}}
 </style>
 
 <header>
   <h1>AR2L &mdash; play the packer</h1>
+  <nav class="tabs" id="tabs"><button data-tab="game" class="on">Play</button><button data-tab="exp">Big experiment<span class="dot" id="xdot" hidden></span></button><button data-tab="cmp">Compare</button><span class="ink"></span></nav>
   <span class="sub">arXiv:2310.04323 &mdash; you may use any placement that rests stably</span>
   <span class="spacer"></span>
   <span class="sub" id="who"></span>
 </header>
 
 <main>
+<div id="tabgame">
 
 <section id="setup">
   <div class="card">
@@ -556,6 +676,135 @@ table.rc .d{font-size:11px}
   </div>
 </section>
 
+</div>
+
+<section id="exp" hidden>
+  <div class="card">
+    <h2>Big experiment &mdash; every file of a folder, onto as many pallets as it takes</h2>
+    <div class="xg">
+      <div class="pf"><span>data folder (every .csv in it)</span>
+        <input id="xdir" type="text" spellcheck="false" value="data/box_pallet_data/use_data"></div>
+      <div class="pf"><span>results folder</span>
+        <input id="xout" type="text" spellcheck="false" value="results/big_experiment"></div>
+      <div class="pf wide"><span>packer</span><select id="xopp"></select></div>
+      <div class="pf wide"><span>experiment name &mdash; the compare plot's legend (optional)</span>
+        <input id="xname" type="text" spellcheck="false" placeholder="Experiment N"></div>
+    </div>
+    <details class="par" id="xpardet" open>
+      <summary>Experiment parameters <span id="xpsrc" style="text-transform:none;letter-spacing:0"></span></summary>
+      <div class="pg pgsrc">
+        <div class="pf pf3"><span>pallet L &times; W &times; H cm &mdash; empty: the run's own bin</span>
+          <div class="tri"><input id="xpcm0" type="number" min="0" step="any">
+            <input id="xpcm1" type="number" min="0" step="any">
+            <input id="xpcm2" type="number" min="0" step="any"></div></div>
+        <div class="pf" hidden><span>cell size, cm</span>
+          <input id="xcellcm" type="number" min="0.001" step="any"></div>
+        <div class="pf"><span>box scale &mdash; divide every side</span>
+          <input id="xbscale" type="number" min="0" step="any"></div>
+        <div class="pf"><span>order randomness &mdash; 0 file order, 1 random</span>
+          <input id="xordrnd" type="number" min="0" max="1" step="0.05" value="0"></div>
+        <div class="pf"><span>order seed &mdash; the same seed, the same shuffle</span>
+          <input id="xseed" type="number" min="0" step="1" value="0"></div>
+        <div class="pf"><span>box rounding to cells</span><select id="xbround">
+          <option value="up">up &mdash; never smaller</option>
+          <option value="down">down &mdash; never bigger</option>
+          <option value="nearest">nearest &mdash; 1.5 &rarr; 1</option></select></div>
+      </div>
+      <div class="pg">
+        <div class="pf pf3" hidden><span>bin &mdash; x &times; y &times; z cells</span>
+          <div class="tri"><input id="xbin0" type="number" min="1" step="1">
+            <input id="xbin1" type="number" min="1" step="1">
+            <input id="xbin2" type="number" min="1" step="1"></div></div>
+        <div class="pf"><span>window N<sub>B</sub> &mdash; boxes it can see</span>
+          <input id="xnb" type="number" min="1" step="1"></div>
+        <div class="pf"><span>reach k &mdash; boxes it may pick</span>
+          <input id="xnpick" type="number" min="1" step="1"></div>
+        <div class="pf"><span>candidate cap N<sub>L</sub></span>
+          <input id="xmaxl" type="number" min="1" step="1"></div>
+        <div class="pf"><span>orientations</span><select id="xprot">
+          <option value="1">1 &mdash; as it arrives</option>
+          <option value="2">2 &mdash; also yawed 90&deg;</option></select></div>
+        <div class="pf"><span>the packer's action space</span><select id="xems">
+          <option value="1">EMS corners</option>
+          <option value="2">corner cells</option>
+          <option value="3">EMS corners + corner cells</option>
+          <option value="0">every loading position</option></select></div>
+        <div class="pf"><span>stability rule</span><select id="xstab">
+          <option value="com">com &mdash; area + centre of mass</option>
+          <option value="cdrl">cdrl &mdash; Zhao et al.</option></select></div>
+        <div class="pf"><span>support floor (com only)</span>
+          <input id="xmsup" type="number" min="0" max="1" step="0.05"></div>
+        <div class="pf"><span>stacking rule</span><select id="xtcon">
+          <option value="1">on &mdash; a box only on its own type</option>
+          <option value="0">off &mdash; any type on any</option></select></div>
+        <div class="pf"><span>robot-arm filter</span><select id="xarmcol">
+          <option value="0">off &mdash; every placement the rules allow</option>
+          <option value="1">on &mdash; drop placements the arm collides on</option></select></div>
+        <div class="pf"><span>arm base x moves (-1..1, tried in order)</span>
+          <input id="xarmmoves" type="text" placeholder="0, -0.5, 0.5, -1, 1"></div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button id="xpreset" type="button">Reset to the packer's own values</button>
+        <button id="xfromplay" type="button">Copy from the Play tab</button>
+      </div>
+      <div id="xperr" class="opt"></div>
+      <div id="xpwarn" class="opt"></div>
+    </details>
+    <div class="opt">Each file is read as <code>V_BOX_DEPTH</code> &times; <code>V_BOX_WIDTH</code> &times;
+      <code>V_BOX_HEIGHT</code> cm, <code>TYPE</code> 1/2/3 = blue/white/brown, and packed in file order.
+      When no box in reach fits any more the pallet is closed, a new one is opened and packing carries on
+      from the first box that did not go in. Each file writes <code>&lt;file&gt;&lt;pallets in file&gt;_.csv</code> &mdash; added to the end when it already exists, never overwritten.</div>
+    <div class="row" style="margin-top:12px">
+      <button class="go" id="xrun">Run the experiment &rarr;</button>
+      <button id="xstop" disabled>Stop</button>
+      <span class="sub" id="xstate"></span>
+    </div>
+    <div id="xmsg" class="opt"></div>
+  </div>
+  <div class="card" id="xsumcard" hidden>
+    <div class="xsum">
+      <div><div class="big" id="xpct">0%</div><div class="k">of all boxes packed</div></div>
+      <div><div class="v" id="xfn">0 / 0</div><div class="k">files</div></div>
+      <div><div class="v" id="xbn">0</div><div class="k">boxes</div></div>
+      <div><div class="v" id="xpn">0</div><div class="k">pallets used</div></div>
+      <div><div class="v" id="xutil">&mdash;</div><div class="k">mean fill</div></div>
+      <div><div class="v" id="xtime">0 s</div><div class="k">elapsed</div></div>
+    </div>
+    <div class="xall" id="xall"><i></i></div>
+    <div class="xout" id="xdest"></div>
+  </div>
+  <div id="xfiles"></div>
+</section>
+
+<section id="cmp" hidden>
+  <div class="card">
+    <h2>Compare &mdash; the big experiment's reports</h2>
+    <div class="cbar">
+      <input id="cdir" type="text" spellcheck="false" value="results/big_experiment" title="the folder of reports">
+      <button id="cload" type="button">Reload</button>
+    </div>
+    <div class="row" style="margin-top:14px">
+      <label class="f" style="margin:0">Experiments</label>
+      <span class="spacer"></span>
+      <button id="call" type="button">All</button>
+      <button id="cnone" type="button">None</button>
+      <button id="cdel" type="button" class="del" disabled>Delete checked&hellip;</button>
+    </div>
+    <div class="cks" id="cks"></div>
+    <div class="opt" id="cmsg"></div>
+  </div>
+  <div class="card" id="cwincard" hidden>
+    <h2>Winners &mdash; fewest pallets, then fewest boxes on the last; a tie counts for each</h2>
+    <div class="cwins" id="cwins"></div>
+    <div class="ctab" id="ctab"></div>
+  </div>
+  <div class="row" id="cfold" style="margin-top:16px" hidden>
+    <span class="sub" id="cfn"></span><span class="spacer"></span>
+    <button id="cexp" type="button">Expand all</button><button id="ccol" type="button">Collapse all</button>
+  </div>
+  <div id="cfiles"></div>
+</section>
+
 </main>
 
 <script>
@@ -607,9 +856,9 @@ const PLABEL = {source: 'box source', data: 'data file', pallet: 'pallet',
   stability: 'stability rule', min_support: 'support floor',
   arm_collision: 'robot-arm filter', base_x_moves: 'arm base x moves'};
 
-function readParams(){
+function readParams(pf = PF){
   const o = {};
-  for (const [k, sel] of Object.entries(PF)){
+  for (const [k, sel] of Object.entries(pf)){
     if (k === 'pallet_cm'){
       const v = sel.map(t => $(t).value.trim());
       o[k] = v.every(t => t === '') ? null : v.map(parseFloat);
@@ -623,8 +872,8 @@ function readParams(){
   return o;
 }
 
-function writeParams(p){
-  for (const [k, sel] of Object.entries(PF)){
+function writeParams(p, pf = PF){
+  for (const [k, sel] of Object.entries(pf)){
     if (!(k in p)) continue;
     if (k === 'pallet') setPallet(p[k]);
     else if (Array.isArray(sel))
@@ -632,7 +881,7 @@ function writeParams(p){
     else if (PNUMS.has(k)) $(sel).value = showList(p[k]);
     else $(sel).value = p[k];
   }
-  syncPick(); syncSource();
+  if (pf === PF){ syncPick(); syncSource(); }
 }
 
 /* the pallet picker keeps a value it has no option for yet, so a preset or a
@@ -2070,4 +2319,318 @@ $('#preset').onclick = loadPreset;
   if (over){ syncPick(); checkParams(); }
   if (q.get('play')) setTimeout(() => fresh(), 240);   // let the check land first
 })();
+/* ================= the big experiment ================= */
+const XCOL = ['--c0', '--c4', '--c2', '--c1', '--c5'];
+let XJOB = null, XPOLL = null, XROWS = {}, XRUN = false, XBAD = false;
+function showTab(t){
+  $('#tabgame').hidden = t !== 'game'; $('#exp').hidden = t !== 'exp'; $('#cmp').hidden = t !== 'cmp';
+  document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === t));
+  moveInk();
+  history.replaceState(null, '', t !== 'game' ? '#' + t : location.pathname + location.search);
+  if (t === 'cmp' && !CMP) cLoad();
+  if (t === 'exp'){
+    if (!$('#xopp').options.length && $('#opp').options.length){
+      $('#xopp').innerHTML = $('#opp').innerHTML; $('#xopp').value = $('#opp').value;
+    }
+    if (!XFILLED){ XFILLED = true; xPreset(); }
+    if (!XJOB) xPoll();
+  } else dispatchEvent(new Event('resize'));
+}
+function moveInk(){
+  const b = $('#tabs button.on'), ink = $('#tabs .ink');
+  if (!b) return;
+  ink.style.left = b.offsetLeft + 'px'; ink.style.width = b.offsetWidth + 'px';
+}
+/* the experiment's own form: the Play form's fields that mean anything for a
+   folder of real pallets, read and written by the same readParams/writeParams */
+const XPF = {
+  bin: ['#xbin0', '#xbin1', '#xbin2'],
+  nb: '#xnb', n_pick: '#xnpick', max_l: '#xmaxl',
+  rot: '#xprot', ems: '#xems', stability: '#xstab', min_support: '#xmsup',
+  type_constraint: '#xtcon', arm_collision: '#xarmcol', base_x_moves: '#xarmmoves',
+  pallet_cm: ['#xpcm0', '#xpcm1', '#xpcm2'], cell_cm: '#xcellcm',
+  box_scale: '#xbscale', box_round: '#xbround', order_random: '#xordrnd',
+};
+PLABEL.type_constraint = 'stacking rule';
+let XCHECK = null, XFILLED = false;
+function xCheck(){
+  clearTimeout(XCHECK);
+  XCHECK = setTimeout(async () => {
+    const r = await api('/api/exp/check', {params: readParams(XPF), spec: $('#xopp').value});
+    const err = r.errors || [];
+    $('#xperr').textContent = err.join('\n');
+    XBAD = !!err.length;
+    if (!XRUN) $('#xrun').disabled = XBAD;
+    const off = new Set((r.mismatch || []).map(m => m.key));
+    for (const [k, sel] of Object.entries(XPF))
+      (Array.isArray(sel) ? sel : [sel]).forEach(t =>
+        $(t).closest('.pf').classList.toggle('off', off.has(k)));
+    $('#xpwarn').innerHTML = (r.mismatch || []).length
+      ? '⚠ the packer is off its training configuration &mdash; '
+        + r.mismatch.map(m => `${PLABEL[m.key] || m.key} ${m.is} (trained at ${m.was})`).join(', ')
+        + '. It will still pack; it was just never asked this.' : '';
+    $('#xpsrc').textContent = off.size ? '— edited' : '';
+    if (err.length || off.size) $('#xpardet').open = true;
+  }, 160);
+}
+async function xPreset(){
+  const r = await (await fetch('/api/params?spec=' + encodeURIComponent($('#xopp').value))).json();
+  // the order shuffle is the experiment's own choice, not the packer's: kept
+  const ord = $('#xordrnd').value;
+  if (r.params) writeParams(r.params, XPF);
+  $('#xordrnd').value = ord;
+  xCheck();
+}
+function xEl(html){ const d = document.createElement('div'); d.innerHTML = html.trim(); return d.firstChild; }
+function xRow(f, i){
+  const el = xEl(`<div class="xf queued" style="animation-delay:${Math.min(i, 20) * 25}ms">
+    <div class="xh"><span class="xst"></span><b></b><span class="sub xmeta"></span>
+      <span class="xn"></span></div>
+    <div class="xbar"><div class="seg cur"></div></div>
+    <div class="xpal"></div><div class="xout"></div><div class="xerr"></div></div>`);
+  el.querySelector('b').textContent = f.name;
+  $('#xfiles').appendChild(el);
+  return {el, bar: el.querySelector('.xbar'), cur: el.querySelector('.seg.cur'),
+          pal: el.querySelector('.xpal'), chip: null, n: 0};
+}
+function xDraw(s){
+  if (s.id !== XJOB){ XJOB = s.id; XROWS = {}; $('#xfiles').innerHTML = ''; }
+  if (XRUN && s.state !== 'running'){ CMP = null; if (!$('#cmp').hidden) cLoad(); }
+  const run = XRUN = s.state === 'running';
+  $('#xsumcard').hidden = false;
+  $('#xrun').disabled = run || XBAD; $('#xstop').disabled = !run;
+  $('#xdot').hidden = !run;
+  $('#xstate').innerHTML = run ? `<span class="spin"></span> ${s.name ? s.name.replace(/[&<>"]/g, c => `&#${c.charCodeAt(0)};`) + ' &middot; ' : ''}packing with ${s.label || s.spec}&hellip;`
+    : s.state === 'done' ? `done in ${s.elapsed.toFixed(1)} s` : s.state;
+  if (s.error) $('#xmsg').textContent = s.error;
+  let tot = 0, done = 0, pals = 0, fin = 0, usum = 0;
+  s.files.forEach((f, i) => {
+    const r = XROWS[f.name] || (XROWS[f.name] = xRow(f, i));
+    r.el.className = 'xf ' + f.state;
+    tot += f.total; done += f.done; pals += f.pallets.length + (f.cur ? 1 : 0);
+    fin += ['done', 'error'].includes(f.state);
+    f.pallets.forEach(q => usum += q.util_pct);
+    r.el.querySelector('.xmeta').textContent = f.total
+      ? `${f.total} boxes · ${f.ids} pallet id${f.ids === 1 ? '' : 's'} in file`
+        + (f.skipped ? ` · ${f.skipped} never fit` : '') : '';
+    r.el.querySelector('.xn').innerHTML = f.total
+      ? `<b>${f.done}</b> / ${f.total} &middot; ${(f.ms / 1000).toFixed(1)} s` : f.state;
+    const w = n => f.total ? (100 * n / f.total) + '%' : '0';
+    // a finished pallet turns into a segment of its own; the striped one is the pallet being packed
+    while (r.n < f.pallets.length){
+      const q = f.pallets[r.n], c = cvar(XCOL[r.n % XCOL.length]);
+      const seg = xEl(`<div class="seg"></div>`);
+      seg.style.background = c; seg.title = `pallet ${q.pallet_id}: ${q.boxes} boxes, ${q.util_pct}% full, ${q.max_height} cm`;
+      r.bar.insertBefore(seg, r.cur);
+      seg.getBoundingClientRect(); seg.style.width = `calc(${w(q.boxes)} - 2px)`;
+      if (r.chip){ r.chip.remove(); r.chip = null; }
+      r.pal.appendChild(xEl(`<span class="xchip"><i style="background:${c}"></i>P${q.pallet_id}
+        <b>${q.util_pct}%</b> ${q.boxes} boxes &middot; ${q.max_height} cm</span>`));
+      r.n++;
+    }
+    const cc = cvar(XCOL[r.n % XCOL.length]);
+    r.cur.style.backgroundColor = cc;
+    r.cur.style.width = f.cur ? w(f.cur.boxes) : '0';
+    if (f.cur){
+      if (!r.chip){ r.chip = xEl(`<span class="xchip cur"></span>`); r.pal.appendChild(r.chip); }
+      r.chip.innerHTML = `<i style="background:${cc}"></i>P${r.n} <b>${f.cur.util}%</b> ${f.cur.boxes} boxes&hellip;`;
+    } else if (r.chip){ r.chip.remove(); r.chip = null; }
+    r.bar.classList.toggle('run', f.state === 'running');
+    r.el.querySelector('.xout').textContent = f.out ? `→ ${s.out}/${f.out}` : '';
+    r.el.querySelector('.xerr').textContent = f.error || '';
+    r.el.querySelector('.xst').textContent = f.state === 'done' ? '✓'
+      : ['error', 'stopped'].includes(f.state) ? '!' : '';
+  });
+  const nf = s.files.reduce((a, f) => a + f.pallets.length, 0);
+  // a queued file's box count is not read yet, so every file weighs the same
+  const pct = s.state === 'done' ? 100
+    : 100 * s.files.reduce((a, f) => a + (f.total ? f.done / f.total : 0), 0) / s.files.length;
+  $('#xpct').textContent = Math.floor(pct) + '%';
+  $('#xall i').style.width = pct + '%';
+  $('#xall').classList.toggle('run', run);
+  $('#xfn').textContent = `${fin} / ${s.files.length}`;
+  $('#xbn').textContent = done;
+  $('#xpn').textContent = pals;
+  $('#xutil').textContent = nf ? (usum / nf).toFixed(0) + '%' : '—';
+  $('#xtime').textContent = s.elapsed < 90 ? `${s.elapsed.toFixed(0)} s`
+    : `${Math.floor(s.elapsed / 60)} m ${Math.round(s.elapsed % 60)} s`;
+  $('#xdest').textContent = `results → ${s.out}/`;
+}
+async function xPoll(){
+  clearTimeout(XPOLL);
+  const r = await fetch('/api/exp/status' + (XJOB ? '?job=' + XJOB : ''));
+  if (!r.ok) return;
+  const s = await r.json();
+  xDraw(s);
+  if (s.state === 'running') XPOLL = setTimeout(xPoll, 400);
+}
+$('#xrun').onclick = async () => {
+  $('#xmsg').textContent = '';
+  $('#xrun').disabled = true;
+  const r = await api('/api/exp/start', {dir: $('#xdir').value.trim(), out: $('#xout').value.trim(),
+                                         spec: $('#xopp').value, name: $('#xname').value.trim(),
+                                         seed: +$('#xseed').value || 0,
+                                         params: readParams(XPF)});
+  if (r.error){ $('#xmsg').textContent = (r.errors || [r.error]).join('\n'); $('#xrun').disabled = XBAD; return; }
+  XJOB = null; await fetch('/api/exp/status?job=' + r.job).then(x => x.json()).then(xDraw);
+  XJOB = r.job; xPoll();
+};
+for (const sel of Object.values(XPF).flat()) $(sel).addEventListener('input', xCheck);
+$('#xopp').onchange = xPreset;
+$('#xpreset').onclick = xPreset;
+$('#xfromplay').onclick = () => { writeParams(readParams(), XPF); xCheck(); };
+$('#xstop').onclick = async () => { await api('/api/exp/stop', {job: XJOB}); xPoll(); };
+/* ================= compare the reports =================
+   The server reads the reports with `ar2l.viz.compare`, the parser the
+   matplotlib plots use, and works out the winners among whatever is checked;
+   the page only draws.  An experiment keeps one colour everywhere, by its
+   place in the folder's list, so it holds while others are unchecked. */
+const CCOL = ['#007AFF', '#FF9500', '#34C759', '#AF52DE', '#FF2D55',
+              '#5AC8FA', '#FFCC00', '#5856D6', '#FF3B30', '#00C7BE'];
+let CMP = null, CKEYS = [], CPICK = null, CSEEN = new Set(), CSEQ = 0, CDIR = null;
+const cEsc = t => String(t).replace(/[&<>"]/g, c => `&#${c.charCodeAt(0)};`);
+const cCol = k => CCOL[Math.max(0, CKEYS.findIndex(q => q.key === k)) % CCOL.length];
+const cPl = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+
+async function cLoad(){
+  if (CDIR === null) $('#cdir').value = $('#xout').value;   // where the experiment writes
+  const seq = ++CSEQ, m = $('#cmsg'), dir = $('#cdir').value.trim();
+  // another folder is another list: start from every experiment checked
+  if (dir !== CDIR){ CDIR = dir; CPICK = null; CSEEN = new Set(); }
+  let q = '/api/cmp?dir=' + encodeURIComponent(dir);
+  if (CPICK) q += '&pick=' + encodeURIComponent(JSON.stringify([...CPICK]));
+  const r = await (await fetch(q)).json();
+  if (seq !== CSEQ) return;                 // a later toggle has asked since
+  m.className = 'opt'; m.textContent = '';
+  if (r.error){
+    m.textContent = r.error; m.className = 'opt err';
+    CMP = null; CKEYS = []; cKeys(); cDraw([]); return;
+  }
+  CMP = r; CKEYS = r.keys;
+  // an experiment not seen before comes in checked; one now gone is dropped
+  const fresh = CKEYS.filter(k => !CSEEN.has(k.key));
+  fresh.forEach(k => CSEEN.add(k.key));
+  if (!CPICK) CPICK = new Set(CKEYS.map(k => k.key));
+  else {
+    for (const k of [...CPICK]) if (!CKEYS.some(q => q.key === k)) CPICK.delete(k);
+    if (fresh.length){ fresh.forEach(k => CPICK.add(k.key)); return cLoad(); }
+  }
+  if (!CKEYS.length) m.textContent = `no reports in ${r.dir}`;
+  else if (!CPICK.size) m.textContent = 'check an experiment to see it';
+  cKeys(); cDraw(r.files);
+}
+function cKeys(){
+  $('#cks').innerHTML = CKEYS.map(k => `<label class="ck${k.named ? '' : ' unnamed'}"${k.named ? ''
+      : ' title="run without a name: matched by its place in each file, so it cannot be deleted by name"'}>
+    <input type="checkbox" value="${cEsc(k.key)}"${CPICK && CPICK.has(k.key) ? ' checked' : ''}>
+    <i style="background:${cCol(k.key)}"></i><b>${cEsc(k.key)}</b>
+    <span class="sub">${cPl(k.files, 'file')}</span></label>`).join('');
+  $('#cks').querySelectorAll('input').forEach(b => b.onchange = () => {
+    b.checked ? CPICK.add(b.value) : CPICK.delete(b.value); cSync(); cLoad();
+  });
+  cSync();
+}
+function cSync(){
+  const n = CKEYS.filter(k => k.named && CPICK && CPICK.has(k.key)).length;
+  $('#cdel').disabled = !n;
+  $('#cdel').textContent = n ? `Delete ${n} checked…` : 'Delete checked…';
+}
+/* a y axis of 0 and a few round steps, the top one at or above `vmax` */
+function cTicks(vmax){
+  const raw = Math.max(vmax, 1e-9) * 1.12 / 4, p = 10 ** Math.floor(Math.log10(raw)), m = raw / p;
+  const step = (m <= 1 ? 1 : m <= 2 ? 2 : m <= 5 ? 5 : 10) * p;
+  return Array.from({length: Math.ceil(vmax * 1.12 / step) + 1}, (_, i) => +(i * step).toFixed(6));
+}
+/* grouped bars over the pallet number, one colour per experiment, rounded tops */
+function cBars(exps, field, fmt){
+  const W = 1000, H = 200, L = 40, R = 4, T = 16, BM = 24;
+  const ids = exps.flatMap(e => e.pallets.map(p => p.id));
+  const lo = Math.min(...ids), slots = Math.max(...ids) - lo + 1;
+  const ticks = cTicks(Math.max(...exps.flatMap(e => e.pallets.map(p => p[field])))),
+        top = ticks[ticks.length - 1], y = v => T + (H - T - BM) * (1 - v / top);
+  const sw = (W - L - R) / slots, gw = sw * 0.8, bw = gw / exps.length,
+        w = bw - Math.min(3, bw * 0.12), rr = Math.min(4, w / 3);
+  let o = `<svg viewBox="0 0 ${W} ${H}" role="img">`;
+  for (const t of ticks)
+    o += `<line x1="${L}" x2="${W - R}" y1="${y(t)}" y2="${y(t)}" stroke="var(--line)"/>`
+       + `<text x="${L - 7}" y="${y(t) + 3.5}" text-anchor="end">${fmt(t)}</text>`;
+  for (let i = 0; i < slots; i++)
+    o += `<text x="${L + (i + 0.5) * sw}" y="${H - 6}" text-anchor="middle">pallet ${lo + i}</text>`;
+  exps.forEach((e, j) => e.pallets.forEach(p => {
+    const v = p[field], x = L + (p.id - lo) * sw + (sw - gw) / 2 + j * bw, t = y(v), h = y(0) - t;
+    if (h <= 0) return;
+    const r = Math.min(rr, h);
+    o += `<path class="b" fill="${cCol(e.key)}" d="M${x},${t + h}V${t + r}Q${x},${t} ${x + r},${t}`
+       + `H${x + w - r}Q${x + w},${t} ${x + w},${t + r}V${t + h}Z"><title>${cEsc(e.key)} · pallet ${p.id}: ${fmt(v)}</title></path>`;
+    if (w >= 18) o += `<text class="v" x="${x + w / 2}" y="${t - 4}" text-anchor="middle">${fmt(v)}</text>`;
+  }));
+  return o + '</svg>';
+}
+function cDraw(files){
+  const keys = CKEYS.map(k => k.key).filter(k => CPICK && CPICK.has(k));
+  $('#cwincard').hidden = $('#cfold').hidden = !files.length;
+  $('#cfn').textContent = cPl(files.length, 'file');
+  // wins per experiment: a sole win solid, a shared one tinted
+  const st = keys.map(k => {
+    let ran = 0, sole = 0, shared = 0;
+    for (const f of files){
+      ran += f.exps.some(e => e.key === k);
+      if (f.win.includes(k)) f.win.length > 1 ? shared++ : sole++;
+    }
+    return {k, ran, sole, shared};
+  });
+  const most = Math.max(1, ...st.map(x => x.sole + x.shared)), pc = n => (n / most * 72).toFixed(2) + '%';
+  $('#cwins').innerHTML = st.map(x => `<div class="lab" title="${cEsc(x.k)}">${cEsc(x.k)}</div>
+    <div class="trk" title="${x.sole} sole, ${x.shared} shared">
+      <em style="width:${pc(x.sole + x.shared)}"><span style="flex:${x.sole};background:${cCol(x.k)}"></span><span
+        style="flex:${x.shared};background:color-mix(in srgb,${cCol(x.k)} 40%,transparent)"></span></em>
+      <b>${x.sole + x.shared}</b> of ${cPl(x.ran, 'file')}</div>`).join('');
+  // the winner in each file
+  $('#ctab').innerHTML = `<table><tr><th>file</th>${keys.map(k => `<th title="${cEsc(k)}">${cEsc(k)}</th>`).join('')}<th></th></tr>`
+    + files.map((f, i) => `<tr><td><a href="#cf${i}" data-i="${i}">${cEsc(f.file.replace(/\.csv$/, ''))}</a></td>${keys.map(k =>
+        f.win.includes(k) ? `<td><span class="cdot" style="background:${cCol(k)}"></span></td>`
+        : f.exps.some(e => e.key === k) ? '<td><span class="cdot lose"></span></td>' : '<td></td>').join('')}
+      <td class="res">${cPl(f.best[0], 'pallet')} · ${f.best[1]} on the last</td></tr>`).join('') + '</table>';
+  $('#ctab').querySelectorAll('a').forEach(a => a.onclick = ev => {
+    ev.preventDefault();
+    const d = $('#cf' + a.dataset.i); d.open = true; d.scrollIntoView({behavior: 'smooth', block: 'start'});
+  });
+  $('#cfiles').innerHTML = files.map((f, i) => `<details class="cf" open id="cf${i}"><summary>
+      <b>${cEsc(f.file.replace(/\.csv$/, ''))}</b>
+      <span class="sub">${cPl(f.exps.length, 'experiment')} · ${f.exps[0].boxes} boxes</span>
+      <span class="spacer"></span><span class="sub">${f.win.length > 1 ? 'winners' : 'winner'}</span>
+      ${f.win.map(k => `<span class="cwin" style="background:${cCol(k)}">${cEsc(k)}</span>`).join(' ')}
+      <span class="sub">${cPl(f.best[0], 'pallet')} · ${f.best[1]} on the last</span></summary>
+    <div class="cchart"><h3>Boxes per pallet</h3>${cBars(f.exps, 'boxes', v => `${Math.round(v)}`)}</div>
+    <div class="cchart"><h3>Volume per pallet</h3>${cBars(f.exps, 'volume', v => `${Math.round(v)}%`)}</div>
+  </details>`).join('');
+}
+$('#cload').onclick = cLoad;
+$('#cdir').addEventListener('keydown', ev => { if (ev.key === 'Enter') cLoad(); });
+$('#call').onclick = () => { CPICK = new Set(CKEYS.map(k => k.key)); cKeys(); cLoad(); };
+$('#cnone').onclick = () => { CPICK = new Set(); cKeys(); cLoad(); };
+$('#cexp').onclick = () => document.querySelectorAll('details.cf').forEach(d => d.open = true);
+$('#ccol').onclick = () => document.querySelectorAll('details.cf').forEach(d => d.open = false);
+$('#cdel').onclick = async () => {
+  const names = CKEYS.filter(k => k.named && CPICK.has(k.key));
+  const kept = CKEYS.filter(k => !k.named && CPICK.has(k.key)).length;
+  const blocks = names.reduce((a, k) => a + k.blocks, 0);
+  if (!confirm(`Delete from every report in ${CMP.dir}:\n\n`
+      + names.map(k => `  • ${k.key}  (${cPl(k.files, 'file')})`).join('\n')
+      + `\n\n${cPl(blocks, 'block')} will be removed. This cannot be undone.`
+      + (kept ? `\n\n${cPl(kept, 'unnamed experiment')} checked will be kept: there is no name to delete by.` : ''))) return;
+  const r = await api('/api/cmp/delete', {dir: $('#cdir').value.trim(), names: names.map(k => k.key)});
+  if (r.error){ $('#cmsg').textContent = r.error; $('#cmsg').className = 'opt err'; return; }
+  const n = Object.values(r.removed).reduce((a, b) => a + b, 0);
+  names.forEach(k => { CPICK.delete(k.key); CSEEN.delete(k.key); });
+  await cLoad();
+  $('#cmsg').className = 'opt';
+  $('#cmsg').textContent = `deleted ${cPl(n, 'block')} from ${cPl(Object.keys(r.removed).length, 'file')}`;
+};
+
+document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => showTab(b.dataset.tab));
+addEventListener('resize', moveInk);
+requestAnimationFrame(moveInk);
+if (['#exp', '#cmp'].includes(location.hash)) setTimeout(() => showTab(location.hash.slice(1)), 300);
+else xPoll();                           // an experiment already running shows its dot
 </script>
