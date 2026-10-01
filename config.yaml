@@ -139,7 +139,7 @@ eval:
   # the order in the data, 1 a uniformly random order, and in between each
   # box drifts from its place -- by about r / (1 - r) of the pallet, so 0.1
   # moves a box ~5 places in a 50-box pallet.  `order_seed` fixes the draw.
-  order_random: 0.0
+  order_random: 0.1
   order_seed: 0
 
 robot:
@@ -148,6 +148,14 @@ robot:
   # Robot base -> box origin, as the cell's tmp_base_from_box: x, y, z in
   # metres, then the quaternion qx, qy, qz, qw.
   base_from_box_tf: [-0.50777000000000005, 1.5415239999999999, -1, 0, 0, -0.70753916586098198, 0.70666309052477838]
+  # Where the base may slide along its own x axis (the pallet's y) when the
+  # arm cannot make a placement from where it stands, tried in this order
+  # until one works; a placement is dropped only when every one fails.  Each
+  # value is -1..1 of half the pallet's y side from `base_from_box_tf`:
+  # 0 is that tf (the pallet's middle), -1 the base at pallet y = 0, 1 at
+  # pallet y = its full side.  The move is for that one placement only, and
+  # the policy never sees it.  [0] keeps the base fixed.
+  base_x_moves: [0, -0.5, 0.5, -1, 1]
   # Flange to the tool's contact face, metres -- KinematicData::tool_length.
   # A placeholder until the real gripper is measured.
   tool_length_m: 0.35

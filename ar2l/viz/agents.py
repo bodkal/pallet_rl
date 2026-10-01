@@ -164,7 +164,7 @@ def play(seq, policy, attacker=None, nb=1, S=10, stability="com", record=True,
          min_support=None,
          size_hi=None, max_l=None, n_pick=None, rot=None, ems=None,
          n_types=None, type_constraint=None, arm_collision=None,
-         arm_cell_m=None):
+         arm_cell_m=None, arm_moves=None):
     """One episode; returns the trace the viewers draw.
 
     `S` is an int for a cube or an (Lx, Ly, Lz) triple.  `size_hi` bounds the
@@ -185,6 +185,7 @@ def play(seq, policy, attacker=None, nb=1, S=10, stability="com", record=True,
                    n_types=n_types, types=False,
                    type_constraint=type_constraint,
                    arm_collision=arm_collision, arm_cell_m=arm_cell_m,
+                   arm_moves=arm_moves,
                    size_hi=(seq[..., :3].reshape(-1, 3).max(0)
                             if size_hi is None else size_hi),
                    **({} if max_l is None else {"max_l": max_l}))
@@ -230,7 +231,12 @@ def play(seq, policy, attacker=None, nb=1, S=10, stability="com", record=True,
             rec["placed_type"] = int(env.ptype[0, env.n_packed[0] - 1])
             rec["util"] = float(env.utilization()[0])
             trace.append(rec)
+    # what was left on the conveyor when the episode ended: the boxes nothing
+    # more could be done with, which no step of the trace records
+    win, wmask = env.window()
     return {"trace": trace, "util": float(env.utilization()[0]),
+            "final_window": win[0][wmask[0], :3].tolist(),
+            "final_window_types": win[0][wmask[0], 3].tolist(),
             "items": int(env.n_packed[0]), "S": (env.Lx, env.Ly, env.Lz),
             "placed": (env.packed[0, : env.n_packed[0]] * scale)
                       .round().astype(int).tolist(),
