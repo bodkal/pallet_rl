@@ -49,6 +49,46 @@ still loads — `evaluate.load_nets` pads its narrow projections with zeros,
 which is the identity on the features it was trained with, and leaves the type
 embedding at its fresh initialisation.
 
+### Stack height over small boxes
+
+A small box carries only a short stack, which is the cell's own rule (the C++
+`stable_grid`). Once a box of a type in `env.stack_cap_types` (`[2]`, the
+brown cartons) is placed, a later box may *start* over its footprint only
+below its top plus an allowance set by its shorter footprint side, in real cm:
+
+| shorter side | a later box may start up to |
+|---|---|
+| ≤ 12 cm | 8 cm above its top, so one box on it |
+| 16 cm | 36 cm |
+| 20 cm | 64 cm |
+| 24 cm | 96 cm |
+| 28 cm | 124 cm |
+| ≥ 30 cm | no limit |
+
+The limit stays with the small box's cells — a box bridging it and a neighbour
+is limited only over the small box — and a placement that breaks it is dropped
+from the candidate list, as a type or arm violation is; the reward is not
+touched. The numbers are `stack_cap_side_cm` / `stack_cap_allow_cm` in the
+config, read onto the grid with the arm filter's cell size (4 cm with the
+shipped `eval.cell_cm * eval.box_scale`), without the C++ padding. It is on
+by default, and `args.json` records it:
+
+```bash
+--stack_cap 0                # lifts it, for train and evaluate alike
+```
+
+The game (`python3 -m ar2l.viz.game`) shows all four settings in its setup
+form, in the in-game recalculate panel and in the big experiment's form, so
+they can be changed there without editing the config. A run does not record
+the types, sides or allowances, only `stack_cap`, so editing them is not
+flagged as drift from the opponent's training.
+
+On the 59 real pallets of `data/orders_all.csv`, DBL on a FIFO conveyor (arm
+filter off) starts 240 boxes past these limits with the type rule off and 50
+with it on; with the limit both are 0, for 47.1% → 43.8% and 24.3% → 23.7%
+utilisation. The policy network is unchanged, so an existing checkpoint loads
+and trains on under the limit.
+
 ## 0b. Your own pallets: an orders CSV
 
 Real orders go in as a CSV, one row per box in arrival order
@@ -555,6 +595,7 @@ comparable to another trained with the same ones.
 | `--stability` | `com` | `com` = centre of mass over the support (the identified rule), `cdrl` = the 60%-area/4-corner rule as the paper's citations write it |
 | `--n_types` | `3` | box types. Must match the `types:` size classes in the config; `1` with `types: null` is the pre-type simulator |
 | `--type_constraint` | `1` | `0` keeps `type_id` in the state but lets any box be stacked on any other |
+| `--stack_cap` | `1` | `0` lifts the stack-height limit over small boxes of `env.stack_cap_types` (section 0a) |
 | `--min_support` | `env.min_support`, `0.80` | fraction of the item's base that must rest on the layer below for a placement to be offered. `0` is the bare centre-of-mass rule every published number was measured under. Ignored by `--stability cdrl` |
 
 **PPO** (`ppo:`, and `n_env`/`T` from `train:`)
@@ -610,6 +651,7 @@ Defaults from the `eval:` section, plus `env:` for `--rot` / `--min_support`.
 | `--rot` | `2` | orientations; match the policy's |
 | `--min_support` | `env.min_support`, `0.80` | contact-area floor; **match the policy's** |
 | `--n_pick` | `5` | how many of the `N_B` are within reach; **match the policy's** |
+| `--stack_cap` | `1` | `0` scores with the stack-height limit over small boxes lifted; match the training run's |
 | `--pallet_cm` / `--cell_cm` / `--box_scale` / `--box_round` | `30 25 40` / `1.0` / `4` / `nearest` | how an orders `.csv` is gridded; **match the training run's** |
 | `--order_random` / `--order_seed` | `0.0` / `0` | randomise each pallet's box order before scoring |
 | `--per_pallet` | — | write one CSV row per pallet and beta: `pallet_id,beta,boxes,placed,util_pct` |

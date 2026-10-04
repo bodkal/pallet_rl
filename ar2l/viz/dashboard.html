@@ -17,6 +17,9 @@ h1{font-size:15px;margin:0;font-weight:650}
   user-select:none;font-size:12px;background:var(--panel)}
 .pill.on{background:var(--fg);color:var(--bg);border-color:var(--fg);font-weight:600}
 .pill.att{opacity:.62}
+.pill .x{margin-left:7px;opacity:0;font-weight:700;padding:0 2px;border-radius:4px}
+.pill:hover .x{opacity:.55}
+.pill .x:hover{opacity:1;background:var(--bad);color:#fff}
 main{padding:16px 20px 40px;max-width:1500px;margin:0 auto}
 [hidden]{display:none!important}   /* #modal sets display:flex, which would otherwise win */
 .kpis{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
@@ -220,7 +223,20 @@ function toggleAtt(){
 function pills(){
   $('#runs').innerHTML = META.filter(m => ATT || !isAtt(m) || SEL.has(m.run)).map(m =>
     `<div class="pill${SEL.has(m.run) ? ' on' : ''}${m.algo === 'attack' ? ' att' : ''}"
-      onclick="toggle('${m.run}')" title="${m.algo} N_B=${m.nb} alpha=${m.alpha}">${m.run}</div>`).join('');
+      onclick="toggle('${m.run}')" title="${m.algo} N_B=${m.nb} alpha=${m.alpha}">${m.run}<span
+      class="x" title="delete this run" onclick="event.stopPropagation(); del('${m.run}')">&times;</span></div>`).join('');
+}
+
+async function del(run){
+  if (!confirm(`Delete run "${run}"?\n\nIts folder is moved to runs/.trash `
+      + `(empty that by hand to free the space). Stop its training first if it is still running.`))
+    return;
+  const r = await (await fetch('delete', {method: 'POST',
+    headers: {'Content-Type': 'application/json'}, body: JSON.stringify({run})})).json();
+  if (r.error){ alert(r.error); return; }
+  SEL.delete(run); delete LOGS[run];
+  META = META.filter(m => m.run !== run);
+  pills(); await refresh();
 }
 
 function toggle(run){
@@ -229,7 +245,7 @@ function toggle(run){
 }
 
 async function refresh(){
-  await Promise.all([...SEL].map(async r => { LOGS[r] = await jget('/log?run=' + encodeURIComponent(r)); }));
+  await Promise.all([...SEL].map(async r => { LOGS[r] = await jget('log?run=' + encodeURIComponent(r)); }));
   kpis(); cards(); if (MODAL >= 0) drawM();
 }
 
@@ -272,8 +288,8 @@ document.addEventListener('keydown', e => {
 
 // ---- boot ----------------------------------------------------------------
 async function poll(){
-  META = await jget('/runs');
-  SUM = await jget('/summary');
+  META = await jget('runs');
+  SUM = await jget('summary');
   if (!SEL.size) META.filter(m => !isAtt(m)).slice(0, 6).forEach(m => SEL.add(m.run));
   pills(); summary(); await refresh();
 }

@@ -160,6 +160,29 @@ details.par>summary::marker{color:var(--dim)}
 .stat{display:flex;justify-content:space-between;padding:3px 0;font-variant-numeric:tabular-nums}
 .stat span{color:var(--dim)}
 input[type=range]{width:100%;accent-color:var(--c0)}
+/* the packer pickers: trained runs in a list, the heuristics and random folded
+   into one row whose submenu opens on hover */
+.dd{position:relative;display:block}
+.dd>select{display:none}
+.dd>button{width:100%;text-align:left;display:flex;align-items:center;gap:8px;
+  padding:7px 10px;border-radius:8px}
+.pf .dd>button{padding:6px 8px}
+.dd>button .lbl{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dd>button .car{color:var(--dim);font-size:10px}
+.pf.off .dd>button{border-color:var(--c1);color:var(--c1)}
+.pf.lock .dd>button{opacity:.5;cursor:not-allowed}
+.pf.moved .dd>button{border-color:var(--c0);color:var(--c0)}
+.ddm{position:absolute;left:0;top:calc(100% + 4px);width:max-content;min-width:min(100%,260px);max-width:100%;z-index:40;
+  background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:4px;
+  box-shadow:0 8px 24px rgba(0,0,0,.35);max-height:60vh;overflow-y:auto}
+.ddm.ddsub{position:fixed;min-width:240px;z-index:41}
+.ddi{position:relative;padding:6px 10px;border-radius:6px;cursor:pointer;white-space:nowrap;
+  display:flex;align-items:center;gap:10px}
+.ddi:hover,.ddi.open{background:var(--line)}
+.ddi.on{color:var(--c0);font-weight:600}
+.ddi.grp::after{content:'\25B8';margin-left:auto;color:var(--dim)}
+.ddi.grp .n{color:var(--dim);font-size:11px}
+.ddsep{height:1px;background:var(--line);margin:4px 2px}
 /* recalculation: a field held at the game's value, and one moved off it */
 .pf.lock>span{opacity:.6}
 .pf.lock input,.pf.lock select{opacity:.5;cursor:not-allowed}
@@ -300,6 +323,92 @@ details.cf>summary b{font-size:14px}
 .cchart svg text{font:10px ui-sans-serif,-apple-system,Segoe UI,Roboto,sans-serif;fill:var(--dim)}
 .cchart svg text.v{fill:var(--fg);font-weight:600;font-size:9.5px}
 .cchart svg rect.b:hover{filter:brightness(1.15)}
+/* new training */
+#trn{max-width:1100px;margin:22px auto;padding:0 16px}
+#trn .card+.card{margin-top:12px}
+#tjobcard{margin-bottom:12px}
+#trn details.par{border-top:1px solid var(--line);padding-top:10px;margin-top:10px}
+#trn .pf>span{font-family:ui-monospace,monospace}
+#trn .pf.chg input,#trn .pf.chg select{border-color:var(--c1)}
+#trn .pf.chg>span{color:var(--c1)}
+#trn .pf.flag{flex-direction:row;align-items:center;gap:8px;padding-top:16px}
+#trn .pf.flag input{width:15px;height:15px;accent-color:var(--c0);margin:0}
+.tcmd{font:11.5px ui-monospace,monospace;color:var(--dim);background:var(--bg);border:1px solid var(--line);
+  border-radius:8px;padding:8px 10px;margin-top:12px;white-space:pre-wrap;word-break:break-all}
+#terr{color:var(--c3);white-space:pre-line}
+#ttip{position:fixed;z-index:50;max-width:340px;pointer-events:none;background:var(--panel);
+  border:1px solid var(--line);border-radius:9px;padding:8px 11px;font-size:12px;line-height:1.45;
+  box-shadow:0 6px 22px rgba(0,0,0,.35);opacity:0;transform:translateY(3px);transition:opacity .12s,transform .12s}
+#ttip.on{opacity:1;transform:none}
+#ttip b{font-family:ui-monospace,monospace;font-weight:600}
+#ttip .d{color:var(--dim);margin-top:4px;font-size:11px}
+:root{--tr:#279cc4;--ho:#c2850a}
+@media(prefers-color-scheme:light){:root{--tr:#0b8fb8;--ho:#c47d00}}
+.tjob{border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin-top:10px;
+  background:linear-gradient(180deg,color-mix(in srgb,var(--fg) 2.5%,transparent),transparent 120px);
+  animation:xin .4s both cubic-bezier(.3,.7,.2,1)}
+.tjob.running{border-color:color-mix(in srgb,var(--c0) 45%,var(--line));
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--c0) 9%,transparent)}
+.tjob.failed{border-color:color-mix(in srgb,var(--c3) 60%,var(--line))}
+.thd{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.thd .nm{font-size:15px;font-weight:650;letter-spacing:.1px}
+.chip{font-size:11px;padding:2px 9px;border-radius:10px;border:1px solid var(--line);color:var(--dim);
+  font-variant-numeric:tabular-nums}
+.st{font-size:11px;font-weight:600;padding:2px 10px;border-radius:10px;display:inline-flex;gap:6px;align-items:center;
+  border:1px solid var(--line);color:var(--dim)}
+.st::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+.tjob.running .st{color:var(--c0);border-color:color-mix(in srgb,var(--c0) 50%,transparent)}
+.tjob.running .st::before{animation:xbeat 1.2s ease-in-out infinite}
+.tjob.done .st{color:var(--c2);border-color:color-mix(in srgb,var(--c2) 50%,transparent)}
+.tjob.failed .st,.tjob.stopped .st{color:var(--c3);border-color:color-mix(in srgb,var(--c3) 50%,transparent)}
+.thd .sub{margin-left:auto}
+.tacts{display:flex;gap:6px}
+.tacts button{padding:6px 12px}
+.tjob.stopping{border-color:color-mix(in srgb,var(--c1) 50%,var(--line))}
+.tjob.stopping .st{color:var(--c1);border-color:color-mix(in srgb,var(--c1) 50%,transparent)}
+.tjob.stopping .st::before{animation:xbeat 1.2s ease-in-out infinite}
+.tjob.saved .st{color:var(--c2);border-color:color-mix(in srgb,var(--c2) 50%,transparent)}
+.tbody{display:grid;grid-template-columns:150px 1fr;gap:18px;align-items:center;margin-top:14px}
+@media(max-width:720px){.tbody{grid-template-columns:1fr}.tring{margin:0 auto}}
+.tring{position:relative;width:150px;height:150px}
+.tring svg{width:100%;height:100%;transform:rotate(-90deg)}
+.tring circle{fill:none;stroke-width:10}
+.tring .bg{stroke:var(--line)}
+.tring .fg{stroke:url(#tgrad);stroke-linecap:round;transition:stroke-dashoffset .8s cubic-bezier(.3,.7,.2,1)}
+.tring .in{position:absolute;inset:0;display:grid;place-content:center;text-align:center}
+.tring .pc{font-size:30px;font-weight:700;letter-spacing:-.5px;font-variant-numeric:tabular-nums;line-height:1}
+.tring .pc small{font-size:15px;font-weight:600;color:var(--dim)}
+.tring .its{font-size:11px;color:var(--dim);margin-top:5px;font-variant-numeric:tabular-nums}
+.tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+@media(max-width:900px){.tiles{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.tile{border:1px solid var(--line);border-radius:10px;padding:8px 11px;min-width:0;
+  background:color-mix(in srgb,var(--fg) 2%,transparent)}
+.tile .k{color:var(--dim);font-size:10px;text-transform:uppercase;letter-spacing:.55px;white-space:nowrap}
+.tile .v{font-size:19px;font-weight:650;font-variant-numeric:tabular-nums;line-height:1.25;margin-top:2px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tile .s{color:var(--dim);font-size:11px;font-variant-numeric:tabular-nums;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+.tile.best{border-color:color-mix(in srgb,var(--ho) 45%,var(--line))}
+.tile .sw{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:0}
+.tcks{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.tck{display:flex;gap:8px;align-items:center;font-size:11.5px;padding:5px 11px;border-radius:9px;
+  border:1px solid var(--line);font-variant-numeric:tabular-nums;color:var(--dim)}
+.tck b{color:var(--fg);font-family:ui-monospace,monospace;font-weight:600}
+.tck.none{opacity:.55;border-style:dashed}
+.tchart{position:relative;margin-top:14px}
+.tchart .lgd{display:flex;gap:16px;font-size:11px;color:var(--dim);margin-bottom:4px}
+.tchart .lgd i{display:inline-block;width:14px;height:2px;vertical-align:3px;margin-right:6px;border-radius:1px}
+.tchart .lgd i.dot{width:8px;height:8px;border-radius:50%;vertical-align:0}
+.tchart svg{display:block;width:100%;height:190px;overflow:visible}
+.tchart svg text{font:10px ui-sans-serif,-apple-system,Segoe UI,Roboto,sans-serif;fill:var(--dim)}
+.tchart svg text.lab{fill:var(--fg);font-weight:600}
+.tchart .tt{position:absolute;pointer-events:none;background:var(--panel);border:1px solid var(--line);
+  border-radius:8px;padding:6px 9px;font-size:11.5px;line-height:1.5;white-space:nowrap;
+  box-shadow:0 6px 18px rgba(0,0,0,.3);font-variant-numeric:tabular-nums;display:none}
+.tchart .tt .sw{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:6px}
+.tfoot{margin-top:10px}
+.tjob pre{font:11px/1.4 ui-monospace,monospace;color:var(--dim);max-height:260px;overflow:auto;
+  background:var(--bg);border-radius:8px;padding:8px;margin:6px 0 0;white-space:pre-wrap}
 @keyframes xstripe{to{background-position:17px 0}}
 @keyframes xsheen{from{background-position:120% 0}to{background-position:-120% 0}}
 @keyframes xpop{from{transform:scale(.4);opacity:0}to{transform:scale(1);opacity:1}}
@@ -310,8 +419,8 @@ details.cf>summary b{font-size:14px}
 
 <header>
   <h1>AR2L &mdash; play the packer</h1>
-  <nav class="tabs" id="tabs"><button data-tab="game" class="on">Play</button><button data-tab="exp">Big experiment<span class="dot" id="xdot" hidden></span></button><button data-tab="cmp">Compare</button><span class="ink"></span></nav>
-  <span class="sub">arXiv:2310.04323 &mdash; you may use any placement that rests stably</span>
+  <nav class="tabs" id="tabs"><button data-tab="game" class="on">Play</button><button data-tab="exp">Big experiment<span class="dot" id="xdot" hidden></span></button><button data-tab="cmp">Compare</button><button data-tab="trn">New training<span class="dot" id="tdot" hidden></span></button><button data-tab="dash">Training</button><span class="ink"></span></nav>
+  <span class="sub">Koby : {{VERSION}}</span>
   <span class="spacer"></span>
   <span class="sub" id="who"></span>
 </header>
@@ -399,6 +508,15 @@ details.cf>summary b{font-size:14px}
             <option value="1">on &mdash; drop placements the arm collides on</option></select></div>
           <div class="pf"><span>arm base x moves (-1..1, tried in order)</span>
             <input id="armmoves" type="text" placeholder="0, -0.5, 0.5, -1, 1"></div>
+          <div class="pf"><span>stack-height limit over small boxes</span><select id="stackcap">
+            <option value="1">on &mdash; short stacks on small boxes</option>
+            <option value="0">off &mdash; any height on any box</option></select></div>
+          <div class="pf"><span>limited box types (0 blue, 1 white, 2 brown)</span>
+            <input id="stacktypes" type="text" placeholder="2"></div>
+          <div class="pf"><span>short side, cm: full limit / no limit</span>
+            <input id="stackside" type="text" placeholder="12, 30"></div>
+          <div class="pf"><span>box may start above it, cm: at small / at large end</span>
+            <input id="stackallow" type="text" placeholder="8, 140"></div>
         </div>
         <div class="row" style="margin-top:10px">
           <button id="preset" type="button">Reset to the opponent's own values</button>
@@ -614,6 +732,15 @@ details.cf>summary b{font-size:14px}
           <option value="1">on &mdash; drop placements the arm collides on</option></select></div>
         <div class="pf"><span>arm base x moves (-1..1, tried in order)</span>
           <input id="rcarmmoves" type="text" placeholder="0, -0.5, 0.5, -1, 1"></div>
+        <div class="pf"><span>stack-height limit over small boxes</span><select id="rcstackcap">
+          <option value="1">on &mdash; short stacks on small boxes</option>
+          <option value="0">off &mdash; any height on any box</option></select></div>
+        <div class="pf"><span>limited box types (0 blue, 1 white, 2 brown)</span>
+          <input id="rcstacktypes" type="text" placeholder="2"></div>
+        <div class="pf"><span>short side, cm: full limit / no limit</span>
+          <input id="rcstackside" type="text" placeholder="12, 30"></div>
+        <div class="pf"><span>box may start above it, cm: at small / at large end</span>
+          <input id="rcstackallow" type="text" placeholder="8, 140"></div>
         <div class="pf lock pf3"><span>item side &mdash; smallest / largest</span>
           <div class="tri" style="grid-template-columns:1fr 1fr">
             <input id="rclo" disabled><input id="rchi" disabled></div></div>
@@ -687,8 +814,8 @@ details.cf>summary b{font-size:14px}
       <div class="pf"><span>results folder</span>
         <input id="xout" type="text" spellcheck="false" value="results/big_experiment"></div>
       <div class="pf wide"><span>packer</span><select id="xopp"></select></div>
-      <div class="pf wide"><span>experiment name &mdash; the compare plot's legend (optional)</span>
-        <input id="xname" type="text" spellcheck="false" placeholder="Experiment N"></div>
+      <div class="pf wide"><span>experiment name &mdash; the compare plot's legend (required)</span>
+        <input id="xname" type="text" spellcheck="false" placeholder="required"></div>
     </div>
     <details class="par" id="xpardet" open>
       <summary>Experiment parameters <span id="xpsrc" style="text-transform:none;letter-spacing:0"></span></summary>
@@ -742,6 +869,15 @@ details.cf>summary b{font-size:14px}
           <option value="1">on &mdash; drop placements the arm collides on</option></select></div>
         <div class="pf"><span>arm base x moves (-1..1, tried in order)</span>
           <input id="xarmmoves" type="text" placeholder="0, -0.5, 0.5, -1, 1"></div>
+        <div class="pf"><span>stack-height limit over small boxes</span><select id="xstackcap">
+          <option value="1">on &mdash; short stacks on small boxes</option>
+          <option value="0">off &mdash; any height on any box</option></select></div>
+        <div class="pf"><span>limited box types (0 blue, 1 white, 2 brown)</span>
+          <input id="xstacktypes" type="text" placeholder="2"></div>
+        <div class="pf"><span>short side, cm: full limit / no limit</span>
+          <input id="xstackside" type="text" placeholder="12, 30"></div>
+        <div class="pf"><span>box may start above it, cm: at small / at large end</span>
+          <input id="xstackallow" type="text" placeholder="8, 140"></div>
       </div>
       <div class="row" style="margin-top:10px">
         <button id="xpreset" type="button">Reset to the packer's own values</button>
@@ -805,6 +941,46 @@ details.cf>summary b{font-size:14px}
   <div id="cfiles"></div>
 </section>
 
+<!-- start ar2l.train runs (ar2l.viz.trainer); the form is train's own argparser -->
+<section id="trn" hidden>
+  <div class="card" id="tjobcard" hidden>
+    <h2>Runs started from this server &mdash; full loss curves in the Training tab</h2>
+    <div id="tjobs"></div>
+  </div>
+  <div class="card">
+    <h2>New training &mdash; every flag of ar2l.train, preset from the config file</h2>
+    <div class="cbar">
+      <input id="tcfg" type="text" spellcheck="false" placeholder="config.yaml"
+        title="--config: a YAML merged over config.yaml; empty = config.yaml alone">
+      <button id="treload" type="button" title="read the config file again and reset every field to it">Reload defaults</button>
+    </div>
+    <div class="cbar" style="margin-top:10px">
+      <select id="trun" style="flex:1;min-width:220px" title="a run under runs/, with the settings it was trained with"></select>
+      <button id="tresume" type="button" disabled title="fill the form with this run's settings, its name, and --resume ticked">Resume it</button>
+      <button id="tcopy" type="button" disabled title="fill the form with this run's settings, for a new run under a new name">Copy its settings</button>
+    </div>
+    <div class="opt" id="trunmsg"></div>
+    <div id="tform"></div>
+    <div class="tcmd" id="tcmd"></div>
+    <div id="terr" class="opt"></div>
+    <div class="row" style="margin-top:12px">
+      <button class="go" id="tstart">Start training &rarr;</button>
+      <span class="sub">changed fields are marked; the run keeps going when this page is closed, and stops with the game server's terminal</span>
+    </div>
+  </div>
+  <div id="ttip"></div>
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+    <linearGradient id="tgrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="var(--c0)"/>
+      <stop offset="1" stop-color="var(--c4)"/></linearGradient></defs></svg>
+</section>
+
+<!-- the training dashboard (ar2l.viz.dashboard), served by this server under
+     /dashboard/ and loaded the first time the tab is opened -->
+<section id="dash" hidden>
+  <iframe id="dashf" title="training dashboard"
+    style="width:100%;height:calc(100vh - 70px);border:0;display:block"></iframe>
+</section>
+
 </main>
 
 <script>
@@ -831,6 +1007,8 @@ const PF = {
   nb: '#nb', n_pick: '#npick', n_items: '#nitems', max_l: '#maxl',
   rot: '#prot', ems: '#ems', stability: '#stab', min_support: '#msup',
   arm_collision: '#armcol', base_x_moves: '#armmoves',
+  stack_cap: '#stackcap', stack_cap_types: '#stacktypes',
+  stack_cap_side_cm: '#stackside', stack_cap_allow_cm: '#stackallow',
   source: '#src', data: '#data', pallet: '#palpick', order_random: '#ordrnd',
   pallet_cm: ['#pcm0', '#pcm1', '#pcm2'], cell_cm: '#cellcm',
   box_scale: '#bscale', box_round: '#bround',
@@ -843,7 +1021,8 @@ const EMSTEXT = {1: 'the corners of the empty maximal spaces',
 const PSTR = new Set(['stability', 'source', 'data', 'box_round']);
 const PFLOAT = new Set(['min_support', 'order_random', 'cell_cm', 'box_scale']);
 /* a list of numbers typed as "0, -0.5, 0.5"; the server checks the values */
-const PNUMS = new Set(['base_x_moves']);
+const PNUMS = new Set(['base_x_moves', 'stack_cap_types', 'stack_cap_side_cm',
+  'stack_cap_allow_cm']);
 const readList = v => v.split(/[\s,]+/).filter(t => t !== '').map(Number);
 const showList = v => (v || []).join(', ');
 /* what an orders file decides, so the form shows it rather than takes it */
@@ -854,7 +1033,9 @@ const PLABEL = {source: 'box source', data: 'data file', pallet: 'pallet',
   nb: 'window N_B', n_pick: 'reach k', n_items: 'items in the sequence',
   max_l: 'candidate cap', rot: 'orientations', ems: 'action space',
   stability: 'stability rule', min_support: 'support floor',
-  arm_collision: 'robot-arm filter', base_x_moves: 'arm base x moves'};
+  arm_collision: 'robot-arm filter', base_x_moves: 'arm base x moves',
+  stack_cap: 'stack-height limit', stack_cap_types: 'limited box types',
+  stack_cap_side_cm: 'stack-limit sides (cm)', stack_cap_allow_cm: 'stack-limit allowances (cm)'};
 
 function readParams(pf = PF){
   const o = {};
@@ -896,12 +1077,20 @@ function setPallet(i){
   sel.value = String(PALLET);
 }
 let PLIST = '';
+/* an <option> holds text only, so a pallet's mix is told by colour name:
+   ": 12 blue, 20 white, 8 brown", leaving out the types it has none of */
+const PTNAME = ['blue', 'white', 'brown'];
+const palTypes = ts => {
+  const parts = (ts || []).map((c, t) => c ? `${c} ${PTNAME[t] || 'type ' + (t + 1)}` : '')
+                          .filter(Boolean);
+  return parts.length ? ': ' + parts.join(', ') : '';
+};
 function fillPallets(list){
-  const key = list.map(q => q.id + ':' + q.boxes).join(',');
+  const key = list.map(q => q.id + ':' + q.boxes + ':' + (q.types || []).join('/')).join(',');
   if (key === PLIST) return;
   PLIST = key;
   $('#palpick').innerHTML = '<option value="-1">a random pallet (dealt by the seed)</option>'
-    + list.map(q => `<option value="${q.i}">#${q.i} &mdash; ${q.id} (${q.boxes} boxes)</option>`).join('');
+    + list.map(q => `<option value="${q.i}">#${q.i} &mdash; ${q.id} (${q.boxes} boxes${palTypes(q.types)})</option>`).join('');
   $('#palpick').value = list.some(q => q.i === PALLET) ? String(PALLET) : '-1';
 }
 
@@ -1528,6 +1717,12 @@ const TFILL = t => t < 0 ? cvar('--panel') : boxColor(t, 0);
 // a swatch rather than coloured text: "white" cannot be written in white
 const TSW   = t => `<span class="tsw" style="background:${TFILL(t)}"></span>`;
 const typed = () => B && B.n_types > 1;
+// how many of each type a list of placed types holds, indexed by type
+function typeCounts(types){
+  const n = Array(B.n_types).fill(0);
+  (types || []).forEach(t => { if (t >= 0 && t < n.length) n[t]++; });
+  return n;
+}
 // a probability in the few characters a badge has room for
 const PCT = p => p >= .995 ? '100%' : p >= .1 ? Math.round(p * 100) + '%'
                : p >= .001 ? (p * 100).toFixed(1) + '%' : '<0.1%';
@@ -1593,10 +1788,12 @@ function render(){
   syncZoom();
   drawPlay3d();
   // the legend is the only place the type names and their colours are stated
-  // together, so it only earns its line when there is more than one type
+  // together, so it only earns its line when there is more than one type;
+  // each entry also says how many of that type are already in the bin
+  const tn = typeCounts(B.placed_types);
   $('#tlg').innerHTML = !typed() ? ''
     : Array.from({length: B.n_types}, (_, t) =>
-        `<span><i style="background:${TFILL(t)}"></i>${TNAME(t)}</span>`).join('');
+        `<span><i style="background:${TFILL(t)}"></i>${TNAME(t)} &times; <b>${tn[t]}</b></span>`).join('');
   $('#palsub').innerHTML = B.done ? ''
     : `&mdash; x &rarr; right, y &darr; down &middot; ${B.ncand} of your ${B.nfree}
        placements are ones the packer would also consider`;
@@ -1842,6 +2039,8 @@ function renderResult(){
     <div class="big">${(o.util * 100).toFixed(1)}<span style="font-size:18px">%</span></div>
     <div class="sub" style="margin-bottom:8px">of the bin filled</div>
     <div class="stat"><span>boxes packed</span><b>${o.items}</b></div>
+    ${typed() ? typeCounts(o.placed_types).map((c, t) =>
+      `<div class="stat"><span>${TSW(t)}${TNAME(t)}</span><b>${c}</b></div>`).join('') : ''}
     <div class="stat"><span>ended because</span><b>${o.reason}</b></div>
     <div class="stat"><span>time taken</span><b>${secs}</b></div>`;
   $('#stat-h').innerHTML = stat(h, h.seconds.toFixed(0) + ' s');
@@ -1974,6 +2173,8 @@ const RPF = {
   nb: '#rcnb', n_pick: '#rcnpick', max_l: '#rcmaxl',
   rot: '#rcrot', ems: '#rcems', stability: '#rcstab', min_support: '#rcmsup',
   arm_collision: '#rcarmcol', base_x_moves: '#rcarmmoves',
+  stack_cap: '#rcstackcap', stack_cap_types: '#rcstacktypes',
+  stack_cap_side_cm: '#rcstackside', stack_cap_allow_cm: '#rcstackallow',
 };
 let RCROWS = [];
 let RCSEL = 0;           // the row shown in 3D beside this game's; 0 = none yet
@@ -2278,11 +2479,98 @@ $('#att').onchange = checkParams;
 $('#opp').onchange = loadPreset;
 $('#preset').onclick = loadPreset;
 
+/* A <select> shown as a button with a menu: plain options are rows, and each
+   <optgroup> becomes one row whose options open in a submenu on hover (or on a
+   tap). The select stays in the DOM, hidden, and remains the source of truth:
+   .value, .onchange and innerHTML all behave as before. */
+function ddEnhance(sel){
+  const wrap = document.createElement('div'); wrap.className = 'dd';
+  sel.parentNode.insertBefore(wrap, sel); wrap.appendChild(sel);
+  if (sel.style.width) wrap.style.width = sel.style.width;
+  const btn = document.createElement('button'); btn.type = 'button';
+  btn.innerHTML = '<span class="lbl"></span><span class="car">&#9662;</span>';
+  wrap.appendChild(btn);
+  let menu = null;
+  const label = () => {
+    const o = sel.options[sel.selectedIndex];
+    btn.querySelector('.lbl').textContent = o ? o.textContent : '—';
+    btn.title = o ? o.textContent : '';
+  };
+  const close = () => { if (menu){ menu.remove(); menu = null; } };
+  const pick = v => {
+    close();
+    if (sel.value === v) return;
+    sel.value = v; sel.dispatchEvent(new Event('change', {bubbles: true}));
+  };
+  const row = o => {
+    const d = document.createElement('div');
+    d.className = 'ddi' + (o.value === sel.value ? ' on' : '');
+    d.textContent = o.textContent;
+    d.onclick = e => { e.stopPropagation(); pick(o.value); };
+    return d;
+  };
+  const open = () => {
+    menu = document.createElement('div'); menu.className = 'ddm';
+    let prev = null;
+    for (const ch of sel.children){
+      const grp = ch.tagName === 'OPTGROUP';
+      if (prev !== null && prev !== grp) menu.appendChild(Object.assign(document.createElement('div'), {className: 'ddsep'}));
+      prev = grp;
+      if (!grp){ menu.appendChild(row(ch)); continue; }
+      const g = document.createElement('div');
+      const has = [...ch.children].some(o => o.value === sel.value);
+      g.className = 'ddi grp' + (has ? ' on' : '');
+      g.innerHTML = `<span></span><span class="n">${ch.children.length}</span>`;
+      g.firstChild.textContent = ch.label;
+      const sub = document.createElement('div'); sub.className = 'ddm ddsub'; sub.hidden = true;
+      for (const o of ch.children) sub.appendChild(row(o));
+      g.appendChild(sub);
+      const show = on => {
+        for (const x of menu.querySelectorAll('.ddi.grp')) if (x !== g){
+          x.classList.remove('open'); x.querySelector('.ddm').hidden = true; }
+        g.classList.toggle('open', on); sub.hidden = !on;
+        if (on){
+          // fixed, so the scrolling main menu cannot clip it; flip left at the edge
+          const r = g.getBoundingClientRect(), w = sub.offsetWidth, h = sub.offsetHeight;
+          const x = r.right + w > innerWidth ? r.left - w + 2 : r.right - 2;   // overlap: no gap to cross
+          sub.style.left = Math.max(4, x) + 'px';
+          sub.style.top = Math.max(4, Math.min(r.top - 5, innerHeight - h - 4)) + 'px';
+        }
+      };
+      g.onmouseenter = () => show(true);
+      g.onmouseleave = () => show(false);
+      g.onclick = e => { e.stopPropagation(); show(sub.hidden); };
+      menu.appendChild(g);
+    }
+    wrap.appendChild(menu);
+  };
+  btn.onclick = e => {
+    e.stopPropagation();
+    if (menu){ close(); return; }
+    if (btn.closest('.pf.lock') || sel.disabled) return;
+    document.dispatchEvent(new Event('ddclose')); open();
+  };
+  document.addEventListener('click', e => { if (!wrap.contains(e.target)) close(); });
+  document.addEventListener('ddclose', close);
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
+  // keep the button's label in step with code that sets .value or rewrites the list
+  const proto = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value');
+  Object.defineProperty(sel, 'value', {configurable: true,
+    get(){ return proto.get.call(this); },
+    set(v){ proto.set.call(this, v); label(); }});
+  sel.addEventListener('change', label);
+  new MutationObserver(() => { close(); label(); })
+    .observe(sel, {childList: true, subtree: true});
+  label();
+}
+['#opp', '#rcopp', '#xopp'].forEach(s => ddEnhance($(s)));
+
 (async () => {
   const m = await (await fetch('/api/setup')).json();
   $('#opp').innerHTML = m.policies.map(r => `<option value="run:${r}">${r}</option>`).join('')
+    + '<optgroup label="Heuristics &amp; random">'
     + m.heuristics.map(h => `<option value="heur:${h}">${h.toUpperCase()} (heuristic)</option>`).join('')
-    + '<option value="random">random (uniform over the candidates)</option>';
+    + '<option value="random">random (uniform over the candidates)</option></optgroup>';
   // the recalculation picker races the same field the setup form does
   $('#rcopp').innerHTML = $('#opp').innerHTML;
   $('#att').innerHTML = '<option value="none">none &mdash; nominal conveyor</option>'
@@ -2324,6 +2612,9 @@ const XCOL = ['--c0', '--c4', '--c2', '--c1', '--c5'];
 let XJOB = null, XPOLL = null, XROWS = {}, XRUN = false, XBAD = false;
 function showTab(t){
   $('#tabgame').hidden = t !== 'game'; $('#exp').hidden = t !== 'exp'; $('#cmp').hidden = t !== 'cmp';
+  $('#dash').hidden = t !== 'dash'; $('#trn').hidden = t !== 'trn';
+  if (t === 'trn'){ if (!TFORM) tLoad(); tPoll(); }
+  if (t === 'dash' && !$('#dashf').src) $('#dashf').src = '/dashboard/';
   document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === t));
   moveInk();
   history.replaceState(null, '', t !== 'game' ? '#' + t : location.pathname + location.search);
@@ -2348,11 +2639,15 @@ const XPF = {
   nb: '#xnb', n_pick: '#xnpick', max_l: '#xmaxl',
   rot: '#xprot', ems: '#xems', stability: '#xstab', min_support: '#xmsup',
   type_constraint: '#xtcon', arm_collision: '#xarmcol', base_x_moves: '#xarmmoves',
+  stack_cap: '#xstackcap', stack_cap_types: '#xstacktypes',
+  stack_cap_side_cm: '#xstackside', stack_cap_allow_cm: '#xstackallow',
   pallet_cm: ['#xpcm0', '#xpcm1', '#xpcm2'], cell_cm: '#xcellcm',
   box_scale: '#xbscale', box_round: '#xbround', order_random: '#xordrnd',
 };
 PLABEL.type_constraint = 'stacking rule';
 let XCHECK = null, XFILLED = false;
+/* a run with no name cannot be told apart in Compare, nor deleted by name */
+const xNoName = () => !$('#xname').value.replace(/,/g, ' ').trim();
 function xCheck(){
   clearTimeout(XCHECK);
   XCHECK = setTimeout(async () => {
@@ -2360,7 +2655,7 @@ function xCheck(){
     const err = r.errors || [];
     $('#xperr').textContent = err.join('\n');
     XBAD = !!err.length;
-    if (!XRUN) $('#xrun').disabled = XBAD;
+    if (!XRUN) $('#xrun').disabled = XBAD || xNoName();
     const off = new Set((r.mismatch || []).map(m => m.key));
     for (const [k, sel] of Object.entries(XPF))
       (Array.isArray(sel) ? sel : [sel]).forEach(t =>
@@ -2398,7 +2693,7 @@ function xDraw(s){
   if (XRUN && s.state !== 'running'){ CMP = null; if (!$('#cmp').hidden) cLoad(); }
   const run = XRUN = s.state === 'running';
   $('#xsumcard').hidden = false;
-  $('#xrun').disabled = run || XBAD; $('#xstop').disabled = !run;
+  $('#xrun').disabled = run || XBAD || xNoName(); $('#xstop').disabled = !run;
   $('#xdot').hidden = !run;
   $('#xstate').innerHTML = run ? `<span class="spin"></span> ${s.name ? s.name.replace(/[&<>"]/g, c => `&#${c.charCodeAt(0)};`) + ' &middot; ' : ''}packing with ${s.label || s.spec}&hellip;`
     : s.state === 'done' ? `done in ${s.elapsed.toFixed(1)} s` : s.state;
@@ -2466,16 +2761,18 @@ async function xPoll(){
 }
 $('#xrun').onclick = async () => {
   $('#xmsg').textContent = '';
+  if (xNoName()){ $('#xmsg').textContent = 'name the experiment first'; $('#xname').focus(); return; }
   $('#xrun').disabled = true;
   const r = await api('/api/exp/start', {dir: $('#xdir').value.trim(), out: $('#xout').value.trim(),
                                          spec: $('#xopp').value, name: $('#xname').value.trim(),
                                          seed: +$('#xseed').value || 0,
                                          params: readParams(XPF)});
-  if (r.error){ $('#xmsg').textContent = (r.errors || [r.error]).join('\n'); $('#xrun').disabled = XBAD; return; }
+  if (r.error){ $('#xmsg').textContent = (r.errors || [r.error]).join('\n'); $('#xrun').disabled = XBAD || xNoName(); return; }
   XJOB = null; await fetch('/api/exp/status?job=' + r.job).then(x => x.json()).then(xDraw);
   XJOB = r.job; xPoll();
 };
 for (const sel of Object.values(XPF).flat()) $(sel).addEventListener('input', xCheck);
+$('#xname').addEventListener('input', () => { if (!XRUN) $('#xrun').disabled = XBAD || xNoName(); });
 $('#xopp').onchange = xPreset;
 $('#xpreset').onclick = xPreset;
 $('#xfromplay').onclick = () => { writeParams(readParams(), XPF); xCheck(); };
@@ -2521,7 +2818,7 @@ async function cLoad(){
 }
 function cKeys(){
   $('#cks').innerHTML = CKEYS.map(k => `<label class="ck${k.named ? '' : ' unnamed'}"${k.named ? ''
-      : ' title="run without a name: matched by its place in each file, so it cannot be deleted by name"'}>
+      : ' title="run without a name: matched by its place in each file"'}>
     <input type="checkbox" value="${cEsc(k.key)}"${CPICK && CPICK.has(k.key) ? ' checked' : ''}>
     <i style="background:${cCol(k.key)}"></i><b>${cEsc(k.key)}</b>
     <span class="sub">${cPl(k.files, 'file')}</span></label>`).join('');
@@ -2531,7 +2828,7 @@ function cKeys(){
   cSync();
 }
 function cSync(){
-  const n = CKEYS.filter(k => k.named && CPICK && CPICK.has(k.key)).length;
+  const n = CKEYS.filter(k => CPICK && CPICK.has(k.key)).length;
   $('#cdel').disabled = !n;
   $('#cdel').textContent = n ? `Delete ${n} checked…` : 'Delete checked…';
 }
@@ -2612,13 +2909,13 @@ $('#cnone').onclick = () => { CPICK = new Set(); cKeys(); cLoad(); };
 $('#cexp').onclick = () => document.querySelectorAll('details.cf').forEach(d => d.open = true);
 $('#ccol').onclick = () => document.querySelectorAll('details.cf').forEach(d => d.open = false);
 $('#cdel').onclick = async () => {
-  const names = CKEYS.filter(k => k.named && CPICK.has(k.key));
-  const kept = CKEYS.filter(k => !k.named && CPICK.has(k.key)).length;
+  const names = CKEYS.filter(k => CPICK.has(k.key));
+  const unnamed = names.filter(k => !k.named).length;
   const blocks = names.reduce((a, k) => a + k.blocks, 0);
   if (!confirm(`Delete from every report in ${CMP.dir}:\n\n`
       + names.map(k => `  • ${k.key}  (${cPl(k.files, 'file')})`).join('\n')
       + `\n\n${cPl(blocks, 'block')} will be removed. This cannot be undone.`
-      + (kept ? `\n\n${cPl(kept, 'unnamed experiment')} checked will be kept: there is no name to delete by.` : ''))) return;
+      + (unnamed ? `\n\nAn unnamed experiment goes by its place in each file: unnamed ones after it get new numbers (Exp 11 can become Exp 10).` : ''))) return;
   const r = await api('/api/cmp/delete', {dir: $('#cdir').value.trim(), names: names.map(k => k.key)});
   if (r.error){ $('#cmsg').textContent = r.error; $('#cmsg').className = 'opt err'; return; }
   const n = Object.values(r.removed).reduce((a, b) => a + b, 0);
@@ -2628,9 +2925,369 @@ $('#cdel').onclick = async () => {
   $('#cmsg').textContent = `deleted ${cPl(n, 'block')} from ${cPl(Object.keys(r.removed).length, 'file')}`;
 };
 
+/* ================= new training =================
+   The fields come from the server, one per flag of ar2l.train's parser, with
+   the config file's value as the default.  The runs are the server's children,
+   so they outlive this page and are found again when it is reopened. */
+let TFORM = null, TCHECK = null, TPOLL = null, TREF = null, TRUNS = [];
+const TSEC = {'run name': 'Run', train: 'Training (train:)', env: 'Environment (env:)',
+              ppo: 'PPO (ppo:)', model: 'Model (model:)', eval: 'Orders data (eval:)',
+              run: 'Run settings (run:)', other: 'Other'};
+const tEsc = s => String(s).replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'})[c]);
+async function tLoad(){
+  const cfg = $('#tcfg').value.trim();
+  const r = await fetch('/api/train/form' + (cfg ? '?config=' + encodeURIComponent(cfg) : '')).then(x => x.json());
+  if (r.error){ $('#terr').textContent = r.error; return; }
+  TFORM = r; $('#tcfg').placeholder = r.config;
+  const by = {};
+  r.fields.forEach(f => (by[f.section] = by[f.section] || []).push(f));
+  $('#tform').innerHTML = r.sections.filter(s => by[s]).map(s => {
+    const body = by[s].map(f => {
+      const id = 'tf_' + f.dest, tip = `data-dest="${f.dest}"`;
+      if (f.kind === 'flag')
+        return `<label class="pf flag" ${tip}><input id="${id}" type="checkbox"${f.default ? ' checked' : ''}><span>${f.flag}</span></label>`;
+      const ctl = f.kind === 'choice'
+        ? `<select id="${id}">${f.choices.map(c => `<option${c === f.default ? ' selected' : ''}>${tEsc(c)}</option>`).join('')}</select>`
+        : `<input id="${id}" type="text" spellcheck="false" value="${tEsc(f.default)}"${f.required ? ' placeholder="required"' : ''}${f.suggest ? ` list="${id}_l" placeholder="a checkpoint, or empty"` : ''}>`
+          + (f.suggest ? `<datalist id="${id}_l">${f.suggest.map(q => `<option value="${tEsc(q)}">`).join('')}</datalist>` : '');
+      return `<div class="pf" ${tip}><span>${f.flag}</span>${ctl}</div>`;
+    }).join('');
+    return s === 'run name' ? `<div class="pg" style="margin-top:12px">${body}</div>`
+      : `<details class="par"${['train', 'env'].includes(s) ? ' open' : ''}><summary>${TSEC[s] || s}</summary><div class="pg">${body}</div></details>`;
+  }).join('');
+  $('#tform').querySelectorAll('input,select').forEach(e => e.addEventListener('input', tCheck));
+  TREF = null; TLOADED = null; $('#trunmsg').textContent = '';
+  tRuns();
+  tCheck();
+}
+/* --- load a run's own settings (its args.json), to resume it or copy it --- */
+async function tRuns(){
+  TRUNS = await fetch('/api/train/runs').then(x => x.json()).catch(() => []);
+  const keep = $('#trun').value;
+  $('#trun').innerHTML = `<option value="">Load a run's settings…</option>` + TRUNS.map(r =>
+    `<option value="${tEsc(r.name)}">${tEsc(r.name)} — ${tEsc(r.algo || '?')}, it ${r.it.toLocaleString()} / ${(r.iters || 0).toLocaleString()}`
+    + `${r.running ? ' · training now' : r.last_pt ? '' : ' · no last.pt'}</option>`).join('');
+  $('#trun').value = TRUNS.some(r => r.name === keep) ? keep : '';
+  tRunPick();
+}
+function tRunPick(){
+  const r = TRUNS.find(q => q.name === $('#trun').value);
+  $('#tcopy').disabled = !r;
+  $('#tresume').disabled = !r || !r.last_pt || r.running;
+  $('#tresume').title = !r ? '' : r.running ? 'it is training right now'
+    : !r.last_pt ? 'it has no last.pt to carry on from' : "fill the form with this run's settings, its name, and --resume ticked";
+}
+async function tFromRun(resume){
+  const name = $('#trun').value, r = TRUNS.find(q => q.name === name);
+  if (!r) return;
+  const res = await fetch('/api/train/run?name=' + encodeURIComponent(name)).then(x => x.json());
+  if (res.error){ $('#trunmsg').textContent = res.error; return; }
+  if (($('#tcfg').value.trim() || '') !== (res.config || '')){ $('#tcfg').value = res.config || ''; await tLoad(); $('#trun').value = name; tRunPick(); }
+  const v = Object.assign({}, res.values, {resume: resume});
+  if (!resume){ v.name = ''; }
+  TFORM.fields.forEach(f => {
+    if (!(f.dest in v)) return;
+    const e = $('#tf_' + f.dest);
+    if (f.kind === 'flag') e.checked = !!v[f.dest]; else e.value = v[f.dest];
+  });
+  TREF = Object.assign({}, res.values, {resume: resume, name: v.name});
+  TLOADED = {run: r, resume: resume};
+  if (!resume) $('#tf_name').focus();
+  tCheck();
+}
+/* what loading the run means, kept current as the form is edited */
+let TLOADED = null;
+function tRunMsg(){
+  if (!TLOADED){ $('#trunmsg').textContent = ''; return; }
+  const r = TLOADED.run, it = r.it.toLocaleString(), want = +$('#tf_iters').value || 0;
+  const same = $('#tf_name').value.trim() === r.name && $('#tf_resume').checked;
+  $('#trunmsg').textContent = !TLOADED.resume
+    ? `${r.name}'s settings, for a new run: give it a name. Set --init to one of its checkpoints to start from its weights.`
+    : !same ? `No longer resuming ${r.name}: the name or --resume was changed.`
+    : want <= r.it ? `${r.name} already reached iteration ${it} — raise --iters above that to train it further.`
+    : `Resumes ${r.name} from last.pt at iteration ${it} and trains on to ${want.toLocaleString()}. Marked fields differ from what it was trained with.`;
+}
+$('#trun').onchange = tRunPick;
+$('#tresume').onclick = () => tFromRun(true);
+$('#tcopy').onclick = () => tFromRun(false);
+function tValues(){
+  const v = {};
+  TFORM.fields.forEach(f => {
+    const e = $('#tf_' + f.dest);
+    v[f.dest] = f.kind === 'flag' ? e.checked : e.value;
+    const ref = TREF && f.dest in TREF ? TREF[f.dest] : f.default;
+    e.closest('.pf').classList.toggle('chg', f.kind === 'flag' ? e.checked !== ref : e.value.trim() !== ref);
+  });
+  return v;
+}
+function tCheck(){
+  clearTimeout(TCHECK);
+  const values = tValues();
+  tRunMsg();
+  TCHECK = setTimeout(async () => {
+    const r = await api('/api/train/check', {values, config: $('#tcfg').value.trim()});
+    $('#tcmd').textContent = '$ ' + r.cmd;
+    $('#terr').textContent = r.errors.join('\n');
+    $('#tstart').disabled = r.errors.length > 0;
+  }, 200);
+}
+/* --- a run's card: built once, then only its numbers change, so an open
+   output panel or a hover on the chart survives the 2 s refresh --- */
+const tHms = x => {
+  if (x == null || !isFinite(x)) return '—';
+  x = Math.max(0, Math.floor(x));
+  const p2 = n => String(n).padStart(2, '0');
+  return `${Math.floor(x / 3600)}:${p2(Math.floor(x % 3600 / 60))}:${p2(x % 60)}`;
+};
+const tDur = x => {
+  if (x == null || !isFinite(x)) return '—';
+  x = Math.max(0, x);
+  if (x < 60) return Math.round(x) + ' s';
+  if (x < 3600) return Math.round(x / 60) + ' min';
+  if (x < 86400) return Math.floor(x / 3600) + ' h ' + String(Math.round(x % 3600 / 60)).padStart(2, '0') + ' min';
+  return Math.floor(x / 86400) + ' d ' + Math.round(x % 86400 / 3600) + ' h';
+};
+const tClock = t => {
+  const d = new Date(t * 1000), now = new Date(), hm = d.toTimeString().slice(0, 5);
+  return d.toDateString() === now.toDateString() ? hm
+    : d.toLocaleDateString(undefined, {weekday: 'short'}) + ' ' + hm;
+};
+const tPct = v => v == null ? '—' : (100 * v).toFixed(1) + '%';
+const tRate = r => r == null ? '—' : r < 1 ? Math.round(r * 1000) + ' ms' : r.toFixed(2) + ' s';
+function tCard(j){
+  const el = document.createElement('div');
+  el.className = 'tjob'; el.dataset.name = j.name;
+  el.innerHTML = `
+    <div class="thd"><span class="nm">${tEsc(j.name)}</span><span class="st"></span>
+      <span class="chip">${tEsc(j.algo)}</span><span class="chip">${tEsc(j.device)}</span><span class="chip" data-f="pid"></span>
+      <span class="sub" data-f="beat"></span><span class="tacts" data-f="acts"></span></div>
+    <div class="tbody">
+      <div class="tring"><svg viewBox="0 0 150 150"><circle class="bg" cx="75" cy="75" r="64"/>
+        <circle class="fg" cx="75" cy="75" r="64" stroke-dasharray="402.1" stroke-dashoffset="402.1"/></svg>
+        <div class="in"><div class="pc" data-f="pc"></div><div class="its" data-f="its"></div></div></div>
+      <div class="tiles">
+        <div class="tile"><div class="k">elapsed</div><div class="v" data-f="el"></div><div class="s" data-f="el2"></div></div>
+        <div class="tile"><div class="k">time left</div><div class="v" data-f="eta"></div><div class="s" data-f="eta2"></div></div>
+        <div class="tile"><div class="k">finishes at</div><div class="v" data-f="fin"></div><div class="s" data-f="fin2"></div></div>
+        <div class="tile"><div class="k">speed / iteration</div><div class="v" data-f="rate"></div><div class="s" data-f="rate2"></div></div>
+        <div class="tile"><div class="k"><span class="sw" style="background:var(--tr)"></span>train util</div><div class="v" data-f="util"></div><div class="s" data-f="util2"></div></div>
+        <div class="tile"><div class="k"><span class="sw" style="background:var(--ho)"></span>held-out</div><div class="v" data-f="held"></div><div class="s" data-f="held2"></div></div>
+        <div class="tile best"><div class="k">best held-out</div><div class="v" data-f="best"></div><div class="s" data-f="best2"></div></div>
+        <div class="tile"><div class="k">GPU memory</div><div class="v" data-f="gpu"></div><div class="s" data-f="gpu2"></div></div>
+      </div></div>
+    <div class="tcks" data-f="cks"></div>
+    <div class="tchart"><div class="lgd"><span><i style="background:var(--tr)"></i>train utilization</span>
+      <span><i class="dot" style="background:var(--ho)"></i>held-out eval</span></div>
+      <svg data-f="svg"></svg><div class="tt"></div></div>
+    <div class="tfoot"><div class="xout" data-f="cmd"></div>
+      <details><summary class="sub" style="cursor:pointer">output</summary><pre data-f="out"></pre></details></div>`;
+  el.querySelector('[data-f=acts]').addEventListener('click', ev => {
+    const b = ev.target.closest('button[data-act]');
+    if (b && !b.disabled) tAct(el._j, b.dataset.act, b);
+  });
+  tHover(el);
+  return el;
+}
+function tFill(el, j){
+  const f = k => el.querySelector(`[data-f=${k}]`), set = (k, v) => { f(k).textContent = v; };
+  const run = j.state === 'running' || j.state === 'stopping', frac = j.iters ? Math.min(1, j.it / j.iters) : 0;
+  el.className = 'tjob ' + j.state;
+  el.querySelector('.st').textContent = {stopping: 'saving…'}[j.state] || j.state
+    + (j.rc && j.state === 'failed' ? ` (exit ${j.rc})` : '');
+  set('pid', (j.adopted ? 'found · ' : '') + 'pid ' + j.pid);
+  f('pid').title = j.adopted ? 'started outside this server (command line, or a server since closed): found running and taken into the list' : '';
+  const firstLog = Math.min(j.iters, j.log_every), savedAt = j.last_pt && j.last_pt.it;
+  set('beat', j.state === 'stopping' ? 'finishing this iteration, then saving last.pt'
+    : run ? (j.since_log == null ? (j.it ? `first log line at it ${firstLog}` : 'starting…')
+                                 : `last log ${tDur(j.since_log)} ago`)
+    : j.state === 'saved' ? `saved at it ${savedAt ?? j.it} · Resume carries on from there`
+    : j.ended ? 'ended ' + tClock(j.ended) : '');
+  const acts = tActs(j), sig = acts.map(a => a.join('|')).join(',');
+  if (f('acts').dataset.sig !== sig){
+    f('acts').dataset.sig = sig;
+    f('acts').innerHTML = acts.map(([act, label, cls, dis, tip]) =>
+      `<button data-act="${act}" class="${cls}"${dis ? ' disabled' : ''} title="${tEsc(tip)}">${label}</button>`).join('');
+  }
+  el.querySelector('.tring .fg').style.strokeDashoffset = 402.1 * (1 - frac);
+  f('pc').innerHTML = `${Math.floor(100 * frac)}<small>%</small>`;
+  set('its', `${j.it.toLocaleString()} / ${j.iters.toLocaleString()} it`);
+  set('el', tHms(j.elapsed)); set('el2', 'started ' + tClock(j.started));
+  set('eta', run ? tDur(j.eta) : j.state === 'done' ? 'done' : '—');
+  set('eta2', run && j.it < j.iters ? `${(j.iters - j.it).toLocaleString()} it to go` : '');
+  set('fin', run && j.eta != null ? tClock(Date.now() / 1000 + j.eta) : j.ended ? tClock(j.ended) : '—');
+  set('fin2', run && j.eta != null ? 'estimated, at the average speed' : j.ended ? 'ended' : '');
+  set('rate', tRate(j.rate));
+  set('rate2', j.recent != null ? `recently ${tRate(j.recent)}${j.resumed_at ? ' · resumed at ' + j.resumed_at : ''}` : '');
+  set('util', tPct(j.util)); set('util2', j.items != null ? `${j.items.toFixed(1)} boxes / pallet` : '');
+  set('held', tPct(j.held));
+  set('held2', `${j.n_evals} eval${j.n_evals === 1 ? '' : 's'}` + (run && j.next_eval ? ` · next at ${j.next_eval}` : ''));
+  set('best', j.best ? tPct(j.best[1]) : '—');
+  set('best2', j.best ? `at it ${j.best[0]}` + (j.lower_better ? ' · lower is better' : '') : 'after the first eval');
+  set('gpu', j.gpu_mb != null ? (j.gpu_mb / 1024).toFixed(2) + ' GB' : '—');
+  set('gpu2', j.gpu_mb != null ? 'nvidia-smi, this process' : run ? 'not on a GPU' : '');
+  const ck = (n, c, extra) => c
+    ? `<span class="tck"><b>${n}</b>it ${c.it ?? '?'} · saved ${tDur(c.age)} ago · ${c.mb.toFixed(1)} MB${extra || ''}</span>`
+    : `<span class="tck none"><b>${n}</b>not saved yet</span>`;
+  f('cks').innerHTML = ck('best.pt', j.best_pt) + ck('last.pt', j.last_pt)
+    + (run && j.next_save ? `<span class="tck">next save at it <b>${j.next_save}</b></span>` : '');
+  set('cmd', j.cmd);
+  const pre = f('out'), stick = pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 4;
+  if (pre.textContent !== j.out){ pre.textContent = j.out; if (stick) pre.scrollTop = pre.scrollHeight; }
+  if (j.state === 'failed') el.querySelector('details').open = true;
+  el._j = j; tChart(el);
+}
+/* the card's buttons for the state the run is in: [act, label, class, disabled, tip] */
+function tActs(j){
+  const save = j.graceful
+    ? 'finish the iteration under way, save last.pt with everything --resume needs, and exit'
+    : 'this run started before stop-and-save existed: stopping kills it, and only the last regular last.pt is kept';
+  const cancel = 'kill it now and move its folder (settings, log, checkpoints) to runs/.trash';
+  if (j.state === 'running') return [['save', 'Stop &amp; save', 'go', false, save], ['cancel', 'Cancel', 'del', false, cancel]];
+  if (j.state === 'stopping') return [['save', 'Saving…', '', true, 'waiting for the iteration under way to finish'], ['cancel', 'Cancel', 'del', false, cancel]];
+  const out = [];
+  if (j.resumable) out.push(['resume', 'Resume', 'go', false, 'start it again from last.pt, with the settings it was trained with']);
+  else if (j.state === 'done') out.push(['further', 'Train further…', '', false, 'load it into the form with --resume, to raise --iters']);
+  out.push(['dismiss', 'Dismiss', '', false, 'take this card off the list; the run stays in runs/']);
+  return out;
+}
+async function tAct(j, act, b){
+  const msg = t => { $('#terr').textContent = t; };
+  if (act === 'save'){
+    if (!j.graceful && !confirm(`${j.name} started before stop-and-save existed, so stopping kills it: only the last regular last.pt is kept. Stop it?`)) return;
+    b.disabled = true;
+    const r = await api('/api/train/stop', {name: j.name, mode: 'save'});
+    if (r.error) msg(r.error);
+  } else if (act === 'cancel'){
+    const earlier = j.resumed_at ? `\n\nThat includes the iterations before ${j.resumed_at} from earlier sessions.` : '';
+    if (!confirm(`Cancel ${j.name}?\n\nIt is killed now, and runs/${j.name} (its settings, log and checkpoints) is moved to runs/.trash.${earlier}`)) return;
+    b.disabled = true;
+    const r = await api('/api/train/stop', {name: j.name, mode: 'cancel'});
+    if (r.error) msg(r.error);
+    tRuns();
+  } else if (act === 'resume'){
+    b.disabled = true;
+    const r = await api('/api/train/resume', {name: j.name});
+    if (r.error){ msg(r.error); b.disabled = false; }
+    tRuns();
+  } else if (act === 'further'){
+    await tRuns();
+    $('#trun').value = j.name; tRunPick(); await tFromRun(true);
+    $('#tf_iters').focus(); $('#tf_iters').scrollIntoView({block: 'center', behavior: 'smooth'});
+    return;
+  } else if (act === 'dismiss'){
+    await api('/api/train/dismiss', {name: j.name});
+  }
+  tPoll();
+}
+/* train utilization (line) and the held-out evals (dots on a line) on one %
+   axis; x runs to the last iteration, so the empty right is what is left */
+function tChart(el){
+  const j = el._j, svg = el.querySelector('[data-f=svg]');
+  const W = svg.clientWidth || 800, H = 190, L = 40, R = 14, T = 12, B = 22;
+  const pts = j.curve, ev = j.evals;
+  if (!pts.length){
+    svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    svg.innerHTML = `<text x="${W / 2}" y="${H / 2}" text-anchor="middle">the curve starts with the first log line, at iteration ${Math.min(j.iters, j.log_every)}${j.live ? '' : ' — progress shows once it is written'}</text>`;
+    return;
+  }
+  const vals = pts.map(p => p[1]).concat(ev.map(e => e[1]));
+  let lo = Math.min(...vals), hi = Math.max(...vals);
+  const pad = Math.max(0.01, (hi - lo) * 0.12); lo = Math.max(0, lo - pad); hi = Math.min(1, hi + pad);
+  const X = it => L + (W - L - R) * it / Math.max(1, j.iters), Y = v => T + (H - T - B) * (1 - (v - lo) / (hi - lo || 1));
+  const step = [.01, .02, .05, .1, .2].find(s => (hi - lo) / s <= 5) || .25;
+  let g = '';
+  for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step)
+    g += `<line x1="${L}" x2="${W - R}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line)"/><text x="${L - 6}" y="${Y(v) + 3}" text-anchor="end">${Math.round(v * 100)}%</text>`;
+  for (let k = 0; k <= 4; k++){
+    const it = Math.round(j.iters * k / 4);
+    g += `<text x="${X(it)}" y="${H - 6}" text-anchor="${k === 0 ? 'start' : k === 4 ? 'end' : 'middle'}">${it.toLocaleString()}</text>`;
+  }
+  const now = X(j.it);
+  g += `<rect x="${now}" y="${T}" width="${Math.max(0, W - R - now)}" height="${H - T - B}" fill="var(--fg)" opacity=".025"/>`;
+  g += `<line x1="${now}" x2="${now}" y1="${T}" y2="${H - B}" stroke="var(--dim)" stroke-dasharray="2 3" opacity=".6"/>`;
+  const path = a => a.map((p, i) => (i ? 'L' : 'M') + X(p[0]).toFixed(1) + ' ' + Y(p[1]).toFixed(1)).join('');
+  g += `<path d="${path(pts)}" fill="none" stroke="var(--tr)" stroke-width="2" stroke-linejoin="round"/>`;
+  if (ev.length){
+    g += `<path d="${path(ev)}" fill="none" stroke="var(--ho)" stroke-width="1.5" opacity=".75"/>`;
+    g += ev.map(e => `<circle cx="${X(e[0])}" cy="${Y(e[1])}" r="${ev.length > 60 ? 2.5 : 4}" fill="var(--ho)" stroke="var(--panel)" stroke-width="2"/>`).join('');
+    if (j.best){
+      const bx = X(j.best[0]), by = Y(j.best[1]), right = bx > W - 110;
+      g += `<circle cx="${bx}" cy="${by}" r="7" fill="none" stroke="var(--ho)" stroke-width="2"/>`
+         + `<text class="lab" x="${bx + (right ? -11 : 11)}" y="${by - 9}" text-anchor="${right ? 'end' : 'start'}">best ${tPct(j.best[1])}</text>`;
+    }
+  }
+  const lp = pts[pts.length - 1];
+  g += `<circle cx="${X(lp[0])}" cy="${Y(lp[1])}" r="4" fill="var(--tr)" stroke="var(--panel)" stroke-width="2"/>`;
+  g += `<line class="xh" x1="0" x2="0" y1="${T}" y2="${H - B}" stroke="var(--dim)" visibility="hidden"/>`;
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.innerHTML = g;
+  svg._m = {X, L, R, W};
+}
+function tHover(el){
+  const wrap = el.querySelector('.tchart'), svg = wrap.querySelector('svg'), tt = wrap.querySelector('.tt');
+  const near = (a, it) => a.reduce((b, p) => !b || Math.abs(p[0] - it) < Math.abs(b[0] - it) ? p : b, null);
+  svg.addEventListener('mousemove', ev => {
+    const j = el._j, m = svg._m;
+    if (!j || !m || !j.curve.length) return;
+    const r = svg.getBoundingClientRect(), x = ev.clientX - r.left;
+    const it = (x - m.L) / (m.W - m.L - m.R) * j.iters;
+    if (it < 0 || it > j.it + j.iters * .02){ tt.style.display = 'none'; svg.querySelector('.xh').setAttribute('visibility', 'hidden'); return; }
+    const p = near(j.curve, it), e = j.evals.length ? near(j.evals, it) : null;
+    const xh = svg.querySelector('.xh');
+    xh.setAttribute('x1', m.X(p[0])); xh.setAttribute('x2', m.X(p[0])); xh.setAttribute('visibility', 'visible');
+    tt.innerHTML = `<b>it ${p[0].toLocaleString()}</b><br><span class="sw" style="background:var(--tr)"></span>train ${tPct(p[1])}`
+      + (e ? `<br><span class="sw" style="background:var(--ho)"></span>held-out ${tPct(e[1])} <span class="sub">(eval at ${e[0]})</span>` : '');
+    tt.style.display = 'block';
+    const w = tt.offsetWidth;
+    tt.style.left = Math.min(x + 14, r.width - w) + 'px'; tt.style.top = '28px';
+  });
+  svg.addEventListener('mouseleave', () => { tt.style.display = 'none'; const xh = svg.querySelector('.xh'); if (xh) xh.setAttribute('visibility', 'hidden'); });
+}
+async function tPoll(){
+  clearTimeout(TPOLL);
+  let jobs;
+  try { jobs = await fetch('/api/train/status').then(x => x.json()); } catch (e) { return; }
+  const live = jobs.some(j => j.state === 'running' || j.state === 'stopping');
+  $('#tdot').hidden = !live;
+  $('#tjobcard').hidden = !jobs.length;
+  const box = $('#tjobs'), keep = new Set(jobs.map(j => j.name));
+  box.querySelectorAll('.tjob').forEach(c => { if (!keep.has(c.dataset.name)) c.remove(); });
+  jobs.forEach((j, i) => {
+    let c = box.querySelector(`.tjob[data-name="${CSS.escape(j.name)}"]`);
+    if (!c) c = tCard(j);
+    if (box.children[i] !== c) box.insertBefore(c, box.children[i] || null);
+    if (!$('#trn').hidden) tFill(c, j); else c._j = j;
+  });
+  if (live || !$('#trn').hidden) TPOLL = setTimeout(tPoll, live ? 2000 : 5000);
+}
+addEventListener('resize', () => document.querySelectorAll('#tjobs .tjob').forEach(c => c._j && !$('#trn').hidden && tChart(c)));
+/* the explanation of a field, as soon as the mouse is on it */
+$('#tform').addEventListener('mouseover', ev => {
+  const pf = ev.target.closest('.pf[data-dest]'), tip = $('#ttip');
+  if (!pf){ tip.classList.remove('on'); return; }
+  const f = TFORM.fields.find(q => q.dest === pf.dataset.dest);
+  const def = f.kind === 'flag' ? (f.default ? 'on' : 'off') : (f.default === '' ? 'none' : f.default);
+  tip.innerHTML = `<b>${f.flag}</b><div>${tEsc(f.help)}</div><div class="d">default: ${tEsc(def)}</div>`;
+  const r = pf.getBoundingClientRect(), w = Math.min(340, innerWidth - 16);
+  tip.style.left = Math.max(8, Math.min(r.left, innerWidth - w - 8)) + 'px';
+  tip.style.top = '0px'; tip.classList.add('on');
+  const h = tip.offsetHeight;
+  tip.style.top = (r.bottom + 6 + h < innerHeight ? r.bottom + 6 : r.top - h - 6) + 'px';
+});
+$('#tform').addEventListener('mouseleave', () => $('#ttip').classList.remove('on'));
+$('#treload').onclick = tLoad;
+$('#tcfg').addEventListener('change', tLoad);
+$('#tstart').onclick = async () => {
+  $('#tstart').disabled = true;
+  const r = await api('/api/train/start', {values: tValues(), config: $('#tcfg').value.trim()});
+  if (r.error){ $('#terr').textContent = r.error; $('#tstart').disabled = false; return; }
+  $('#terr').textContent = '';
+  await tPoll(); tRuns(); tCheck();
+};
 document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => showTab(b.dataset.tab));
 addEventListener('resize', moveInk);
 requestAnimationFrame(moveInk);
-if (['#exp', '#cmp'].includes(location.hash)) setTimeout(() => showTab(location.hash.slice(1)), 300);
+if (['#exp', '#cmp', '#trn', '#dash'].includes(location.hash)) setTimeout(() => showTab(location.hash.slice(1)), 300);
 else xPoll();                           // an experiment already running shows its dot
+tPoll();                                // and so does a training run
 </script>

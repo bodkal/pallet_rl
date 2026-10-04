@@ -13,6 +13,13 @@ one item-size class per type, so the type is both a label and a size class.
 See `_type_ok` for how the rule is enforced and `TYPE_FLOOR` for the sentinel
 a candidate on the floor carries.
 
+A small box carries only a short stack.  Once a box of one of the
+`stack_cap_types` is placed, a later box may start over its footprint only
+below its top plus an allowance that grows with its shorter footprint side --
+the cell's own rule (its C++ `stable_grid`), set in real cm.  `cmap` holds
+the limit per column, `stack_allowance` the allowance, and `_cap_ok` drops
+the placements that break it.
+
 and the packing action picks one l in L_t.  A placement is an (orientation,
 x, y) triple: with `rot = 2` the leading item is offered both as (w, l, h) and
 as (l, w, h), which is the discrete setting of the paper.  The attacker
@@ -121,6 +128,39 @@ def ems_mode(v):
 # the `n_types` box types; the networks give it its own embedding row, at
 # index `n_types` (see `obs`, which maps the sentinel onto it).
 TYPE_FLOOR = -1
+
+# What `cmap` holds for a column no small box has limited: a later box may
+# start over column (x, y) only below `cmap[x, y]`, and no bin is this tall.
+NO_CAP = int(np.iinfo(np.int16).max)
+
+# A float hair off an exact cm boundary -- a 28 cm side of 4 cm cells against
+# a 28 cm threshold -- as `orders.EPS` is for the box sides themselves.
+CM_EPS = 1e-6
+
+
+def stack_allowance(n, side_cm, allow_cm, cell_cm):
+    """(n + 1,) cells a later box may still start above a small box.
+
+    Entry `k` is for a box whose shorter footprint side is `k` cells.  The
+    allowance runs linearly from `allow_cm[0]` at a side of `side_cm[0]`, and
+    stays there below it, to `allow_cm[1]` at `side_cm[1]`; from a side of
+    `side_cm[1]` up there is no limit (`NO_CAP`).  It is rounded down to whole
+    cells, so the grid never allows more than the rule in cm does.  The box's
+    height plays no part, only its footprint.
+    """
+    s0, s1 = (float(v) for v in side_cm)
+    a0, a1 = (float(v) for v in allow_cm)
+    if not 0 < s0 < s1:
+        raise ValueError(f"stack_cap_side_cm is two increasing sides in cm, "
+                         f"got {list(side_cm)}")
+    if min(a0, a1) < 0:
+        raise ValueError(f"stack_cap_allow_cm is two heights in cm, got "
+                         f"{list(allow_cm)}")
+    if not cell_cm > 0:
+        raise ValueError(f"a cell is a positive number of cm, got {cell_cm}")
+    side = np.arange(n + 1) * float(cell_cm)
+    allow = np.floor(np.interp(side, (s0, s1), (a0, a1)) / cell_cm + CM_EPS)
+    return np.where(side < s1 - CM_EPS, allow, NO_CAP).astype(np.int64)
 
 
 def _triple(v):
@@ -266,7 +306,9 @@ class BPPBatch:
                  stability=None, rot=None, min_support=None, n_pick=None,
                  n_types=None, types=None, type_constraint=None,
                  pick_feasible=None, pool=None, pool_order_random=0.0,
-                 arm_collision=None, arm_cell_m=None, arm_moves=None):
+                 arm_collision=None, arm_cell_m=None, arm_moves=None,
+                 stack_cap=None, stack_types=None, stack_side_cm=None,
+                 stack_allow_cm=None, stack_cell_cm=None):
         # `None` means "whatever config.yaml says"; an explicit argument wins
         e = CFG["env"]
         S = e["bin"] if S is None else S
@@ -348,6 +390,31 @@ class BPPBatch:
         self.arm_moves = PC.base_x_moves(
             CFG["robot"] if arm_moves is None else {"base_x_moves": arm_moves})
         self._arm = None
+        # The stack-height limit over small boxes (`stack_cap` in config.yaml):
+        # a box of one of `stack_types` limits where a later box may start
+        # over its footprint, by `stack_allowance`.  A type id the stream never
+        # draws simply never sets a limit, so `n_types = 1` is untouched.
+        # `stack_cell_cm` is how many cm one cell stands for; None takes the
+        # arm filter's cell size -- `arm_cell_m`, or what `_arm_checker`
+        # derives without it -- so both rules read the grid in the same real
+        # units.  The table is built even when the rule is off, so a caller
+        # may switch `stack_cap` on an existing env as the game does the arm.
+        self.stack_cap = bool(e["stack_cap"] if stack_cap is None
+                              else stack_cap)
+        self.stack_types = np.asarray(
+            (e["stack_cap_types"] or []) if stack_types is None
+            else stack_types, np.int64).reshape(-1)
+        cell_cm = (float(stack_cell_cm) if stack_cell_cm is not None else
+                   100.0 * (arm_cell_m or PC.robot_cell_m(
+                       CFG["robot"], CFG["eval"]["cell_cm"],
+                       CFG["eval"]["box_scale"])))
+        # indexed by the shorter footprint side, which for a box that fits is
+        # at most the shorter side of the bin
+        self.stack_allow = stack_allowance(
+            min(self.Lx, self.Ly),
+            e["stack_cap_side_cm"] if stack_side_cm is None else stack_side_cm,
+            e["stack_cap_allow_cm"] if stack_allow_cm is None
+            else stack_allow_cm, cell_cm)
         # the contact count costs a second sweep, so only pay for it when a
         # rule actually reads it
         self._needs_count = (self.stability != "com"
@@ -390,6 +457,8 @@ class BPPBatch:
             # different type to the front reuses nothing it should not
             self._type_cache = {}
             self._under_cache = None
+            # `cmap` only ever changes with the height map, in `step`
+            self._cap_cache = None
             # arm verdicts keyed by (bin, (sx, sy, sz), x, y): the index into
             # `robot.base_x_moves` of the first base move that makes the
             # placement, -1 for none.  The landing height follows from the
@@ -456,6 +525,9 @@ class BPPBatch:
         # the type of the topmost box in each column, and so of whatever a
         # placement landing there would rest on
         self.tmap = np.full((n, self.Lx, self.Ly), TYPE_FLOOR, np.int8)
+        # how high a later box may start over each column: below this, which
+        # a small box of a limited type lowers over its footprint
+        self.cmap = np.full((n, self.Lx, self.Ly), NO_CAP, np.int16)
         self.packed = np.zeros((n, self.max_c, 6), np.float32)
         self.ptype = np.zeros((n, self.max_c), np.int8)
         self.n_packed = np.zeros(n, np.int32)
@@ -483,6 +555,7 @@ class BPPBatch:
             return
         self.hmap[idx] = 0
         self.tmap[idx] = TYPE_FLOOR
+        self.cmap[idx] = NO_CAP
         self.packed[idx] = 0
         self.ptype[idx] = 0
         self.n_packed[idx] = 0
@@ -898,6 +971,28 @@ class BPPBatch:
         return np.where(m < 0, np.int8(TYPE_FLOOR),
                         (m % (self.n_types + 1) - 1).astype(np.int8))
 
+    def _cap_ok(self, dims, z):
+        """(n, Lx, Ly): may a box start at `z` over every cell of the footprint?
+
+        The limit that binds is the lowest `cmap` under the footprint, cells
+        the box only overhangs included, as on the cell.  The sweeps take
+        maxima, so they run on `-cmap`; the y-sweep depends on the bin alone
+        and is kept until the next `step`.  Until a small box has limited some
+        column of the batch every answer is yes and nothing is swept.
+        """
+        if self._cap_cache is None:
+            capped = bool((self.cmap < NO_CAP).any())
+            self._cap_cache = (capped, _win_max(-self.cmap, 2, self.Ly,
+                                                self.sidey) if capped else None)
+        capped, by = self._cap_cache
+        if not capped:
+            return True
+        cx = np.minimum(dims[:, 0], self.sidex)
+        cy = np.minimum(dims[:, 1], self.sidey)
+        lowest = -_win_max(by[cy - 1, self._ar], 1, self.Lx,
+                           self.sidex)[cx - 1, self._ar]
+        return z < lowest
+
     def _feas_one(self, dims, types=None):
         """Feasible (x, y) grid and landing height for one orientation."""
         Lx, Ly, Lz = self.Lx, self.Ly, self.Lz
@@ -968,6 +1063,8 @@ class BPPBatch:
             feas &= self._ems_corners(dims) | self._corner_mask(dims, z)
         if self.type_constraint and self.n_types > 1 and types is not None:
             feas &= self._type_ok(dims, z, types)
+        if self.stack_cap:
+            feas &= self._cap_ok(dims, z)
         if self.arm_collision:
             feas = self._arm_clear(dims, z, feas)
         return feas, z
@@ -1203,6 +1300,19 @@ class BPPBatch:
         # the item is now the top of every column it covers, so it is what the
         # next placement over that footprint would rest on
         self.tmap = np.where(foot, tt[:, None, None], self.tmap)
+        if self.stack_cap:
+            # a small box of a limited type carries only a short stack: from
+            # here on nothing may start over its footprint at or above its top
+            # plus its allowance.  The limit stays with these cells -- a box
+            # laid over them later does not spread it over its own footprint.
+            # A finished bin's slot is clamped into the table; `foot` drops it
+            allow = self.stack_allow[np.minimum(np.minimum(sx, sy),
+                                                len(self.stack_allow) - 1)]
+            lim = np.where(np.isin(tt, self.stack_types) & (allow < NO_CAP),
+                           np.minimum(zz + sz + allow, NO_CAP), NO_CAP)
+            self.cmap = np.where(
+                foot, np.minimum(self.cmap, lim.astype(np.int16)[:, None, None]),
+                self.cmap)
 
         # `packed` is C_t, the packer's own memory of the bin.  `max_c` is an
         # initial capacity, not a limit: a large bin full of small items holds

@@ -23,8 +23,8 @@ format the cell's own experiment reports use:
 
 `max_height` is in real cm (cells x cell_cm x box_scale), `time_to_pack` is
 the running total since the file started, and `uneven_z_val` is written as 0.
-A run given a name adds `name:,<name>,` to the end of the first line, and
-`ar2l.viz.compare` shows that name in its legend.  A report that already exists is appended
+Every run is named (`start` refuses one without): `name:,<name>,` ends the
+first line, and `ar2l.viz.compare` shows that name in its legend.  A report that already exists is appended
 to: each run adds its own block, first line and header included.
 
 The packer and the picker always take their most likely choice (`argmax`),
@@ -138,6 +138,10 @@ def pack_pallet(seq, policy, picker, S, p, cell_m, tick=None, stop=None):
                    type_constraint=bool(p["type_constraint"]),
                    arm_collision=bool(p["arm_collision"]), arm_cell_m=cell_m,
                    arm_moves=p["base_x_moves"],
+                   stack_cap=bool(p["stack_cap"]),
+                   stack_types=p["stack_cap_types"],
+                   stack_side_cm=p["stack_cap_side_cm"],
+                   stack_allow_cm=p["stack_cap_allow_cm"],
                    size_hi=seq[:, :3].max(0))
     env.reset(seq[None])
     while True:
@@ -173,7 +177,11 @@ def params_text(spec, p, S):
            f"stability={p['stability']} min_support={p['min_support']:g} "
            f"n_types={p['n_types']} type_constraint={p['type_constraint']} "
            f"arm_collision={p['arm_collision']} "
-           f"base_x_moves={'/'.join(f'{t:g}' for t in p['base_x_moves'])}")
+           f"base_x_moves={'/'.join(f'{t:g}' for t in p['base_x_moves'])} "
+           f"stack_cap={p['stack_cap']} "
+           f"stack_cap_types={'/'.join(map(str, p['stack_cap_types'])) or 'none'} "
+           f"stack_cap_side_cm={j(p['stack_cap_side_cm'])} "
+           f"stack_cap_allow_cm={j(p['stack_cap_allow_cm'])}")
     data = (f"cell_cm={p['cell_cm']:g} box_scale={p['box_scale']:g} "
             f"box_round={p['box_round']} "
             f"order_random={p.get('order_random', 0):g} "
@@ -212,6 +220,9 @@ def _show(path):
 
 def start(folder, out, spec, p, cell_m, device, name="", seed=0):
     """Queue every .csv of `folder` and run them in a thread.  -> job id."""
+    if not clean_name(name):
+        raise ValueError("name the experiment: the compare tab tells runs "
+                         "apart by their names")
     src = resolve(folder)
     if not os.path.isdir(src):
         raise ValueError(f"no such folder: {folder}")

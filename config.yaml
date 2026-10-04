@@ -15,7 +15,7 @@ env:
   # a "30x25x40" string is only parsed by the argparsers, so anything that
   # reads CFG directly -- BPPBatch, and therefore the whole `ar2l.evaluate`
   # CLI, which has no --bin flag -- would choke on it.
-  bin: [30, 24, 40]
+  bin: [30, 25, 40]
   n_items: 120           # items per episode; episodes end by infeasibility ~40
   size_lo: 4             # 8 cm, the smallest carton; item side bounds
   size_hi: [15, 10, 10]  # 30 x 20 x 20 cm
@@ -51,6 +51,25 @@ env:
     - {p: 1, lo: [12, 7, 6], hi: [12, 7, 7]}  
     - {p: 1, lo: [12, 7, 6], hi: [12, 7, 7]}   
     - {p: 1, lo: [2, 2, 2], hi: [12, 12, 10]} 
+
+  # ---- stack height over small boxes --------------------------------------
+  # A small box carries only a short stack.  Once a box of one of
+  # `stack_cap_types` is placed, a later box may *start* over its footprint
+  # only below its top plus an allowance set by its shorter footprint side:
+  # linear from stack_cap_allow_cm[0] at a side of stack_cap_side_cm[0] (and
+  # below) to stack_cap_allow_cm[1] at stack_cap_side_cm[1], and no limit from
+  # that side up.  With the values here: 12 cm -> 8 cm (one box on top),
+  # 16 -> 36, 20 -> 64, 24 -> 96, 28 -> 124, 30 cm and wider -> none.  The
+  # limit stays with the small box's cells: a box bridging it and a neighbour
+  # is limited only over the small box.  Placements that break it are dropped
+  # from the candidate list, like the type and arm rules; the reward is not
+  # touched.  Real cm, read onto the grid with the arm filter's cell size
+  # (robot.cell_m, else eval.cell_cm * eval.box_scale).  It is the cell's C++
+  # stable_grid rule, without the C++ padding.
+  stack_cap: 1
+  stack_cap_types: [2]          # brown
+  stack_cap_side_cm: [12, 30]
+  stack_cap_allow_cm: [8, 140]
 
 train:
   algo: select               # pct|cppo|rarl|rfmdp|exact|approx|attack

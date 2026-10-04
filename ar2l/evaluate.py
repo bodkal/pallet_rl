@@ -109,7 +109,7 @@ def load_nets(path, device, what=("pack", "attacker")):
 def run(seqs, policy, nb, attacker=None, attacked=None, batch=None, S=None,
         device=None, greedy=True, stability=None, ems=None, rot=None,
         max_l=None, min_support=None, n_pick=None, n_types=None,
-        type_constraint=None):
+        type_constraint=None, stack_cap=None):
     """Play every instance once.  `policy` is a net or a heuristic name.
 
     Anything left `None` comes from `config.yaml`; the env arguments are
@@ -132,7 +132,7 @@ def run(seqs, policy, nb, attacker=None, attacked=None, batch=None, S=None,
                        stability=stability,
                        ems=ems, rot=rot, max_l=max_l, min_support=min_support,
                        n_pick=n_pick, n_types=n_types, types=False,
-                       type_constraint=type_constraint)
+                       type_constraint=type_constraint, stack_cap=stack_cap)
         env.reset(chunk)
         on = torch.as_tensor(attacked[s:s + batch]).to(device)
         while not env.done.all():
@@ -165,7 +165,7 @@ def metrics(util, items, length=None):
 def nominal_score(pack, nb, n_inst=256, n_items=150, seed=999, device="cuda",
                   stability="com", rot=2, S=10, size_hi=5, max_l=120,
                   min_support=None, n_pick=None, n_types=None,
-                  type_constraint=None, seqs=None):
+                  type_constraint=None, stack_cap=None, seqs=None):
     """Quick greedy score on a fixed held-out slice, for training curves.
 
     `seqs` scores those instances (a run's held-out real pallets) instead of
@@ -175,7 +175,8 @@ def nominal_score(pack, nb, n_inst=256, n_items=150, seed=999, device="cuda",
                             n_types=n_types)
     u, k = run(seqs, pack, nb, batch=len(seqs), device=device, stability=stability,
                rot=rot, S=S, max_l=max_l, min_support=min_support,
-               n_pick=n_pick, n_types=n_types, type_constraint=type_constraint)
+               n_pick=n_pick, n_types=n_types, type_constraint=type_constraint,
+               stack_cap=stack_cap)
     return float(u.mean()), float(k.mean())
 
 
@@ -183,7 +184,7 @@ def nominal_score(pack, nb, n_inst=256, n_items=150, seed=999, device="cuda",
 def attack_score(policy, attacker, nb, n_inst=256, n_items=150, seed=998,
                  device="cuda", stability="com", rot=2, S=10, size_hi=5,
                  max_l=120, min_support=None, n_pick=None, n_types=None,
-                 type_constraint=None, seqs=None):
+                 type_constraint=None, stack_cap=None, seqs=None):
     """Greedy utilisation of `policy` with every conveyor reordered.
 
     The attacker is selected and reported under the conditions it will be
@@ -198,7 +199,7 @@ def attack_score(policy, attacker, nb, n_inst=256, n_items=150, seed=998,
                attacked=np.ones(len(seqs), bool), batch=len(seqs), device=device,
                stability=stability, rot=rot, S=S, max_l=max_l,
                min_support=min_support, n_pick=n_pick, n_types=n_types,
-               type_constraint=type_constraint)
+               type_constraint=type_constraint, stack_cap=stack_cap)
     return float(u.mean()), float(k.mean())
 
 
@@ -240,6 +241,9 @@ def get_parser():
                         "policy's")
     p.add_argument("--type_constraint", type=int, default=e["type_constraint"],
                    help="0 scores the policy with the stacking rule lifted")
+    p.add_argument("--stack_cap", type=int, default=e["stack_cap"],
+                   help="0 scores the policy with the stack-height limit over "
+                        "small boxes lifted")
     return p
 
 
@@ -250,6 +254,9 @@ def main(argv=None):
     if known.config:
         load_config(known.config)
     a = get_parser().parse_args(argv)
+    # the arm filter and the stack cap read the cell's real size from
+    # CFG["eval"]; keep it the grid's (see ar2l.train.main)
+    CFG["eval"]["cell_cm"], CFG["eval"]["box_scale"] = a.cell_cm, a.box_scale
 
     if a.data.lower().endswith(".csv"):
         S = orders_bin(a.pallet_cm, a.cell_cm)
@@ -283,7 +290,8 @@ def main(argv=None):
         u, k = run(seqs, policy, a.nb, attacker, flag, a.batch, S=S,
                    device=a.device, rot=a.rot, min_support=a.min_support,
                    n_pick=a.n_pick, n_types=a.n_types,
-                   type_constraint=bool(a.type_constraint))
+                   type_constraint=bool(a.type_constraint),
+                   stack_cap=bool(a.stack_cap))
         m = res[str(int(b))] = metrics(u, k, length)
         print(f"beta={b:5.0f}  Uti {m['uti']:5.1f}  Std {m['std']:4.1f}  "
               f"Num {m['num']:5.1f}  All {m['all']:5.1f}%", flush=True)

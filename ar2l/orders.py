@@ -208,17 +208,19 @@ def add_cm_args(p):
     """`--cell_cm` and `--pallet_cm`, for every CLI that reads an orders CSV."""
     ev = CFG["eval"]
     p.add_argument("--cell_cm", type=float, default=ev["cell_cm"],
-                   help="grid cell size in cm for an orders .csv (%(default)s)")
+                   help="how many cm one grid cell is, for an orders .csv; the "
+                        "pallet and the boxes are divided by it (%(default)s)")
     p.add_argument("--pallet_cm", type=float, nargs=3, default=ev["pallet_cm"],
                    metavar=("L", "W", "H"),
-                   help="the real pallet for an orders .csv, in cm; default "
-                        "eval.pallet_cm, else env.bin")
+                   help="the real pallet for an orders .csv, in cm (L W H); it "
+                        "becomes the bin, overriding --bin")
     p.add_argument("--box_scale", type=float, default=ev["box_scale"],
                    help="divide every box side of an orders .csv by this; "
                         "0 keeps the file's sizes (%(default)s)")
     p.add_argument("--box_round", choices=sorted(ROUNDING),
                    default=ev["box_round"],
-                   help="how a box side is rounded to cells (%(default)s)")
+                   help="how a box side is rounded to whole cells: up = never "
+                        "smaller, down = never bigger, nearest (%(default)s)")
 
 
 def add_order_args(p):
