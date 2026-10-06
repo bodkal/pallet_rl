@@ -65,25 +65,39 @@ def key(e):
 
 
 def delete_named(path, names):
-    """Drop every block run under one of `names` from the report.  -> how many.
+    """Drop every block whose `key` is one of `names` from the report.  -> how many.
 
-    Names match exactly, case included, so a near namesake is never caught.
-    The other blocks are kept byte for byte; a report left with no block is
-    removed.
+    A named block goes by its name, an unnamed one by `Exp <num>`, numbered
+    as `read_report` numbers it.  Names match exactly, case included, so a
+    near namesake is never caught.  The other blocks are kept byte for byte;
+    a report left with no block is removed.
     """
     want = {n.strip() for n in names if n.strip()}
     with open(path, newline="") as f:
         lines = f.read().splitlines(keepends=True)
-    blocks, keep, gone = [[]], [True], 0
+    blocks, names_, rows = [[]], [None], [False]
+    header = False
     for ln in lines:
         cells = [c.strip() for c in next(csv.reader([ln]), [])]
         if len(cells) > 1 and cells[1] == "current date:":
-            name = (cells[cells.index("name:") + 1]
-                    if "name:" in cells[9:-1] else "")
             blocks.append([])
-            keep.append(name not in want)
-            gone += not keep[-1]
+            names_.append(cells[cells.index("name:") + 1]
+                          if "name:" in cells[9:-1] else "")
+            rows.append(False)
+            header = False
+        elif cells and cells[0] == "pallet_id":
+            header = True
+        elif header and cells and cells[0]:
+            rows[-1] = True
         blocks[-1].append(ln)
+    keep, num, gone = [], 0, 0
+    for name, has_rows in zip(names_, rows):
+        if name is None or not has_rows:   # the lines before any block; an empty block
+            keep.append(True)
+            continue
+        num += 1
+        keep.append((name or f"Exp {num}") not in want)
+        gone += not keep[-1]
     if not gone:
         return 0
     text = "".join(ln for b, k in zip(blocks, keep) if k for ln in b)

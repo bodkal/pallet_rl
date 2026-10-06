@@ -137,7 +137,7 @@ not the action space.
 | file | contents |
 |---|---|
 | `config.yaml` | every default, in six sections (`env`, `train`, `ppo`, `model`, `run`, `eval`); `ar2l/config.py` reads it, the argparsers take their defaults from it, and `--config other.yaml` patches it |
-| `ar2l/env.py` | batched online 3D-BPP simulator with the PCT state `(C_t, B_t, L_t)`: height map, type map, exact empty-maximal-space enumeration, two orientations, stability, the same-type stacking rule, conveyor permutation |
+| `ar2l/env.py` | batched online 3D-BPP simulator with the PCT state `(C_t, B_t, L_t)`: height map, type map, exact empty-maximal-space enumeration, two orientations, stability, the same-type stacking rule, the stack-height limit over small boxes, conveyor permutation |
 | `ar2l/model.py` | the three transformers — packer, attacker, mixture model — and the pointer head of Eq. 28 |
 | `ar2l/ppo.py` | PPO, plus the TV-dual value targets: Eq. 18 for ApproxAR2L and its pessimistic mirror for RfMDP |
 | `ar2l/train.py` | the seven training loops (Algorithms 1 and 2 and the four baselines) |
@@ -249,6 +249,17 @@ reachable box with the most placements open — makes it *worse* (17.2% at reach
 the `k` reachable boxes to hand over is a policy, which is what `--algo select`
 and the AR2L permuter are for, and it is where the points lost here have to be
 won back.
+
+**Small boxes carry short stacks.** A second rule, the cell's own, limits how
+high anything may start over a small box of `env.stack_cap_types` (the brown
+cartons): a `cmap[x, y]` beside `hmap` and `tmap` holds, per column, the height
+a later box must start below, lowered over a small box's footprint to its top
+plus an allowance that grows with its shorter side (8 cm at 12 cm, none from 30
+cm). A footprint is legal when the window *minimum* of `cmap` over it is above
+the landing height, one more sweep pair, kept until the next step. Placements
+that break it leave the candidate list; the reward is untouched. RUN.md §0a has
+the table, `--stack_cap 0` lifts it, and `tests/test_stack_cap.py` replays every
+packed list against it.
 
 ### The three networks
 

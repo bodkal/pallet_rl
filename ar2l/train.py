@@ -24,6 +24,7 @@ import argparse
 import hashlib
 import json
 import os
+import signal
 import sys
 import time
 
@@ -70,7 +71,7 @@ class Progress:
             self.bar.close()
 
 from .config import CFG, load as load_config
-from .env import BPPBatch
+from .env import BPPBatch, TYPE_RULES
 from .evaluate import attack_score, nominal_score
 from .orders import add_cm_args, load_orders, orders_bin
 from .heuristics import act as heur_act
@@ -236,6 +237,35 @@ def _held(nom):
     return 0.0
 
 
+class StopAsked:
+    """SIGTERM, SIGHUP and Ctrl+C ask the loop to stop rather than kill it:
+    the iteration under way finishes, last.pt is saved with everything
+    `--resume` needs, and the run exits cleanly.  A second Ctrl+C quits on
+    the spot, unsaved.  This is what the game's "Stop & save" sends, and what
+    closing the terminal or stopping the game server sends too."""
+
+    def __init__(self, name):
+        self.name, self.asked = name, False
+        for sig in (signal.SIGTERM, signal.SIGHUP, signal.SIGINT):
+            signal.signal(sig, self)
+
+    def __call__(self, sig, frame):
+        if self.asked and sig == signal.SIGINT:
+            raise KeyboardInterrupt
+        if not self.asked:
+            print(f"[{self.name}] stop asked ({signal.Signals(sig).name}): "
+                  f"saving last.pt after this iteration", flush=True)
+        self.asked = True
+
+
+def save_atomic(obj, path):
+    """torch.save through a temp file, so a kill mid-write leaves the old
+    checkpoint whole rather than a truncated one."""
+    tmp = path + ".tmp"
+    torch.save(obj, tmp)
+    os.replace(tmp, path)
+
+
 def make_env(args, seed, pool=None):
     # a pool carries its own sizes and types, so the env draws no classes and
     # sizes its sweeps from the pool rather than from the config's envelope
@@ -249,7 +279,9 @@ def make_env(args, seed, pool=None):
                     ems=args.ems, rot=args.rot, max_c=args.max_c,
                     min_support=args.min_support, n_pick=args.n_pick,
                     n_types=args.n_types,
-                    type_constraint=bool(args.type_constraint), **kw)
+                    type_constraint=bool(args.type_constraint),
+                    type_rule=args.type_rule,
+                    stack_cap=bool(args.stack_cap), **kw)
 
 
 def load_data(args, out):
@@ -267,7 +299,8 @@ def load_data(args, out):
             args.bin = orders_bin(args.pallet_cm, args.cell_cm)
         seqs, ids = load_orders(args.data, args.cell_cm, args.bin,
                                 rot=args.rot, box_scale=args.box_scale,
-                                box_round=args.box_round)
+                                box_round=args.box_round,
+                                box_pad_m=args.box_pad_m)
     else:
         seqs = np.load(args.data)
         ids = [str(i) for i in range(len(seqs))]
@@ -338,9 +371,30 @@ def train(args):
         best = resumed.get("best", -1.0)
         print(f"[{args.name}] resuming at iteration {start} "
               f"(best so far {best:+.4f})", flush=True)
-    if args.init:
-        pack.load_state_dict(torch.load(args.init, map_location=device,
-                                        weights_only=False)["pack"])
+        # rows past last.pt describe iterations a kill threw away and this run
+        # is about to redo; left in, the log goes back in time at `start`
+        p = os.path.join(out, "log.jsonl")
+        if os.path.exists(p):
+            with open(p) as f:
+                lines = f.readlines()
+            def before(ln):
+                try:
+                    return json.loads(ln).get("it", 0) < start
+                except ValueError:
+                    return False            # a line cut short by the kill
+            keep = [ln for ln in lines if before(ln)]
+            if len(keep) < len(lines):
+                with open(p, "w") as f:
+                    f.writelines(keep)
+    if args.init and resumed is not None:
+        print(f"[{args.name}] --init ignored: resuming from last.pt", flush=True)
+    elif args.init:
+        # every net the checkpoint has, so `select` keeps its trained selector;
+        # optimiser and iteration count start fresh
+        init = torch.load(args.init, map_location=device, weights_only=False)
+        for key, net in (("pack", pack), ("attacker", attacker), ("mixer", mixer)):
+            if key in init:
+                net.load_state_dict(init[key])
     if args.freeze_pack:
         for p in pack.parameters():
             p.requires_grad_(False)
@@ -364,6 +418,7 @@ def train(args):
     nom = {"nom_util": 0.0, "nom_items": 0.0}
     t0, done_it = time.time(), 0
     prog = Progress(args.iters, start, args.progress)
+    stop = StopAsked(args.name)
 
     for it in range(start, args.iters + 1):
         done_it += 1
@@ -481,7 +536,9 @@ def train(args):
                       S=args.bin, size_hi=args.size_hi, max_l=args.max_l,
                       min_support=args.min_support, n_pick=args.n_pick,
                       n_types=args.n_types,
-                      type_constraint=bool(args.type_constraint), seqs=held_out)
+                      type_constraint=bool(args.type_constraint),
+                      type_rule=args.type_rule,
+                      stack_cap=bool(args.stack_cap), seqs=held_out)
             if args.algo == "attack":
                 au, ak = attack_score(args.heur_pack or pack, attacker, args.nb,
                                       args.eval_inst, **ev)
@@ -506,24 +563,36 @@ def train(args):
                 f"[{args.name}] it {it:6d}  util {u*100:5.2f}%  items {k:5.2f}"
                 f"  {tag} {held*100:5.2f}%"
                 f"  {(time.time()-t0)/max(done_it, 1)*1000:6.1f} ms/it")
-        if it % args.save_every == 0 or it == args.iters:
+        due = it % args.save_every == 0 or it == args.iters
+        if due or stop.asked:
             # an attacker is best when the held-out packer does worst
             # the 1.0 default keeps an attacker from banking a best.pt on a
             # save that lands before its first eval; every other algorithm
             # scores 0.0 there and is beaten by the first real number
             score = (-nom.get("att_util", 1.0) if args.algo == "attack"
                      else _held(nom))
-            improved = score > best
-            best = max(best, score)
+            # a stop between save points saves last.pt only: best.pt is
+            # chosen at the save points, on the evals that preceded them
+            improved = due and score > best
+            best = max(best, score) if due else best
             ck = {"pack": pack.state_dict(), "attacker": attacker.state_dict(),
                   "mixer": mixer.state_dict(), "args": vars(args), "it": it,
                   "best": best,
                   "opt": {"pack": ppo_pack.opt.state_dict(),
                           "attacker": ppo_att.opt.state_dict(),
                           "mixer": ppo_mix.opt.state_dict()}}
-            torch.save(ck, os.path.join(out, "last.pt"))
+            save_atomic(ck, os.path.join(out, "last.pt"))
             if improved:
-                torch.save(ck, os.path.join(out, "best.pt"))
+                save_atomic(ck, os.path.join(out, "best.pt"))
+        if stop.asked:
+            # the log row too, so the page and the dashboard end where it did
+            if not (it % args.log_every == 0 or it == args.iters):
+                rec = {"it": it, "util": u, "items": k, "t": time.time() - t0,
+                       **nom, "stopped": True}
+                log.write(json.dumps(rec) + "\n"); log.flush()
+            prog.write(f"[{args.name}] stopped at iteration {it}; last.pt saved "
+                       f"-- --resume carries on from {it + 1}")
+            break
     prog.close()
     log.close()
 
@@ -544,20 +613,33 @@ def get_parser():
     e, t, o, m, r = (CFG["env"], CFG["train"], CFG["ppo"], CFG["model"],
                      CFG["run"])
     p = argparse.ArgumentParser()
-    p.add_argument("--name", required=True)
+    p.add_argument("--name", required=True,
+                   help="run folder under runs/: args.json, log.jsonl and the "
+                        "best.pt / last.pt checkpoints go there")
     p.add_argument("--config", default=None,
                    help="YAML file of defaults to merge over config.yaml; "
                         "the same as AR2L_CONFIG=")
     p.add_argument("--algo", default=t["algo"],
                    choices=["pct", "cppo", "rarl", "rfmdp", "exact", "approx",
-                            "attack", "select"])
-    p.add_argument("--nb", type=int, default=t["nb"], help="observable items N_B")
+                            "attack", "select"],
+                   help="what is trained: pct = packer alone; cppo = packer on "
+                        "its worst episodes (CVaR); rarl = packer only against "
+                        "an adversarial box order; rfmdp = packer with a "
+                        "pessimistic value; exact / approx = AR2L, a mix of the "
+                        "normal and the adversarial order; attack = only an "
+                        "attacker against a fixed packer; select = a selector "
+                        "picks the box *for* the packer, from the n_pick in reach")
+    p.add_argument("--nb", type=int, default=t["nb"], help="window N_B: how many upcoming boxes the agent sees")
     p.add_argument("--n_pick", type=int, default=t["n_pick"],
                    help="how many of the N_B are within reach; the rest are "
                         "preview only (default: all of them)")
-    p.add_argument("--alpha", type=float, default=t["alpha"], help="robustness weight")
-    p.add_argument("--rho", type=float, default=t["rho"], help="uncertainty radius")
-    p.add_argument("--dist_coef", type=float, default=t["dist_coef"])
+    p.add_argument("--alpha", type=float, default=t["alpha"], help="exact / approx: how much weight the adversarial order gets "
+                        "against the normal one (0 = normal only, 1 = full AR2L)")
+    p.add_argument("--rho", type=float, default=t["rho"], help="approx / rfmdp: radius of the uncertainty set around the "
+                        "normal box order (total variation); bigger = more pessimistic")
+    p.add_argument("--dist_coef", type=float, default=t["dist_coef"],
+                   help="exact: weight of the loss that keeps the mixture order "
+                        "close to both the normal and the adversarial order")
     p.add_argument("--data", default=t["data"],
                    help="train on these pallets (an orders .csv or an "
                         "instance .npy); empty = the random generator")
@@ -568,50 +650,89 @@ def get_parser():
                    help="with --data: randomise each drawn pallet's box order, "
                         "0 = file order, 1 = fully random")
     add_cm_args(p)
-    p.add_argument("--cvar_q", type=float, default=t["cvar_q"])
-    p.add_argument("--iters", type=int, default=t["iters"])
-    p.add_argument("--n_env", type=int, default=t["n_env"])
-    p.add_argument("--T", type=int, default=t["T"])
+    p.add_argument("--cvar_q", type=float, default=t["cvar_q"],
+                   help="cppo: the share of worst episodes the update learns "
+                        "from, e.g. 0.5 = the worse half")
+    p.add_argument("--iters", type=int, default=t["iters"],
+                   help="PPO iterations to train: one rollout + update each")
+    p.add_argument("--n_env", type=int, default=t["n_env"],
+                   help="pallets packed in parallel per rollout; more = "
+                        "steadier gradients, more GPU memory")
+    p.add_argument("--T", type=int, default=t["T"],
+                   help="rollout length: steps each pallet runs per iteration")
     p.add_argument("--bin", type=extent, default=e["bin"],
-                   help="bin extent; an int for a cube or WxLxH, e.g. 60x50x80")
-    p.add_argument("--n_items", type=int, default=e["n_items"])
-    p.add_argument("--size_lo", type=int, default=e["size_lo"])
+                   help="pallet size in grid cells, WxLxH (an int = a cube).  With an "
+                        "orders .csv as --data, --pallet_cm sets it instead")
+    p.add_argument("--n_items", type=int, default=e["n_items"],
+                   help="boxes per episode from the random generator; the "
+                        "episode usually ends earlier, when nothing fits")
+    p.add_argument("--size_lo", type=int, default=e["size_lo"],
+                   help="smallest box side, in grid cells")
     p.add_argument("--max_l", type=int, default=e["max_l"],
-                   help="leaf-node cap; raise it if the EMS corners hit it")
+                   help="most candidate placements the packer is shown per step; "
+                        "extra ones are dropped, so raise it if that happens")
     p.add_argument("--max_c", type=int, default=e["max_c"],
-                   help="initial packed-item capacity; it grows if exceeded")
+                   help="room reserved for packed boxes per pallet; grows by itself "
+                        "if a pallet holds more, so it only affects speed")
     p.add_argument("--size_hi", type=extent, default=e["size_hi"],
-                   help="item side cap; an int or WxLxH for per-axis caps")
-    p.add_argument("--lr", type=float, default=o["lr"])
-    p.add_argument("--gamma", type=float, default=o["gamma"])
-    p.add_argument("--lam", type=float, default=o["lam"])
-    p.add_argument("--epochs", type=int, default=o["epochs"])
-    p.add_argument("--minibatches", type=int, default=o["minibatches"])
-    p.add_argument("--ent_coef", type=float, default=o["ent_coef"])
+                   help="largest box side in grid cells, an int or WxLxH per axis; "
+                        "random generator only")
+    p.add_argument("--lr", type=float, default=o["lr"],
+                   help="learning rate of the Adam optimiser")
+    p.add_argument("--gamma", type=float, default=o["gamma"],
+                   help="discount factor; 1 = undiscounted, as in the paper")
+    p.add_argument("--lam", type=float, default=o["lam"],
+                   help="GAE lambda: 0 = one-step advantage, 1 = full return")
+    p.add_argument("--epochs", type=int, default=o["epochs"],
+                   help="passes PPO makes over each rollout")
+    p.add_argument("--minibatches", type=int, default=o["minibatches"],
+                   help="each rollout is split into this many minibatches per pass")
+    p.add_argument("--ent_coef", type=float, default=o["ent_coef"],
+                   help="entropy bonus: higher keeps the policy exploring longer")
     p.add_argument("--ent_final", type=float, default=o["ent_final"],
-                   help="anneal the attacker's entropy bonus to this value")
+                   help="lower the attacker's entropy bonus linearly from --ent_coef "
+                        "to this by the last iteration; empty = keep it fixed")
     p.add_argument("--clip", type=float, default=o["clip"],
-                   help="PPO ratio clip")
+                   help="PPO clip: how far one update may move the policy from the "
+                        "one that collected the rollout (0.2 = 20%%)")
     p.add_argument("--vf_coef", type=float, default=o["vf_coef"],
-                   help="value loss weight")
+                   help="weight of the value (critic) loss next to the policy loss")
     p.add_argument("--max_grad", type=float, default=o["max_grad"],
-                   help="gradient-norm clip")
-    p.add_argument("--width", type=int, default=m["width"])
-    p.add_argument("--heads", type=int, default=m["heads"])
-    p.add_argument("--layers", type=int, default=m["layers"])
+                   help="gradients are scaled down to at most this norm; guards "
+                        "against one bad batch wrecking the weights")
+    p.add_argument("--width", type=int, default=m["width"],
+                   help="transformer embedding width")
+    p.add_argument("--heads", type=int, default=m["heads"],
+                   help="attention heads per block; must divide --width")
+    p.add_argument("--layers", type=int, default=m["layers"],
+                   help="attention blocks in the transformer")
     p.add_argument("--c_temp", type=float, default=m["c_temp"],
-                   help="pointer-head temperature c of Eq. 28")
-    p.add_argument("--init", default=None, help="checkpoint to initialise the packer")
-    p.add_argument("--freeze_pack", action="store_true")
+                   help="pointer-head temperature (c in Eq. 28): the logits are "
+                        "squashed into [-c, c], so bigger = sharper choices")
+    p.add_argument("--init", default=None, help="start a new run from this checkpoint's weights (packer, "
+                        "selector, attacker); iterations and optimiser start fresh")
+    p.add_argument("--freeze_pack", action="store_true",
+                   help="do not train the packer: keep its weights (from "
+                        "--init) fixed and let it act greedily")
     p.add_argument("--heur_pack", default=None,
-                   help="attack a heuristic packer instead of a network")
-    p.add_argument("--seed", type=int, default=r["seed"])
-    p.add_argument("--device", default=r["device"])
+                   help="attack a heuristic packer instead of a network: dbl, hmm, "
+                        "lsah, bmf, onlinebph or macs")
+    p.add_argument("--seed", type=int, default=r["seed"],
+                   help="random seed for the boxes and the network init")
+    p.add_argument("--device", default=r["device"],
+                   help="cuda, cuda:1, ... or cpu (slow)")
     # torch.compile with dynamic node counts miscompiles the pointer head for
     # some N_B and shows up as an illegal memory access; off unless asked for
-    p.add_argument("--compile", type=int, default=r["compile"])
-    p.add_argument("--resume", action="store_true")
-    p.add_argument("--stability", default=e["stability"], choices=["com", "cdrl"])
+    p.add_argument("--compile", type=int, default=r["compile"],
+                   help="1 = torch.compile the nets; can miscompile the pointer "
+                        "head, so 0 unless you are testing it")
+    p.add_argument("--resume", action="store_true",
+                   help="carry on the run of the same --name from its last.pt, "
+                        "at the iteration where it stopped")
+    p.add_argument("--stability", default=e["stability"], choices=["com", "cdrl"],
+                   help="when a box rests stably: com = enough support area and "
+                        "the centre of mass over it; cdrl = 60%% support or "
+                        "all 4 corners supported")
     p.add_argument("--min_support", type=float, default=None,
                    help="fraction of an item's base that must rest on the "
                         "layer below for a placement to be offered; the "
@@ -627,19 +748,32 @@ def get_parser():
     p.add_argument("--type_constraint", type=int, default=e["type_constraint"],
                    help="0 keeps type_id in the state but lets any box be "
                         "stacked on any other")
+    p.add_argument("--type_rule", choices=TYPE_RULES,
+                   default=e.get("type_rule", "touch"),
+                   help="touch: a box may not rest on a foreign type; column: "
+                        "nor be anywhere over one, however deep")
+    p.add_argument("--stack_cap", type=int, default=e["stack_cap"],
+                   help="0 lifts the stack-height limit over small boxes of "
+                        "env.stack_cap_types")
     p.add_argument("--type_embed", type=int, default=m["type_embed"],
-                   help="width of the trainable box-type embedding")
+                   help="size of the learned vector that tells the net each box's "
+                        "type; 0 = the net does not see types")
     p.add_argument("--ems", type=int, choices=(0, 1, 2, 3), default=e["ems"],
                    help="candidate filter: 0 every loading position, 1 EMS "
                         "corners, 2 height-map corner cells, 3 EMS | corner")
-    p.add_argument("--eval_every", type=int, default=r["eval_every"])
-    p.add_argument("--eval_inst", type=int, default=r["eval_inst"])
-    p.add_argument("--log_every", type=int, default=r["log_every"])
+    p.add_argument("--eval_every", type=int, default=r["eval_every"],
+                   help="iterations between held-out evals; the best one is "
+                        "saved as best.pt")
+    p.add_argument("--eval_inst", type=int, default=r["eval_inst"],
+                   help="pallets scored in each held-out eval")
+    p.add_argument("--log_every", type=int, default=r["log_every"],
+                   help="iterations between printed log lines")
     p.add_argument("--progress", choices=("auto", "on", "off"),
                    default=r["progress"],
                    help="progress bar on stderr; auto = only when attached "
                         "to a terminal")
-    p.add_argument("--save_every", type=int, default=r["save_every"])
+    p.add_argument("--save_every", type=int, default=r["save_every"],
+                   help="iterations between last.pt saves")
     return p
 
 
@@ -652,6 +786,11 @@ def main(argv=None):
     if known.config:
         load_config(known.config)
     args = get_parser().parse_args(argv)
+    # the arm filter and the stack cap read the cell's real size from
+    # CFG["eval"]; without this a --box_scale/--cell_cm that differs from the
+    # file has them see a pallet `box_scale` times too big
+    CFG["eval"]["cell_cm"], CFG["eval"]["box_scale"] = args.cell_cm, args.box_scale
+    CFG["eval"]["box_pad_m"] = args.box_pad_m
     # resolve it here rather than in the env, so `args.json` records the rule
     # the run was trained under instead of a bare `null`
     if args.min_support is None:

@@ -30,7 +30,7 @@ or a heuristic) and the two bins are scored side by side.
 
 The boxes come from the random generator (the `types:` size classes), or from
 an orders file -- the real pallets of `ar2l.orders`, read with the same
-`pallet_cm` / `cell_cm` / `box_scale` / `box_round` as training and
+`pallet_cm` / `cell_cm` / `box_pad_m` / `box_scale` / `box_round` as training and
 evaluation, one pallet per game (a chosen one, or one dealt by the seed), its
 box order randomised by `order_random`.  A run trained on a data file presets
 the form to that file and those settings.
@@ -48,10 +48,18 @@ agent replayed under parameters you edit, one row per setting.  The three
 fields that feed the draw itself - `n_items`, `size_lo`, `size_hi` - are held
 at the game's own values there, because changing one deals a different
 sequence and the row would no longer be measuring the field you moved.
+The box padding is the one source field a recalculation may move: the same
+pallet in the same order, its boxes read from the file again at the new
+padding.
 
 The "Big experiment" tab packs every pallet file of a folder, under the setup
 form's rules, onto as many pallets as each file takes, and writes one report
 per file (`ar2l.viz.experiment`), with a live progress bar per file.
+
+The "New training" tab starts `ar2l.train` runs with every flag editable,
+preset from `config.yaml` (`ar2l.viz.trainer`).  A run keeps going when the
+browser is closed and stops only with this server -- Ctrl+C or closing its
+terminal.
 """
 from __future__ import annotations
 
@@ -59,6 +67,8 @@ import argparse
 import glob
 import json
 import os
+import signal
+import subprocess
 import sys
 import threading
 import time
@@ -70,12 +80,15 @@ import numpy as np
 
 from .. import pack_collision as PC
 from ..config import CFG
-from ..env import BPPBatch, TYPE_FLOOR, sample_items, type_classes
+from ..env import (BPPBatch, TYPE_FLOOR, TYPE_RULES, sample_items,
+                   stack_allowance, type_classes)
 from ..orders import (ROUNDING, box_divisor, load_orders, orders_bin,
                       randomize_order)
 from . import agents as A
 from . import compare as C
+from . import dashboard as D
 from . import experiment as X
+from . import trainer as TR
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = A.ROOT
@@ -90,24 +103,33 @@ CLI: dict = {}
 #: triples; `PARAM_KEYS` adds where the boxes come from, below
 GAME_KEYS = ('bin', 'n_items', 'size_lo', 'size_hi', 'nb', 'n_pick',
              'max_l', 'rot', 'ems', 'stability', 'min_support',
-             'n_types', 'type_constraint', 'arm_collision', 'base_x_moves')
+             'n_types', 'type_constraint', 'type_rule', 'arm_collision',
+             'stack_cap',
+             'stack_cap_types', 'stack_cap_side_cm', 'stack_cap_allow_cm',
+             'base_x_moves')
+#: what a run does not record, so there is nothing to compare it on
+UNRECORDED = ('base_x_moves', 'stack_cap_types', 'stack_cap_side_cm',
+              'stack_cap_allow_cm')
 TRIPLES = ('bin', 'size_lo', 'size_hi')
 
 #: where the boxes come from: the generator, or a file of real pallets and how
 #: it is read.  In `orders` mode the bin (when `pallet_cm` is set), the item
 #: bounds and `n_items` are derived from the data rather than typed in.
 SOURCE_KEYS = ('source', 'data', 'pallet', 'cell_cm', 'pallet_cm',
-               'box_scale', 'box_round', 'order_random')
+               'box_pad_m', 'box_scale', 'box_round', 'order_random')
 #: what a run's own configuration fixes about its data -- the pallet picked
 #: and the order shuffle are the game's choice, not the run's
-RUN_SOURCE_KEYS = ('source', 'data', 'cell_cm', 'pallet_cm', 'box_scale',
-                   'box_round')
+RUN_SOURCE_KEYS = ('source', 'data', 'cell_cm', 'pallet_cm', 'box_pad_m',
+                   'box_scale', 'box_round')
 #: the three that feed `sample_items`, and so fix the box stream a session was
 #: dealt, plus everything that picks and reads a data file.  A recalculation
 #: holds them at the values the game was played under -- move one and the same
 #: seed deals a *different* sequence, so the rerun would no longer be about the
 #: parameter that was changed.
-STREAM_KEYS = ('n_items', 'size_lo', 'size_hi', 'n_types') + SOURCE_KEYS
+#: The box padding is the exception: a rerun re-reads the same pallet, in the
+#: order it was dealt, at the new padding (`session_seq`).
+STREAM_KEYS = (('n_items', 'size_lo', 'size_hi', 'n_types')
+               + tuple(k for k in SOURCE_KEYS if k != 'box_pad_m'))
 #: every field the form carries
 PARAM_KEYS = GAME_KEYS + SOURCE_KEYS
 #: everything else: geometry and rules, which the stream is indifferent to
@@ -146,12 +168,14 @@ def load_data(p):
     S = (tuple(orders_bin(p['pallet_cm'], p['cell_cm']))
          if csv and p['pallet_cm'] else tuple(p['bin']))
     key = (q, os.path.getmtime(q), S, p['rot'],
-           (p['cell_cm'], p['box_scale'], p['box_round']) if csv else None)
+           (p['cell_cm'], p['box_pad_m'], p['box_scale'], p['box_round'])
+           if csv else None)
     if key not in _DATA:
         if csv:
             tbl, ids = load_orders(q, p['cell_cm'], S, rot=p['rot'],
                                    box_scale=p['box_scale'],
-                                   box_round=p['box_round'])
+                                   box_round=p['box_round'],
+                                   box_pad_m=p['box_pad_m'])
         else:
             tbl = np.load(q)
             ids = [str(i) for i in range(len(tbl))]
@@ -185,7 +209,12 @@ def defaults():
          'min_support': float(e['min_support']),
          'n_types': int(e['n_types']),
          'type_constraint': int(e['type_constraint']),
+         'type_rule': str(e.get('type_rule', 'touch')),
          'arm_collision': int(e.get('arm_collision', 0)),
+         'stack_cap': int(e['stack_cap']),
+         'stack_cap_types': [int(t) for t in e['stack_cap_types'] or []],
+         'stack_cap_side_cm': [float(v) for v in e['stack_cap_side_cm']],
+         'stack_cap_allow_cm': [float(v) for v in e['stack_cap_allow_cm']],
          'base_x_moves': PC.base_x_moves(CFG['robot'])}
     ev = CFG['eval']
     p.update({'source': 'orders' if t.get('data') else 'random',
@@ -194,6 +223,7 @@ def defaults():
               'cell_cm': float(ev['cell_cm']),
               'pallet_cm': (None if ev['pallet_cm'] is None
                             else [float(v) for v in ev['pallet_cm']]),
+              'box_pad_m': float(ev.get('box_pad_m') or 0.0),
               'box_scale': float(ev['box_scale']),
               'box_round': str(ev['box_round']),
               'order_random': float(ev['order_random'])})
@@ -236,9 +266,13 @@ def run_params(spec):
         return p
     a = info['args']
     for k in ('n_items', 'max_l', 'rot', 'ems', 'stability', 'min_support',
-              'nb', 'n_types', 'type_constraint', 'arm_collision'):
+              'nb', 'n_types', 'type_constraint', 'type_rule', 'arm_collision',
+              'stack_cap'):
         if a.get(k) is not None:
             p[k] = a[k]
+    # a run from before --type_rule existed was trained under `touch`
+    if a.get('type_rule') is None:
+        p['type_rule'] = 'touch'
     for k in TRIPLES:
         if a.get(k) is not None:
             p[k] = list(A.extent(a[k]))
@@ -256,6 +290,8 @@ def run_params(spec):
         for k in ('cell_cm', 'box_scale', 'box_round'):
             if a.get(k) is not None:
                 p[k] = a[k]
+        # a run from before the padding existed read its boxes unpadded
+        p['box_pad_m'] = float(a.get('box_pad_m') or 0.0)
         p['pallet_cm'] = a.get('pallet_cm')
     # A flag on the command line outranks the run, as it outranks config.yaml
     # everywhere else here; without this the preset would silently undo it the
@@ -320,6 +356,35 @@ def validate(raw):
     p['n_types'] = whole('n_types', 1, 16, 'box types')
     p['type_constraint'] = whole('type_constraint', 0, 1, 'stacking rule')
     p['arm_collision'] = whole('arm_collision', 0, 1, 'robot-arm filter')
+    p['stack_cap'] = whole('stack_cap', 0, 1, 'stack-height limit')
+
+    def numbers(k, what, cast=float):
+        """A list typed as "12, 30" (or sent as a list), as `cast`s."""
+        v = raw.get(k, p[k])
+        if isinstance(v, str):
+            v = v.replace(',', ' ').split()
+        try:
+            return [cast(t) for t in v]
+        except (TypeError, ValueError):
+            err.append(f'{what}: expected numbers, got {v!r}')
+            return p[k]
+
+    types = numbers('stack_cap_types', 'limited box types', int)
+    # a type the boxes never carry simply never sets a limit, as in the env
+    if any(t < 0 for t in types):
+        err.append(f'limited box types: a type is 0 or more, got {types}')
+    else:
+        p['stack_cap_types'] = types
+    side = numbers('stack_cap_side_cm', 'stack-limit sides (cm)')
+    allow = numbers('stack_cap_allow_cm', 'stack-limit allowances (cm)')
+    if len(side) != 2 or len(allow) != 2:
+        err.append('stack limit: give two sides and two allowances in cm')
+    else:
+        try:
+            stack_allowance(1, side, allow, 1.0)
+            p['stack_cap_side_cm'], p['stack_cap_allow_cm'] = side, allow
+        except ValueError as ex:
+            err.append(f'stack limit: {ex}')
     mv = raw.get('base_x_moves', p['base_x_moves'])
     try:
         if isinstance(mv, str):
@@ -341,6 +406,7 @@ def validate(raw):
     p['data'] = str(raw.get('data', p['data']) or '').strip()
     p['pallet'] = whole('pallet', -1, 1 << 30, 'pallet')
     for k, lo, hi, what in (('cell_cm', 1e-3, 1e3, 'cell size (cm)'),
+                            ('box_pad_m', 0.0, 1.0, 'box padding (m)'),
                             ('order_random', 0.0, 1.0, 'order randomness')):
         try:
             v = float(raw.get(k, p[k]))
@@ -378,6 +444,12 @@ def validate(raw):
         err.append(f"stability rule: expected 'com' or 'cdrl', got {s!r}")
     else:
         p['stability'] = s
+    s = str(raw.get('type_rule', p['type_rule']))
+    if s not in TYPE_RULES:
+        err.append(f"type rule: expected one of {', '.join(TYPE_RULES)}, "
+                   f"got {s!r}")
+    else:
+        p['type_rule'] = s
     try:
         ms = float(raw.get('min_support', p['min_support']))
         if not 0.0 <= ms <= 1.0:
@@ -451,8 +523,14 @@ def pallet_list(p):
         tbl, ids, _ = load_data(p)
     except (OSError, ValueError):
         return []
-    n = (tbl[..., 0] > 0).sum(1)
-    return [{'i': i, 'id': ids[i], 'boxes': int(n[i])} for i in range(len(ids))]
+    real = tbl[..., 0] > 0
+    n = real.sum(1)
+    # boxes of each type on each pallet, indexed by the 0-based type
+    nt = max(int(p['n_types']), int(tbl[..., 3][real].max(initial=-1)) + 1)
+    types = [np.bincount(tbl[i, real[i], 3].astype(int), minlength=nt).tolist()
+             for i in range(len(ids))]
+    return [{'i': i, 'id': ids[i], 'boxes': int(n[i]), 'types': types[i]}
+            for i in range(len(ids))]
 
 
 def compared_keys(p):
@@ -461,8 +539,7 @@ def compared_keys(p):
     With an orders file the item bounds and `n_items` are the file's, not
     settings, and the file itself (and how it is read) is compared instead.
     """
-    # a run does not record `base_x_moves`, so there is nothing to compare it on
-    keys = tuple(k for k in GAME_KEYS if k != 'base_x_moves')
+    keys = tuple(k for k in GAME_KEYS if k not in UNRECORDED)
     if p['source'] == 'orders':
         return tuple(k for k in keys
                      if k not in ('size_lo', 'size_hi', 'n_items')) + RUN_SOURCE_KEYS
@@ -545,6 +622,19 @@ def grids(env):
     k = int(env.obs()['l_mask'][0].sum())   # refreshes the candidate table first
     cand, z, odims, tunder = env._positions()
     return cand[0], free_positions(env), z[0], odims[0], k, tunder[0]
+
+
+def type_blocked(env, z, odims):
+    """(R, S, S) the placements the box-type rule rejects, under `type_rule`.
+
+    The page says why a cell is illegal; under `column` the foreign box may be
+    deep under the footprint, so the top-type map alone cannot tell it.
+    """
+    if not (env.type_constraint and env.n_types > 1):
+        return np.zeros(z.shape, bool)
+    t = env.head_item()[1]
+    return np.stack([~env._type_ok(np.asarray(d)[None], zr[None], t)[0]
+                     for d, zr in zip(odims, z)])
 
 
 def arm_blocked(env, free):
@@ -693,6 +783,14 @@ def replay_hmap(placed, S):
         blk = hm[x:x + l, y:y + w]
         np.maximum(blk, z + h, out=blk)
     return hm
+
+
+def stack_kw(p):
+    """The type rule and stack-height limit of a parameter set, as `BPPBatch`
+    (and `agents.play`) take them."""
+    return dict(type_rule=p['type_rule'], stack_cap=bool(p['stack_cap']), stack_types=p['stack_cap_types'],
+                stack_side_cm=p['stack_cap_side_cm'],
+                stack_allow_cm=p['stack_cap_allow_cm'])
 
 
 def arm_replay(st, placed, S, moves=None):
@@ -848,6 +946,7 @@ def board(st):
         'tunder': tunder.astype(int).tolist(),
         'n_types': int(env.n_types),
         'type_constraint': bool(env.type_constraint),
+        'type_rule': env.type_rule,
         'arm_collision': bool(env.arm_collision),
         'floor_type': int(TYPE_FLOOR),
         'item': item[:3].tolist(),
@@ -855,6 +954,7 @@ def board(st):
         'mask': cand.astype(np.uint8).tolist(),      # the packer's candidate list
         'free': free.astype(np.uint8).tolist(),      # everything you may click
         'armblock': arm_blocked(env, free).astype(np.uint8).tolist(),
+        'typeblock': type_blocked(env, z, odims).astype(np.uint8).tolist(),
         'zmap': z.astype(int).tolist(),
         'ncand': k,
         'nfree': nfree,
@@ -905,7 +1005,8 @@ def advance(st):
 
 
 def deal_pallet(p, seed):
-    """-> (seq, pallet index, pallet id): one pallet of the file, reordered.
+    """-> (seq, pallet index, pallet id, order): one pallet of the file,
+    reordered; `order` is the file rows `seq` was taken from, in turn.
 
     `pallet = -1` lets the seed pick it, so "replay this exact instance"
     deals the same pallet in the same order again.
@@ -914,16 +1015,30 @@ def deal_pallet(p, seed):
     rng = np.random.default_rng(seed)
     i = int(rng.integers(len(tbl))) if p['pallet'] < 0 else int(p['pallet'])
     L = int((tbl[i, :, 0] > 0).sum())
-    seq = randomize_order(tbl[i:i + 1], p['order_random'], rng)[0, :L]
-    return seq, i, ids[i]
+    # shuffle the row numbers rather than the rows, so a recalculation can
+    # deal the same order again from the file read at another padding
+    idx = tbl[i:i + 1].copy()
+    idx[0, :, 3] = np.arange(idx.shape[1])
+    order = randomize_order(idx, p['order_random'], rng)[0, :L, 3].astype(int)
+    return tbl[i][order], i, ids[i], order
+
+
+def session_seq(st, p):
+    """The session's boxes as a rerun under `p` plays them: the pallet that
+    was dealt, in the order it was dealt, read at `p`'s box padding."""
+    if (st['p']['source'] != 'orders'
+            or p['box_pad_m'] == st['p']['box_pad_m']):
+        return st['seq']
+    tbl, _, _ = load_data(dict(st['p'], box_pad_m=p['box_pad_m']))
+    return tbl[st['p']['pallet']][st['order']]
 
 
 def new_game(seed, attacker_spec, params, human_pick=True, opp_spec=None):
     att, alabel, _ = A.load_attacker(attacker_spec, DEVICE)
     p = dict(params)
-    pid = None
+    pid = order = None
     if p['source'] == 'orders':
-        seq, p['pallet'], pid = deal_pallet(p, seed)
+        seq, p['pallet'], pid, order = deal_pallet(p, seed)
         # the game is this pallet: its length, and the bounds of its own boxes
         p['n_items'] = len(seq)
         p['size_lo'] = seq[:, :3].min(0).astype(int).tolist()
@@ -938,10 +1053,10 @@ def new_game(seed, attacker_spec, params, human_pick=True, opp_spec=None):
                    n_pick=p['n_pick'], n_types=p['n_types'], types=False,
                    type_constraint=bool(p['type_constraint']),
                    arm_collision=bool(p['arm_collision']), arm_cell_m=cell_m(p),
-                   arm_moves=p['base_x_moves'])
+                   arm_moves=p['base_x_moves'], **stack_kw(p))
     env.reset(seq[None])
     st = {'env': env, 'seq': seq, 'p': p, 'att': att, 'alabel': alabel,
-          'pallet_id': pid,
+          'pallet_id': pid, 'order': order,
           'human_pick': bool(human_pick) and p['n_pick'] > 1,
           'promoted': None, 'opp_spec': None, 'opp': None,
           'hcands': [], 'htaken': [], 'hwin': [], 'hprobs': [],
@@ -991,25 +1106,27 @@ def opp_permuter(st, spec, n_pick=None):
     return None, None
 
 
-def hand_over(st, spec, p):
+def hand_over(st, spec, p, seq=None):
     """Play this session's own item stream with `spec`, under parameters `p`.
 
     `st['seq']` is what makes the comparison an instance rather than a sample:
     the boxes, and the order they arrive in, are the ones that were dealt once
     at `new_game`.  Everything the parameters touch -- the bin, the window, the
     reach, the action space, the stability rule -- is free to differ from the
-    game that was played, which is what a recalculation varies.
+    game that was played, which is what a recalculation varies.  `seq`
+    replaces the stream when a recalculation re-read it at another padding.
     """
+    seq = st['seq'] if seq is None else seq
     policy, label, _ = A.load_policy(spec, DEVICE)
     perm, plabel = opp_permuter(st, spec, p['n_pick'])
     t0 = time.time()
-    ep = A.play(st['seq'], policy, perm, nb=p['nb'], S=p['bin'],
+    ep = A.play(seq, policy, perm, nb=p['nb'], S=p['bin'],
                 size_hi=p['size_hi'], max_l=p['max_l'], n_pick=p['n_pick'],
                 rot=p['rot'], ems=p['ems'], stability=p['stability'],
                 min_support=p['min_support'], n_types=p['n_types'],
                 type_constraint=bool(p['type_constraint']),
                 arm_collision=bool(p['arm_collision']), arm_cell_m=cell_m(p),
-                arm_moves=p['base_x_moves'])
+                arm_moves=p['base_x_moves'], **stack_kw(p))
     return {'label': label, 'util': ep['util'], 'items': ep['items'],
             'placed': ep['placed'], 'placed_types': ep['placed_types'],
             # before box n went in, the placements the packer had for it
@@ -1059,7 +1176,13 @@ def recalc_params(st, raw):
     q, err = validate(p)
     q.update({k: st['p'][k] for k in STREAM_KEYS})
     err = [e for e in err if not e.startswith('largest item side')]
-    bad = [b for b in st['seq'] if not fits(b, q['bin'], q['rot'])]
+    try:
+        seq = session_seq(st, q)
+    except (OSError, ValueError) as e:
+        return q, err + [str(e)]
+    q['size_lo'] = seq[:, :3].min(0).astype(int).tolist()
+    q['size_hi'] = seq[:, :3].max(0).astype(int).tolist()
+    bad = [b for b in seq if not fits(b, q['bin'], q['rot'])]
     if bad:
         err.append(f"{len(bad)} of this pallet's boxes do not fit a "
                    f"{'x'.join(map(str, q['bin']))} bin, the first "
@@ -1070,7 +1193,7 @@ def recalc_params(st, raw):
 def recalc(st, spec, p):
     """One row of the recalculation table: the same instance, other rules."""
     # `placed` stays in: the page draws the rerun's bin in 3D beside the game's
-    out = hand_over(st, spec, p)
+    out = hand_over(st, spec, p, session_seq(st, p))
     out['params'] = p
     # what moved from the game that was played, and what that leaves the agent
     # standing on: a rerun can walk a policy off its training configuration
@@ -1095,8 +1218,9 @@ def exp_params(raw):
 
 #: what the experiment's form carries, and so what drift is judged on there
 EXP_KEYS = ('nb', 'n_pick', 'max_l', 'rot', 'ems', 'stability', 'min_support',
-            'type_constraint', 'arm_collision', 'pallet_cm', 'box_scale',
-            'box_round')
+            'type_constraint', 'type_rule', 'arm_collision', 'stack_cap',
+            'pallet_cm',
+            'box_pad_m', 'box_scale', 'box_round')
 
 
 def exp_mismatch(p, spec):
@@ -1108,7 +1232,8 @@ def exp_mismatch(p, spec):
     if not spec or spec in ('none', 'random') or spec.startswith('heur:'):
         return []
     info = A.run_info(spec.split(':')[1])
-    keys = EXP_KEYS if info and info['args'].get('data') else EXP_KEYS[:9]
+    keys = (EXP_KEYS if info and info['args'].get('data')
+            else EXP_KEYS[:EXP_KEYS.index('pallet_cm')])
     return diff_params(p, run_params(spec), keys)
 
 
@@ -1154,7 +1279,8 @@ def cmp_reports(folder, picks=None):
 
 
 def cmp_delete(folder, names):
-    """Delete the experiments run under `names` from every report of `folder`."""
+    """Delete the experiments keyed `names` (a name, or `Exp <num>` for an
+    unnamed one) from every report of `folder`."""
     if X.writing(folder):
         raise ValueError('an experiment is writing to this folder; '
                          'wait for it or stop it first')
@@ -1177,6 +1303,19 @@ class QuietServer(ThreadingHTTPServer):
         super().handle_error(request, client_address)
 
 
+
+def program_version():
+    """'v1.<commits> (<short hash>) : <last commit date>' from git."""
+    def git(*a):
+        return subprocess.run(('git', '-C', HERE) + a, capture_output=True,
+                               text=True, timeout=5).stdout.strip()
+    try:
+        n, h = git('rev-list', '--count', 'HEAD'), git('rev-parse', '--short', 'HEAD')
+        d = git('log', '-1', '--format=%cd', '--date=format:%Y-%m-%d')
+    except (OSError, subprocess.SubprocessError):
+        return 'unknown'
+    return f'v1.{n} ({h}) : {d}' if n and h else 'unknown'
+
 class Handler(BaseHTTPRequestHandler):
     def _send(self, body, ctype='application/json', code=200):
         b = body if isinstance(body, bytes) else body.encode()
@@ -1198,7 +1337,22 @@ class Handler(BaseHTTPRequestHandler):
         p = u.path.rstrip('/') or '/'
         if p in ('/', '/index.html'):
             with open(os.path.join(HERE, 'game.html'), 'rb') as f:
+                html = f.read().replace(b'{{VERSION}}', program_version().encode())
+                return self._send(html, 'text/html; charset=utf-8')
+        # the training dashboard, as its own server serves it at /
+        if p == '/dashboard':
+            if not u.path.endswith('/'):     # its requests are relative to it
+                self.send_response(301)
+                self.send_header('Location', '/dashboard/')
+                return self.end_headers()
+            with open(os.path.join(HERE, 'dashboard.html'), 'rb') as f:
                 return self._send(f.read(), 'text/html; charset=utf-8')
+        if p == '/dashboard/runs':
+            return self._json([D.run_meta(r) for r in D.list_runs()])
+        if p == '/dashboard/log':
+            return self._json(D.read_log((parse_qs(u.query).get('run') or [''])[0]))
+        if p == '/dashboard/summary':
+            return self._json(D.summary())
         if p == '/api/setup':
             runs = [r for r in A.list_runs() if A.run_info(r)]
             policies = [r for r in runs if not r.startswith(('att_', 'h'))]
@@ -1225,6 +1379,23 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(cmp_reports((q.get('dir') or [''])[0], picks))
             except ValueError as e:
                 return self._json({'error': str(e)}, 400)
+        if p == '/api/train/form':
+            try:
+                return self._json(TR.form((parse_qs(u.query).get('config') or [''])[0]
+                                          or None))
+            except Exception as e:
+                return self._json({'error': f'{type(e).__name__}: {e}'}, 400)
+        if p == '/api/train/runs':
+            return self._json(TR.runs())
+        if p == '/api/train/run':
+            try:
+                return self._json(TR.run_values((parse_qs(u.query).get('name') or [''])[0]))
+            except ValueError as e:
+                return self._json({'error': str(e)}, 404)
+        if p == '/api/train/status':
+            return self._json(TR.status())
+        if p == '/api/sys':
+            return self._json(TR.system())
         if p == '/api/exp/status':
             q = parse_qs(u.query)
             s = X.status((q.get('job') or [''])[0])
@@ -1239,6 +1410,11 @@ class Handler(BaseHTTPRequestHandler):
         except json.JSONDecodeError:
             return self._json({'error': 'bad request'}, 400)
         p = urlparse(self.path).path.rstrip('/')
+        if p == '/dashboard/delete':
+            try:
+                return self._json({'moved_to': D.delete_run(body.get('run', ''))})
+            except (ValueError, OSError) as e:
+                return self._json({'error': str(e)})
         if p == '/api/check':
             params, err = validate(body.get('params'))
             return self._json({'params': params, 'errors': err,
@@ -1286,6 +1462,29 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({'removed': cmp_delete(body.get('dir') or '', names)})
             except (ValueError, OSError) as e:
                 return self._json({'error': str(e)}, 400)
+        if p == '/api/train/check':
+            argv, err = TR.check(body.get('values') or {}, body.get('config') or None)
+            return self._json({'cmd': 'python -m ar2l.train ' + ' '.join(argv),
+                               'errors': err})
+        if p == '/api/train/start':
+            try:
+                return self._json({'name': TR.start(body.get('values') or {},
+                                                    body.get('config') or None)})
+            except ValueError as e:
+                return self._json({'error': str(e)}, 400)
+        if p == '/api/train/stop':
+            try:
+                return self._json({'ok': TR.stop(body.get('name'),
+                                                 body.get('mode') or 'save')})
+            except OSError as e:
+                return self._json({'error': f'could not move the run away: {e}'}, 500)
+        if p == '/api/train/resume':
+            try:
+                return self._json({'name': TR.resume(body.get('name') or '')})
+            except ValueError as e:
+                return self._json({'error': str(e)}, 400)
+        if p == '/api/train/dismiss':
+            return self._json({'ok': TR.dismiss(body.get('name'))})
         if p == '/api/exp/stop':
             return self._json({'ok': X.stop(body.get('job'))})
         st = _GAMES.get(body.get('gid'))
@@ -1404,10 +1603,18 @@ def main(argv=None):
     d = defaults()
     print(f"game: http://{a.host}:{a.port}/   bin {'x'.join(map(str, d['bin']))}"
           f"   (opponents: {', '.join(runs[:6]) or 'heuristics only'})")
+    # Training runs started from the page live as long as this server: closing
+    # the terminal (SIGHUP) or a kill (SIGTERM) shuts it down, and them with it
+    def bye(*_):
+        raise KeyboardInterrupt
+    signal.signal(signal.SIGHUP, bye)
+    signal.signal(signal.SIGTERM, bye)
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
         pass
+    finally:
+        TR.stop_all()
 
 
 if __name__ == '__main__':

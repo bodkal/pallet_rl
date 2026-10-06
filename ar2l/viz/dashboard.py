@@ -16,8 +16,10 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import sys
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
@@ -56,6 +58,27 @@ def list_runs():
            if os.path.exists(os.path.join(d, r, 'log.jsonl'))]
     out.sort(key=lambda r: -os.path.getmtime(os.path.join(d, r, 'log.jsonl')))
     return out
+
+
+def delete_run(run):
+    """Move runs/<run> into runs/.trash, where nothing lists it.
+
+    Moved rather than erased: a run can be a day and a half of training, and
+    one misplaced click should not be the end of it.  `rm -rf runs/.trash`
+    empties it for good.  Only a run the page could have shown is accepted,
+    so no name can reach outside runs/.
+    """
+    if run not in list_runs():
+        raise ValueError(f'no such run: {run!r}')
+    trash = os.path.join(ROOT, 'runs', '.trash')
+    os.makedirs(trash, exist_ok=True)
+    dest = os.path.join(trash, run)
+    if os.path.exists(dest):                 # the same name deleted before
+        dest += time.strftime('_%Y%m%d-%H%M%S')
+    shutil.move(os.path.join(ROOT, 'runs', run), dest)
+    with _CACHE_LOCK:
+        _CACHE.pop(os.path.join(ROOT, 'runs', run, 'log.jsonl'), None)
+    return os.path.relpath(dest, ROOT)
 
 
 def read_log(run):
@@ -170,6 +193,16 @@ class Handler(BaseHTTPRequestHandler):
         if p == '/summary':
             return self._send(json.dumps(summary()))
         self.send_error(404)
+
+    def do_POST(self):
+        if urlparse(self.path).path.rstrip('/') != '/delete':
+            return self.send_error(404)
+        try:
+            n = int(self.headers.get('Content-Length') or 0)
+            run = json.loads(self.rfile.read(n) or b'{}').get('run', '')
+            return self._send(json.dumps({'moved_to': delete_run(run)}))
+        except (ValueError, OSError) as e:
+            return self._send(json.dumps({'error': str(e)}))
 
     def log_message(self, *a):
         pass
