@@ -36,6 +36,12 @@ env:
   # and a contact patch on one is not.
   n_types: 3
   type_constraint: 1     # 0 keeps type_id in the state but drops the rule
+  # What "stacked on" means for that rule.  touch: only the cells a box rests
+  # on are tested (above).  column: a box may not be anywhere over a foreign
+  # type -- any box under any cell of its footprint counts, however deep and
+  # across any gap, so the overhang that touch allows is blocked too.  Either
+  # way it only drops candidate placements; the reward is not touched.
+  type_rule: touch       # touch | column
   # Robot-arm filter: 1 drops every candidate placement the UR20 cannot make
   # without one of its links hitting the pack, or cannot reach at all (the
   # IK/capsule check of ar2l/pack_collision.py, set up from `robot:` below).
@@ -154,6 +160,10 @@ eval:
   # keeps the sizes in the file, 2 halves them, 3 takes a third, and so on.
   # The pallet is not scaled.
   box_scale: 4
+  # Metres added to every box's length and width (x and y, not z) before
+  # box_scale -- the cell's C++ `padding`, added once per side, not per face:
+  # 0.04 makes a 30 x 20 cm box 34 x 24 cm.  0 leaves the boxes as they are.
+  box_pad_m: 0.0
   # How much the box arrival order is randomised before scoring, 0..1: 0 is
   # the order in the data, 1 a uniformly random order, and in between each
   # box drifts from its place -- by about r / (1 - r) of the pallet, so 0.1

@@ -107,7 +107,8 @@ def main(argv=None):
     n_pick = A.spec_n_pick(a.attacker) or A.spec_n_pick(a.policy)
     ep = A.play(randomize_order(load_instances(os.path.join(a.root, a.data), a.cell_cm, bin_for(a),
                                          box_scale=a.box_scale,
-                                         box_round=a.box_round),
+                                         box_round=a.box_round,
+                                         box_pad_m=a.box_pad_m),
                           a.order_random, a.order_seed)[a.seq], policy, attacker, nb=nb, n_pick=n_pick, S=bin_for(a))
 
     tag = f"{plabel}_{alabel}_s{a.seq}".replace(":", "-").replace("/", "-")

@@ -462,6 +462,8 @@ details.cf>summary b{font-size:14px}
               <input id="pcm2" type="number" min="0" step="any"></div></div>
           <div class="pf" hidden><span>cell size, cm</span>
             <input id="cellcm" type="number" min="0.001" step="any"></div>
+          <div class="pf osrc ocsv"><span>box padding, m &mdash; added to x and y before the scale</span>
+            <input id="bpad" type="number" min="0" max="1" step="0.005"></div>
           <div class="pf osrc ocsv"><span>box scale &mdash; divide every side</span>
             <input id="bscale" type="number" min="0" step="any"></div>
           <div class="pf osrc ocsv"><span>box rounding to cells</span><select id="bround">
@@ -503,6 +505,9 @@ details.cf>summary b{font-size:14px}
             <option value="cdrl">cdrl &mdash; Zhao et al.</option></select></div>
           <div class="pf"><span>support floor (com only)</span>
             <input id="msup" type="number" min="0" max="1" step="0.05"></div>
+          <div class="pf"><span>box-type rule</span><select id="trule">
+            <option value="touch">touch &mdash; not resting on another type</option>
+            <option value="column">column &mdash; not over another type anywhere below</option></select></div>
           <div class="pf"><span>robot-arm filter</span><select id="armcol">
             <option value="0">off &mdash; every placement the rules allow</option>
             <option value="1">on &mdash; drop placements the arm collides on</option></select></div>
@@ -727,6 +732,9 @@ details.cf>summary b{font-size:14px}
           <option value="cdrl">cdrl &mdash; Zhao et al.</option></select></div>
         <div class="pf"><span>support floor (com only)</span>
           <input id="rcmsup" type="number" min="0" max="1" step="0.05"></div>
+        <div class="pf"><span>box-type rule</span><select id="rctrule">
+          <option value="touch">touch &mdash; not resting on another type</option>
+          <option value="column">column &mdash; not over another type anywhere below</option></select></div>
         <div class="pf"><span>robot-arm filter</span><select id="rcarmcol">
           <option value="0">off &mdash; every placement the rules allow</option>
           <option value="1">on &mdash; drop placements the arm collides on</option></select></div>
@@ -741,6 +749,8 @@ details.cf>summary b{font-size:14px}
           <input id="rcstackside" type="text" placeholder="12, 30"></div>
         <div class="pf"><span>box may start above it, cm: at small / at large end</span>
           <input id="rcstackallow" type="text" placeholder="8, 140"></div>
+        <div class="pf"><span>box padding, m &mdash; added to x and y before the scale</span>
+          <input id="rcbpad" type="number" min="0" max="1" step="0.005"></div>
         <div class="pf lock pf3"><span>item side &mdash; smallest / largest</span>
           <div class="tri" style="grid-template-columns:1fr 1fr">
             <input id="rclo" disabled><input id="rchi" disabled></div></div>
@@ -826,6 +836,8 @@ details.cf>summary b{font-size:14px}
             <input id="xpcm2" type="number" min="0" step="any"></div></div>
         <div class="pf" hidden><span>cell size, cm</span>
           <input id="xcellcm" type="number" min="0.001" step="any"></div>
+        <div class="pf"><span>box padding, m &mdash; added to x and y before the scale</span>
+          <input id="xbpad" type="number" min="0" max="1" step="0.005"></div>
         <div class="pf"><span>box scale &mdash; divide every side</span>
           <input id="xbscale" type="number" min="0" step="any"></div>
         <div class="pf"><span>order randomness &mdash; 0 file order, 1 random</span>
@@ -864,6 +876,9 @@ details.cf>summary b{font-size:14px}
         <div class="pf"><span>stacking rule</span><select id="xtcon">
           <option value="1">on &mdash; a box only on its own type</option>
           <option value="0">off &mdash; any type on any</option></select></div>
+        <div class="pf"><span>box-type rule</span><select id="xtrule">
+          <option value="touch">touch &mdash; not resting on another type</option>
+          <option value="column">column &mdash; not over another type anywhere below</option></select></div>
         <div class="pf"><span>robot-arm filter</span><select id="xarmcol">
           <option value="0">off &mdash; every placement the rules allow</option>
           <option value="1">on &mdash; drop placements the arm collides on</option></select></div>
@@ -1006,20 +1021,20 @@ const PF = {
   size_hi: ['#hi0', '#hi1', '#hi2'],
   nb: '#nb', n_pick: '#npick', n_items: '#nitems', max_l: '#maxl',
   rot: '#prot', ems: '#ems', stability: '#stab', min_support: '#msup',
-  arm_collision: '#armcol', base_x_moves: '#armmoves',
+  type_rule: '#trule', arm_collision: '#armcol', base_x_moves: '#armmoves',
   stack_cap: '#stackcap', stack_cap_types: '#stacktypes',
   stack_cap_side_cm: '#stackside', stack_cap_allow_cm: '#stackallow',
   source: '#src', data: '#data', pallet: '#palpick', order_random: '#ordrnd',
   pallet_cm: ['#pcm0', '#pcm1', '#pcm2'], cell_cm: '#cellcm',
-  box_scale: '#bscale', box_round: '#bround',
+  box_pad_m: '#bpad', box_scale: '#bscale', box_round: '#bround',
 };
 /* how each field reads: the rest are whole numbers */
 /* what each `ems` mode leaves the packer, for the duel's subtitle */
 const EMSTEXT = {1: 'the corners of the empty maximal spaces',
   2: 'the corner cells of the height map',
   3: 'the empty-maximal-space corners and the corner cells'};
-const PSTR = new Set(['stability', 'source', 'data', 'box_round']);
-const PFLOAT = new Set(['min_support', 'order_random', 'cell_cm', 'box_scale']);
+const PSTR = new Set(['stability', 'type_rule', 'source', 'data', 'box_round']);
+const PFLOAT = new Set(['min_support', 'order_random', 'cell_cm', 'box_pad_m', 'box_scale']);
 /* a list of numbers typed as "0, -0.5, 0.5"; the server checks the values */
 const PNUMS = new Set(['base_x_moves', 'stack_cap_types', 'stack_cap_side_cm',
   'stack_cap_allow_cm']);
@@ -1029,11 +1044,11 @@ const showList = v => (v || []).join(', ');
 const DERIVED = ['size_lo', 'size_hi', 'n_items'];
 const PLABEL = {source: 'box source', data: 'data file', pallet: 'pallet',
   order_random: 'order randomness', pallet_cm: 'pallet (cm)', cell_cm: 'cell size',
-  box_scale: 'box scale', box_round: 'box rounding', bin: 'bin', size_lo: 'smallest item side', size_hi: 'largest item side',
+  box_pad_m: 'box padding', box_scale: 'box scale', box_round: 'box rounding', bin: 'bin', size_lo: 'smallest item side', size_hi: 'largest item side',
   nb: 'window N_B', n_pick: 'reach k', n_items: 'items in the sequence',
   max_l: 'candidate cap', rot: 'orientations', ems: 'action space',
   stability: 'stability rule', min_support: 'support floor',
-  arm_collision: 'robot-arm filter', base_x_moves: 'arm base x moves',
+  type_rule: 'box-type rule', arm_collision: 'robot-arm filter', base_x_moves: 'arm base x moves',
   stack_cap: 'stack-height limit', stack_cap_types: 'limited box types',
   stack_cap_side_cm: 'stack-limit sides (cm)', stack_cap_allow_cm: 'stack-limit allowances (cm)'};
 
@@ -1759,7 +1774,9 @@ function kpis(){
                               : 'next item',
                  B.done ? '—' : B.item.join('×')]];
   if (typed() && !B.done)
-    rows.push([B.type_constraint ? 'may stack only on' : 'box type',
+    rows.push([B.type_constraint ? (B.type_rule === 'column' ? 'may be only over'
+                                                             : 'may stack only on')
+                                 : 'box type',
                `${TSW(B.item_type)}${TNAME(B.item_type)}`]);
   $('#kpis').innerHTML = rows.map(([k, v]) =>
     `<div class="kpi"><div class="v">${v}</div><div class="k">${k}</div></div>`).join('');
@@ -1885,12 +1902,17 @@ function onMove(ev){
   if (!HOVER){ $('#hoverinfo').textContent = ''; return; }
   const {x, y} = HOVER, [l, w, h] = poseDims(), z = landing(x, y);
   const u = typed() ? under(x, y) : -1;
-  const wrongType = typed() && B.type_constraint && z > 0 && u >= 0
-                    && u !== B.item_type;
+  const column = B.type_rule === 'column';
+  const wrongType = B.typeblock ? !!B.typeblock[ORIENT][x][y]
+                    : typed() && B.type_constraint && z > 0 && u >= 0
+                      && u !== B.item_type;
   const armBlocked = B.armblock && B.armblock[ORIENT] && B.armblock[ORIENT][x][y];
   const why = armBlocked ? 'the robot arm would hit the pack placing it here, or cannot reach it (robot-arm filter on)'
             : (x + l > LX || y + w > LY) ? 'it hangs off the pallet'
             : (z + h > LZ) ? 'it would poke out through the lid'
+            : wrongType && column ? `there is a box of another type somewhere under
+                           its footprint, and a ${TNAME(B.item_type)} box may only be
+                           over its own type (column rule)`
             : wrongType ? `it would come to rest on ${TNAME(u)}, and a
                            ${TNAME(B.item_type)} box may only be stacked on its own type`
             : 'not enough support underneath — less than 80% of the base would rest on what is below it';
@@ -2172,9 +2194,10 @@ const RPF = {
   bin: ['#rcbin0', '#rcbin1', '#rcbin2'],
   nb: '#rcnb', n_pick: '#rcnpick', max_l: '#rcmaxl',
   rot: '#rcrot', ems: '#rcems', stability: '#rcstab', min_support: '#rcmsup',
-  arm_collision: '#rcarmcol', base_x_moves: '#rcarmmoves',
+  type_rule: '#rctrule', arm_collision: '#rcarmcol', base_x_moves: '#rcarmmoves',
   stack_cap: '#rcstackcap', stack_cap_types: '#rcstacktypes',
   stack_cap_side_cm: '#rcstackside', stack_cap_allow_cm: '#rcstackallow',
+  box_pad_m: '#rcbpad',
 };
 let RCROWS = [];
 let RCSEL = 0;           // the row shown in 3D beside this game's; 0 = none yet
@@ -2183,9 +2206,9 @@ function readRecalc(){
   const o = {};
   for (const [k, sel] of Object.entries(RPF)){
     if (Array.isArray(sel)) o[k] = sel.map(t => parseInt($(t).value, 10));
-    else if (k === 'stability') o[k] = $(sel).value;
+    else if (PSTR.has(k)) o[k] = $(sel).value;
     else if (PNUMS.has(k)) o[k] = readList($(sel).value);
-    else if (k === 'min_support') o[k] = parseFloat($(sel).value);
+    else if (PFLOAT.has(k)) o[k] = parseFloat($(sel).value);
     else o[k] = parseInt($(sel).value, 10);
   }
   return o;
@@ -2208,6 +2231,8 @@ function writeRecalc(p){
   $('#rclo').value = p.size_lo.join('\u00d7');
   $('#rchi').value = p.size_hi.join('\u00d7');
   $('#rcitems').value = p.n_items;
+  // the padding only reads an orders file; generated boxes have none
+  $('#rcbpad').closest('.pf').hidden = G.params.source !== 'orders';
   markRecalc();
 }
 
@@ -2638,11 +2663,11 @@ const XPF = {
   bin: ['#xbin0', '#xbin1', '#xbin2'],
   nb: '#xnb', n_pick: '#xnpick', max_l: '#xmaxl',
   rot: '#xprot', ems: '#xems', stability: '#xstab', min_support: '#xmsup',
-  type_constraint: '#xtcon', arm_collision: '#xarmcol', base_x_moves: '#xarmmoves',
+  type_constraint: '#xtcon', type_rule: '#xtrule', arm_collision: '#xarmcol', base_x_moves: '#xarmmoves',
   stack_cap: '#xstackcap', stack_cap_types: '#xstacktypes',
   stack_cap_side_cm: '#xstackside', stack_cap_allow_cm: '#xstackallow',
   pallet_cm: ['#xpcm0', '#xpcm1', '#xpcm2'], cell_cm: '#xcellcm',
-  box_scale: '#xbscale', box_round: '#xbround', order_random: '#xordrnd',
+  box_pad_m: '#xbpad', box_scale: '#xbscale', box_round: '#xbround', order_random: '#xordrnd',
 };
 PLABEL.type_constraint = 'stacking rule';
 let XCHECK = null, XFILLED = false;

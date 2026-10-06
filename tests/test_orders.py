@@ -20,7 +20,8 @@ def reference_eval_config(monkeypatch):
     """Pin the CSV settings, so a user's config.yaml cannot move the tests."""
     from ar2l.config import CFG
     for k, v in {"cell_cm": 2.0, "pallet_cm": None, "box_scale": 0,
-                 "box_round": "up", "order_random": 0.0}.items():
+                 "box_round": "up", "box_pad_m": 0.0,
+                 "order_random": 0.0}.items():
         monkeypatch.setitem(CFG["eval"], k, v)
 
 
@@ -194,6 +195,21 @@ def test_box_round_after_box_scale_and_default(tmp_path, monkeypatch):
     assert got.tolist() == [7, 5, 4]         # 7.55 x 5.8 x 4.825 cm, down
     with pytest.raises(ValueError, match="box_round"):
         load_orders(p, S=S, box_round="sideways")
+
+
+# -------------------------------------------------------------- box_pad_m
+def test_box_pad_grows_length_and_width_before_the_scale(tmp_path, monkeypatch):
+    from ar2l.config import CFG
+    p = write(tmp_path, "pallet_id,length_cm,width_cm,height_cm\nX,30,20,20\n")
+    side = lambda **kw: load_orders(p, cell_cm=1.0, S=(60, 40, 90),
+                                    **kw)[0][0, 0, :3].tolist()
+    assert side() == [30, 20, 20]                       # default 0: unpadded
+    assert side(box_pad_m=0.04) == [34, 24, 20]         # z is never padded
+    assert side(box_pad_m=0.04, box_scale=2) == [17, 12, 10]   # (30 + 4) / 2
+    monkeypatch.setitem(CFG["eval"], "box_pad_m", 0.02)        # the config default
+    assert side() == [32, 22, 20]
+    with pytest.raises(ValueError, match="box_pad_m"):
+        side(box_pad_m=-0.01)
 
 
 # ------------------------------------------------------------ order_random

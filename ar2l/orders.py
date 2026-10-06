@@ -12,8 +12,10 @@ box type for the stacking rule (0 when absent), and `qty` repeats a row that
 many times in a row.  Height is the vertical side; length and width lie along
 the pallet's x and y, and the env yaws the box by itself when `rot` is 2.
 
-Sides are divided by `box_scale` (0 or 1 keeps them; 2 halves every side),
-then converted to grid cells of `cell_cm` and rounded by `box_round`: `up`
+Length and width first grow by `box_pad_m` (metres, the cell's C++
+`padding`: added once to each side, not per face; the height is not padded),
+then every side is divided by `box_scale` (0 or 1 keeps them; 2 halves every
+side), then converted to grid cells of `cell_cm` and rounded by `box_round`: `up`
 never models a box smaller than it is, `down` never bigger, `nearest` either
 way; a side is never less than one cell.  The pallet is `pallet_cm` rounded *down*,
 so it is never modelled bigger; both default to `eval:` in `config.yaml`, and
@@ -52,14 +54,14 @@ ROUNDING = {
 }
 
 
-def _cells(v, cell_cm, where, scale=1.0, rounding="up"):
+def _cells(v, cell_cm, where, scale=1.0, rounding="up", pad_cm=0.0):
     try:
         cm = float(v)
     except ValueError:
         raise ValueError(f"{where}: {v!r} is not a number") from None
     if not cm > 0:
         raise ValueError(f"{where}: a side must be positive, got {v!r}")
-    return max(1, ROUNDING[rounding](cm / scale / cell_cm))
+    return max(1, ROUNDING[rounding]((cm + pad_cm) / scale / cell_cm))
 
 
 def box_rounding(box_round=None):
@@ -79,6 +81,24 @@ def box_divisor(box_scale=None):
         raise ValueError(f"box_scale is 0 (sizes as in the file) or the "
                          f"number >= 1 to divide every side by, got {s:g}")
     return 1.0 if s == 0 else s
+
+
+def box_pad_cm(box_pad_m=None):
+    """`box_pad_m`, default `eval.box_pad_m`, checked and in cm."""
+    m = CFG["eval"].get("box_pad_m", 0.0) if box_pad_m is None else box_pad_m
+    m = float(m or 0.0)
+    if m < 0:
+        raise ValueError(f"box_pad_m is the metres added to a box's length "
+                         f"and width, so 0 or more, got {m:g}")
+    return 100.0 * m
+
+
+def box_cells(row, cell_cm, where, scale, rounding, pad_cm, cols):
+    """(sx, sy, sz) in cells of the `cols` (length, width, height) of `row`;
+    `pad_cm` goes on the length and width only."""
+    return tuple(_cells(row[c], cell_cm, f"{where} {c}", scale, rounding,
+                        pad_cm if i < 2 else 0.0)
+                 for i, c in enumerate(cols))
 
 
 def orders_bin(pallet_cm=None, cell_cm=None):
@@ -101,7 +121,7 @@ def orders_bin(pallet_cm=None, cell_cm=None):
 
 
 def load_orders(path, cell_cm=None, S=None, rot=None, box_scale=None,
-                box_round=None):
+                box_round=None, box_pad_m=None):
     """Read an orders CSV.  Returns `(seqs, pallet_ids)`.
 
     `seqs` is int16 `(n_pallets, max_boxes, 4)` of `(sx, sy, sz, type_id)` in
@@ -110,11 +130,14 @@ def load_orders(path, cell_cm=None, S=None, rot=None, box_scale=None,
     one that fits in no allowed orientation could never be placed and would
     silently end its pallet, so it is an error here instead.  `box_scale`
     (default `eval.box_scale`) divides every side before gridding, and
-    `box_round` (default `eval.box_round`) rounds it to cells.
+    `box_round` (default `eval.box_round`) rounds it to cells.  `box_pad_m`
+    (default `eval.box_pad_m`) is added to the length and width, in metres,
+    before the scale.
     """
     cell_cm = CFG["eval"]["cell_cm"] if cell_cm is None else cell_cm
     scale = box_divisor(box_scale)
     rounding = box_rounding(box_round)
+    pad_cm = box_pad_cm(box_pad_m)
     S = orders_bin(cell_cm=cell_cm) if S is None else S
     rot = CFG["env"]["rot"] if rot is None else rot
     Lx, Ly, Lz = (int(v) for v in np.broadcast_to(np.asarray(S), (3,)))
@@ -134,8 +157,8 @@ def load_orders(path, cell_cm=None, S=None, rot=None, box_scale=None,
             pid = row["pallet_id"]
             if not pid:
                 raise ValueError(f"{where}: empty pallet_id")
-            box = [_cells(row[c], cell_cm, f"{where} {c}", scale, rounding)
-                   for c in ("length_cm", "width_cm", "height_cm")]
+            box = box_cells(row, cell_cm, where, scale, rounding, pad_cm,
+                            ("length_cm", "width_cm", "height_cm"))
             t = int(row.get("type") or 0)
             qty = int(row.get("qty") or 1)
             if qty < 1:
@@ -146,6 +169,7 @@ def load_orders(path, cell_cm=None, S=None, rot=None, box_scale=None,
                 raise ValueError(
                     f"{where}: box {row['length_cm']}x{row['width_cm']}x"
                     f"{row['height_cm']} cm"
+                    + (f" + {pad_cm:g} cm padding" if pad_cm else "")
                     + (f" / {scale:g}" if scale != 1 else "")
                     + f" is {sx}x{sy}x{sz} cells and does "
                     f"not fit the {Lx}x{Ly}x{Lz}-cell bin "
@@ -194,13 +218,15 @@ def randomize_order(seqs, amount, seed=0):
 
 
 def load_instances(path, cell_cm=None, S=None, rot=None, box_scale=None,
-                   box_round=None):
+                   box_round=None, box_pad_m=None):
     """An instance table from a `.npy` or an orders `.csv`.
 
-    `box_scale` applies to a `.csv` only: a `.npy` is already in cells.
+    `box_scale` and `box_pad_m` apply to a `.csv` only: a `.npy` is already
+    in cells.
     """
     if str(path).lower().endswith(".csv"):
-        return load_orders(path, cell_cm, S, rot, box_scale, box_round)[0]
+        return load_orders(path, cell_cm, S, rot, box_scale, box_round,
+                           box_pad_m)[0]
     return np.load(path)
 
 
@@ -217,6 +243,10 @@ def add_cm_args(p):
     p.add_argument("--box_scale", type=float, default=ev["box_scale"],
                    help="divide every box side of an orders .csv by this; "
                         "0 keeps the file's sizes (%(default)s)")
+    p.add_argument("--box_pad_m", type=float, default=ev.get("box_pad_m", 0.0),
+                   help="metres added to every box's length and width of an "
+                        "orders .csv, before --box_scale; the height is not "
+                        "padded (%(default)s)")
     p.add_argument("--box_round", choices=sorted(ROUNDING),
                    default=ev["box_round"],
                    help="how a box side is rounded to whole cells: up = never "
@@ -243,7 +273,7 @@ def main(argv=None):
     a = p.parse_args(argv)
     S = orders_bin(a.pallet_cm, a.cell_cm)
     seqs, ids = load_orders(a.csv, a.cell_cm, S, box_scale=a.box_scale,
-                            box_round=a.box_round)
+                            box_round=a.box_round, box_pad_m=a.box_pad_m)
     os.makedirs(os.path.dirname(a.out) or ".", exist_ok=True)
     np.save(a.out, seqs)
     with open(os.path.splitext(a.out)[0] + ".ids.txt", "w") as f:

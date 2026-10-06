@@ -8,7 +8,7 @@ One file is one day's boxes at one cell, in the order they arrived:
 read as `length_cm = V_BOX_DEPTH`, `width_cm = V_BOX_WIDTH`,
 `height_cm = V_BOX_HEIGHT` and `type = TYPE - 1` (the file counts types from
 1: blue, white, brown/master), then gridded exactly as `ar2l.orders` grids an
-orders file -- `cell_cm`, `box_scale`, `box_round` -- onto the `pallet_cm`
+orders file -- `box_pad_m`, `cell_cm`, `box_scale`, `box_round` -- onto the `pallet_cm`
 pallet.  The packer takes the boxes in file order; when no box within reach
 has anywhere left to go the pallet is closed and a fresh one is opened, and
 packing carries on from the first box that did not go in, until the whole
@@ -47,8 +47,8 @@ from datetime import datetime
 import numpy as np
 
 from ..env import BPPBatch
-from ..orders import (_cells, box_divisor, box_rounding, orders_bin,
-                      randomize_order)
+from ..orders import (box_cells, box_divisor, box_pad_cm, box_rounding,
+                      orders_bin, randomize_order)
 from . import agents as A
 
 #: the file's columns -> what `ar2l.orders` calls them
@@ -76,6 +76,7 @@ def read_file(path, S, p):
     """
     scale = box_divisor(p["box_scale"])
     rounding = box_rounding(p["box_round"])
+    pad_cm = box_pad_cm(p.get("box_pad_m", 0.0))
     Lx, Ly, Lz = S
     rows, ids, skipped = [], set(), 0
     with open(path, newline="", encoding="utf-8-sig") as f:
@@ -90,9 +91,9 @@ def read_file(path, S, p):
             if not any(row.values()):
                 continue
             where = f"{os.path.basename(path)}:{n}"
-            sx, sy, sz = (_cells(row[COLS[c]], p["cell_cm"], f"{where} {c}",
-                                 scale, rounding)
-                          for c in ("length_cm", "width_cm", "height_cm"))
+            sx, sy, sz = box_cells(row, p["cell_cm"], where, scale, rounding,
+                                   pad_cm, [COLS[c] for c in
+                                            ("length_cm", "width_cm", "height_cm")])
             t = int(float(row["TYPE"])) - 1
             if not 0 <= t < p["n_types"]:
                 raise ValueError(f"{where}: TYPE {t + 1} is outside 1.."
@@ -136,6 +137,7 @@ def pack_pallet(seq, policy, picker, S, p, cell_m, tick=None, stop=None):
                    min_support=p["min_support"], n_pick=p["n_pick"],
                    n_types=p["n_types"], types=False,
                    type_constraint=bool(p["type_constraint"]),
+                   type_rule=p.get("type_rule", "touch"),
                    arm_collision=bool(p["arm_collision"]), arm_cell_m=cell_m,
                    arm_moves=p["base_x_moves"],
                    stack_cap=bool(p["stack_cap"]),
@@ -176,6 +178,7 @@ def params_text(spec, p, S):
            f"max_l={p['max_l']} rot={p['rot']} ems={p['ems']} "
            f"stability={p['stability']} min_support={p['min_support']:g} "
            f"n_types={p['n_types']} type_constraint={p['type_constraint']} "
+           f"type_rule={p.get('type_rule', 'touch')} "
            f"arm_collision={p['arm_collision']} "
            f"base_x_moves={'/'.join(f'{t:g}' for t in p['base_x_moves'])} "
            f"stack_cap={p['stack_cap']} "
@@ -184,6 +187,7 @@ def params_text(spec, p, S):
            f"stack_cap_allow_cm={j(p['stack_cap_allow_cm'])}")
     data = (f"cell_cm={p['cell_cm']:g} box_scale={p['box_scale']:g} "
             f"box_round={p['box_round']} "
+            f"box_pad_m={p.get('box_pad_m', 0):g} "
             f"order_random={p.get('order_random', 0):g} "
             f"pallet_cm={j(p['pallet_cm']) if p['pallet_cm'] else 'none'}")
     return env, data

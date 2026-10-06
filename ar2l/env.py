@@ -10,8 +10,10 @@ AR2L Sec. 3 / A.4.  A state is the triple
 Every box carries a discrete `type_id`, and a box may only be stacked on a box
 of its own type; the bin floor takes any type.  `types:` in `config.yaml` gives
 one item-size class per type, so the type is both a label and a size class.
-See `_type_ok` for how the rule is enforced and `TYPE_FLOOR` for the sentinel
-a candidate on the floor carries.
+`type_rule` says what "stacked on" means: `touch` tests only the cells the box
+rests on, `column` every box anywhere under its footprint (`smap` holds the
+types each column has seen).  See `_type_ok` for how the rule is enforced and
+`TYPE_FLOOR` for the sentinel a candidate on the floor carries.
 
 A small box carries only a short stack.  Once a box of one of the
 `stack_cap_types` is placed, a later box may start over its footprint only
@@ -128,6 +130,8 @@ def ems_mode(v):
 # the `n_types` box types; the networks give it its own embedding row, at
 # index `n_types` (see `obs`, which maps the sentinel onto it).
 TYPE_FLOOR = -1
+# `type_rule` values: what a box of one type may not be over
+TYPE_RULES = ("touch", "column")
 
 # What `cmap` holds for a column no small box has limited: a later box may
 # start over column (x, y) only below `cmap[x, y]`, and no bin is this tall.
@@ -305,7 +309,7 @@ class BPPBatch:
                  max_l=None, size_lo=None, size_hi=None, seed=0, ems=None,
                  stability=None, rot=None, min_support=None, n_pick=None,
                  n_types=None, types=None, type_constraint=None,
-                 pick_feasible=None, pool=None, pool_order_random=0.0,
+                 type_rule=None, pick_feasible=None, pool=None, pool_order_random=0.0,
                  arm_collision=None, arm_cell_m=None, arm_moves=None,
                  stack_cap=None, stack_types=None, stack_side_cm=None,
                  stack_allow_cm=None, stack_cell_cm=None):
@@ -341,6 +345,17 @@ class BPPBatch:
         self.type_constraint = bool(e["type_constraint"]
                                     if type_constraint is None
                                     else type_constraint)
+        # `touch`: a box may not rest on a foreign type -- only the cells it
+        # sits on count.  `column`: it may not be anywhere over one -- any
+        # box under its footprint counts, however deep and across any gap.
+        self.type_rule = str(e.get("type_rule", "touch") if type_rule is None
+                             else type_rule)
+        if self.type_rule not in TYPE_RULES:
+            raise ValueError(f"type_rule is one of {TYPE_RULES}, "
+                             f"got {self.type_rule!r}")
+        if self.n_types > 31:
+            raise ValueError(f"smap holds one bit per type, so at most 31 "
+                             f"types, got {self.n_types}")
         if types is not None:
             # the classes *are* the stream, so the envelope has to cover them:
             # `_set_side` and every caller that asks the env how big an item
@@ -525,6 +540,9 @@ class BPPBatch:
         # the type of the topmost box in each column, and so of whatever a
         # placement landing there would rest on
         self.tmap = np.full((n, self.Lx, self.Ly), TYPE_FLOOR, np.int8)
+        # a bit per type that has a box anywhere in the column, which the
+        # `column` type rule tests against
+        self.smap = np.zeros((n, self.Lx, self.Ly), np.int32)
         # how high a later box may start over each column: below this, which
         # a small box of a limited type lowers over its footprint
         self.cmap = np.full((n, self.Lx, self.Ly), NO_CAP, np.int16)
@@ -555,6 +573,7 @@ class BPPBatch:
             return
         self.hmap[idx] = 0
         self.tmap[idx] = TYPE_FLOOR
+        self.smap[idx] = 0
         self.cmap[idx] = NO_CAP
         self.packed[idx] = 0
         self.ptype[idx] = 0
@@ -915,12 +934,21 @@ class BPPBatch:
         bridges rather than rests on, so an unsupported overhang over a foreign
         type is legal and a contact patch over one is not.
 
+        Under `type_rule: column` a column is blocked outright -- at a height
+        no landing reaches -- when any box in it, not only the top one, is of
+        another type, so a footprint that covers it at all is illegal.
+
         Cached on the type vector rather than dropped on every permutation: the
         map depends on the bin and on the incoming type, and a permutation
         changes only the latter.
         """
         key = types.tobytes()
-        if key not in self._type_cache:
+        if key not in self._type_cache and self.type_rule == "column":
+            own = np.int32(1) << types.astype(np.int32)
+            bad = np.where((self.smap & ~own[:, None, None]) != 0,
+                           np.int16(np.iinfo(np.int16).max), np.int16(-1))
+            self._type_cache[key] = _win_max(bad, 2, self.Ly, self.sidey)
+        elif key not in self._type_cache:
             bad = np.where((self.hmap > 0)
                            & (self.tmap != types[:, None, None].astype(np.int8)),
                            self.hmap, np.int16(-1))
@@ -1300,6 +1328,8 @@ class BPPBatch:
         # the item is now the top of every column it covers, so it is what the
         # next placement over that footprint would rest on
         self.tmap = np.where(foot, tt[:, None, None], self.tmap)
+        self.smap = np.where(foot, self.smap | (np.int32(1) << tt.astype(
+            np.int32))[:, None, None], self.smap)
         if self.stack_cap:
             # a small box of a limited type carries only a short stack: from
             # here on nothing may start over its footprint at or above its top

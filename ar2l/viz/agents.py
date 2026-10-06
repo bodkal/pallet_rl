@@ -165,7 +165,7 @@ def play(seq, policy, attacker=None, nb=1, S=10, stability="com", record=True,
          size_hi=None, max_l=None, n_pick=None, rot=None, ems=None,
          n_types=None, type_constraint=None, arm_collision=None,
          arm_cell_m=None, arm_moves=None, stack_cap=None, stack_types=None,
-         stack_side_cm=None, stack_allow_cm=None):
+         stack_side_cm=None, stack_allow_cm=None, type_rule=None):
     """One episode; returns the trace the viewers draw.
 
     `S` is an int for a cube or an (Lx, Ly, Lz) triple.  `size_hi` bounds the
@@ -184,7 +184,7 @@ def play(seq, policy, attacker=None, nb=1, S=10, stability="com", record=True,
     env = BPPBatch(1, S=S, nb=nb, n_items=len(seq), stability=stability,
                    min_support=min_support, n_pick=n_pick, rot=rot, ems=ems,
                    n_types=n_types, types=False,
-                   type_constraint=type_constraint,
+                   type_constraint=type_constraint, type_rule=type_rule,
                    arm_collision=arm_collision, arm_cell_m=arm_cell_m,
                    arm_moves=arm_moves, stack_cap=stack_cap,
                    stack_types=stack_types, stack_side_cm=stack_side_cm,

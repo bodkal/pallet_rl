@@ -71,7 +71,7 @@ class Progress:
             self.bar.close()
 
 from .config import CFG, load as load_config
-from .env import BPPBatch
+from .env import BPPBatch, TYPE_RULES
 from .evaluate import attack_score, nominal_score
 from .orders import add_cm_args, load_orders, orders_bin
 from .heuristics import act as heur_act
@@ -280,6 +280,7 @@ def make_env(args, seed, pool=None):
                     min_support=args.min_support, n_pick=args.n_pick,
                     n_types=args.n_types,
                     type_constraint=bool(args.type_constraint),
+                    type_rule=args.type_rule,
                     stack_cap=bool(args.stack_cap), **kw)
 
 
@@ -298,7 +299,8 @@ def load_data(args, out):
             args.bin = orders_bin(args.pallet_cm, args.cell_cm)
         seqs, ids = load_orders(args.data, args.cell_cm, args.bin,
                                 rot=args.rot, box_scale=args.box_scale,
-                                box_round=args.box_round)
+                                box_round=args.box_round,
+                                box_pad_m=args.box_pad_m)
     else:
         seqs = np.load(args.data)
         ids = [str(i) for i in range(len(seqs))]
@@ -535,6 +537,7 @@ def train(args):
                       min_support=args.min_support, n_pick=args.n_pick,
                       n_types=args.n_types,
                       type_constraint=bool(args.type_constraint),
+                      type_rule=args.type_rule,
                       stack_cap=bool(args.stack_cap), seqs=held_out)
             if args.algo == "attack":
                 au, ak = attack_score(args.heur_pack or pack, attacker, args.nb,
@@ -745,6 +748,10 @@ def get_parser():
     p.add_argument("--type_constraint", type=int, default=e["type_constraint"],
                    help="0 keeps type_id in the state but lets any box be "
                         "stacked on any other")
+    p.add_argument("--type_rule", choices=TYPE_RULES,
+                   default=e.get("type_rule", "touch"),
+                   help="touch: a box may not rest on a foreign type; column: "
+                        "nor be anywhere over one, however deep")
     p.add_argument("--stack_cap", type=int, default=e["stack_cap"],
                    help="0 lifts the stack-height limit over small boxes of "
                         "env.stack_cap_types")
@@ -783,6 +790,7 @@ def main(argv=None):
     # CFG["eval"]; without this a --box_scale/--cell_cm that differs from the
     # file has them see a pallet `box_scale` times too big
     CFG["eval"]["cell_cm"], CFG["eval"]["box_scale"] = args.cell_cm, args.box_scale
+    CFG["eval"]["box_pad_m"] = args.box_pad_m
     # resolve it here rather than in the env, so `args.json` records the rule
     # the run was trained under instead of a bare `null`
     if args.min_support is None:

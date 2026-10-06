@@ -50,7 +50,7 @@ SKIP = ('help', 'config')
 #: the config section each flag's default comes from, where its name does not
 #: say -- `add_cm_args` reads the eval section
 SECTION = {'cell_cm': 'eval', 'pallet_cm': 'eval', 'box_scale': 'eval',
-           'box_round': 'eval', 'seed': 'run'}
+           'box_round': 'eval', 'box_pad_m': 'eval', 'seed': 'run'}
 ORDER = ('run name', 'train', 'env', 'ppo', 'model', 'eval', 'run', 'other')
 
 _CFG_LOCK = threading.RLock()

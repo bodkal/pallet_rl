@@ -557,3 +557,58 @@ def test_a_packed_bin_matches_its_type_map():
                 h = int(env.hmap[b, x, y])
                 want = TYPE_FLOOR if h == 0 else int(vox[x, y, h - 1])
                 assert int(env.tmap[b, x, y]) == want, (b, x, y, h)
+
+
+# ---------------------------------------------------------- type_rule column
+def _foreign_under(vox, x, y, sx, sy, t):
+    col = vox[x:x + sx, y:y + sy]
+    return bool(((col >= 0) & (col != t)).any())
+
+
+def test_column_rule_keeps_every_box_clear_of_foreign_types_below():
+    """Under `column` nothing anywhere under a box's footprint is foreign."""
+    env = typed(8, seed=11, type_rule="column", arm_collision=False,
+                stack_cap=False)
+    play(env, np.random.default_rng(11))
+    stacked = 0
+    for b in range(env.n_env):
+        vox = np.full((env.Lx, env.Ly, env.Lz), TYPE_FLOOR, np.int8)
+        items = (env.packed[b, : env.n_packed[b]] * env.scale).round().astype(int)
+        for i, (x, y, z, sx, sy, sz) in enumerate(items):
+            t = int(env.ptype[b, i])
+            assert not _foreign_under(vox[..., :z], x, y, sx, sy, t), (b, i)
+            stacked += bool(z)
+            vox[x:x + sx, y:y + sy, z:z + sz] = t
+    assert stacked > 10, stacked
+
+
+def test_column_rule_is_touch_minus_footprints_over_a_foreign_box():
+    """The column mask, cell by cell, is the touch mask with every footprint
+    that covers a foreign box anywhere below taken out -- and it does take
+    some out, or the two rules would be the same."""
+    env = typed(8, seed=12, type_rule="column", arm_collision=False,
+                stack_cap=False)
+    rng = np.random.default_rng(12)
+    removed = 0
+    for _ in range(30):
+        if env.done.all():
+            break
+        col, z, odims, _ = (a.copy() for a in env._positions())
+        env.type_rule = "touch"; env._invalidate()
+        touch = env._positions()[0].copy()
+        env.type_rule = "column"; env._invalidate()
+        item, types = env.head_item()
+        for b in range(env.n_env):
+            if env.done[b]:
+                continue
+            vox = voxels(env, b)[0]
+            for r in range(odims.shape[1]):
+                sx, sy, _ = odims[b, r]
+                want = touch[b, r].copy()
+                for x, y in zip(*np.nonzero(want)):
+                    if _foreign_under(vox, x, y, sx, sy, int(types[b])):
+                        want[x, y] = False
+                        removed += 1
+                assert (col[b, r] == want).all(), (b, r)
+        env.step(random_action(env, rng))
+    assert removed > 0
