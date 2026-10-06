@@ -573,6 +573,68 @@ def _gpu_mem():
     return _GPU['mem']
 
 
+_SYS = {'lock': threading.Lock(), 'cpu': None, 'gpu_t': 0.0, 'gpu': []}
+
+
+def _cpu_times():
+    """(busy, total) jiffies for the whole machine and for each core, from /proc/stat."""
+    out = []
+    with open('/proc/stat') as f:
+        for ln in f:
+            if not ln.startswith('cpu'):
+                break
+            v = [int(x) for x in ln.split()[1:]]
+            idle = v[3] + (v[4] if len(v) > 4 else 0)       # idle + iowait
+            out.append((sum(v) - idle, sum(v)))
+    return out
+
+
+def _gpus():
+    """Every GPU's load, memory, temperature and power, from nvidia-smi, at most every 1 s."""
+    if time.time() - _SYS['gpu_t'] > 1:
+        _SYS['gpu_t'], gpus = time.time(), []
+        try:
+            q = subprocess.run(['nvidia-smi', '--query-gpu=index,name,utilization.gpu,'
+                                'memory.used,memory.total,temperature.gpu,power.draw,power.limit',
+                                '--format=csv,noheader,nounits'],
+                               capture_output=True, text=True, timeout=3)
+            for ln in q.stdout.splitlines():
+                f = [s.strip() for s in ln.split(',')]
+                num = lambda s: float(s) if s.replace('.', '', 1).isdigit() else None
+                gpus.append({'index': int(f[0]), 'name': f[1], 'util': num(f[2]),
+                             'mem_used': num(f[3]), 'mem_total': num(f[4]),
+                             'temp': num(f[5]), 'power': num(f[6]), 'power_limit': num(f[7])})
+        except (OSError, ValueError, IndexError, subprocess.SubprocessError):
+            pass
+        _SYS['gpu'] = gpus
+    return _SYS['gpu']
+
+
+def system():
+    """The machine's load right now: CPU % (overall and per core, since the
+    previous call), RAM, and every GPU nvidia-smi can see."""
+    with _SYS['lock']:
+        now, prev = _cpu_times(), _SYS['cpu']
+        _SYS['cpu'] = now
+        if prev is None or len(prev) != len(now):
+            prev = [(0, 0)] * len(now)
+        pct = [round(100 * (b - pb) / (t - pt), 1) if t > pt else 0.0
+               for (b, t), (pb, pt) in zip(now, prev)]
+        gpus = _gpus()
+    mem = {}
+    with open('/proc/meminfo') as f:
+        for ln in f:
+            k, v = ln.split(':', 1)
+            mem[k] = int(v.split()[0]) / 1024 ** 2          # kB -> GiB
+    try:
+        load = os.getloadavg()
+    except OSError:
+        load = None
+    return {'cpu': pct[0], 'cores': pct[1:], 'load': load,
+            'ram_used': mem['MemTotal'] - mem.get('MemAvailable', mem['MemFree']),
+            'ram_total': mem['MemTotal'], 'gpus': gpus}
+
+
 #: tqdm's bar: `  37/1000 [21:05<9:08:41, 34.20s/it, util=...]`
 BAR = re.compile(r'(\d+)/(\d+) \[[\d:]+<[\d:?]+,\s*([\d.]+)(s/it|it/s)')
 

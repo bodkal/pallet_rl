@@ -15,7 +15,7 @@ env:
   # a "30x25x40" string is only parsed by the argparsers, so anything that
   # reads CFG directly -- BPPBatch, and therefore the whole `ar2l.evaluate`
   # CLI, which has no --bin flag -- would choke on it.
-  bin: [30, 25, 40]
+  bin: [31, 27, 40]
   n_items: 120           # items per episode; episodes end by infeasibility ~40
   size_lo: 4             # 8 cm, the smallest carton; item side bounds
   size_hi: [15, 10, 10]  # 30 x 20 x 20 cm
@@ -155,7 +155,7 @@ eval:
   # down: never bigger (1.9 -> 1); a packing can then be slightly too tight
   # for the real boxes.  nearest: 1.5 -> 1, 1.51 -> 2.  Never below 1 cell.
   box_round: nearest
-  pallet_cm: [30,25,40]
+  pallet_cm: [31,27,40]
   # Divide every box side (x, y and z alike) by this before gridding: 0 (or 1)
   # keeps the sizes in the file, 2 halves them, 3 takes a third, and so on.
   # The pallet is not scaled.
@@ -163,7 +163,7 @@ eval:
   # Metres added to every box's length and width (x and y, not z) before
   # box_scale -- the cell's C++ `padding`, added once per side, not per face:
   # 0.04 makes a 30 x 20 cm box 34 x 24 cm.  0 leaves the boxes as they are.
-  box_pad_m: 0.0
+  box_pad_m: 0.04
   # How much the box arrival order is randomised before scoring, 0..1: 0 is
   # the order in the data, 1 a uniformly random order, and in between each
   # box drifts from its place -- by about r / (1 - r) of the pallet, so 0.1

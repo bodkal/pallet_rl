@@ -1394,6 +1394,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({'error': str(e)}, 404)
         if p == '/api/train/status':
             return self._json(TR.status())
+        if p == '/api/sys':
+            return self._json(TR.system())
         if p == '/api/exp/status':
             q = parse_qs(u.query)
             s = X.status((q.get('job') or [''])[0])

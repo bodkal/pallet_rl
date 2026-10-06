@@ -1,11 +1,15 @@
 <!doctype html>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>AR2L &mdash; you vs. the packer, under attack</title>
+<script>try{const t=localStorage.getItem('ar2l.theme');if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
 <style>
 :root{--bg:#0f1115;--panel:#171a21;--line:#262b36;--fg:#e6e9ef;--dim:#8b93a7;
       --c0:#4cc9f0;--c1:#f7b32b;--c2:#57cc99;--c3:#ef476f;--c4:#b892ff;--c5:#ff9770;
       --arm:#9aa3b5;}
-@media(prefers-color-scheme:light){:root{--bg:#f6f7f9;--panel:#fff;--line:#e2e5ea;--fg:#1a1d23;--dim:#6b7280;--arm:#7d8699;}}
+/* light is the OS default unless the header toggle pins one: <html data-theme> */
+:root{color-scheme:dark}
+@media(prefers-color-scheme:light){:root:not([data-theme=dark]){--bg:#f6f7f9;--panel:#fff;--line:#e2e5ea;--fg:#1a1d23;--dim:#6b7280;--arm:#7d8699;color-scheme:light}}
+:root[data-theme=light]{--bg:#f6f7f9;--panel:#fff;--line:#e2e5ea;--fg:#1a1d23;--dim:#6b7280;--arm:#7d8699;color-scheme:light}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--fg);font:13px/1.45 ui-sans-serif,-apple-system,Segoe UI,Roboto,sans-serif}
 header{display:flex;gap:14px;align-items:baseline;flex-wrap:wrap;padding:13px 20px;
@@ -343,7 +347,8 @@ details.cf>summary b{font-size:14px}
 #ttip b{font-family:ui-monospace,monospace;font-weight:600}
 #ttip .d{color:var(--dim);margin-top:4px;font-size:11px}
 :root{--tr:#279cc4;--ho:#c2850a}
-@media(prefers-color-scheme:light){:root{--tr:#0b8fb8;--ho:#c47d00}}
+@media(prefers-color-scheme:light){:root:not([data-theme=dark]){--tr:#0b8fb8;--ho:#c47d00}}
+:root[data-theme=light]{--tr:#0b8fb8;--ho:#c47d00}
 .tjob{border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin-top:10px;
   background:linear-gradient(180deg,color-mix(in srgb,var(--fg) 2.5%,transparent),transparent 120px);
   animation:xin .4s both cubic-bezier(.3,.7,.2,1)}
@@ -409,6 +414,38 @@ details.cf>summary b{font-size:14px}
 .tfoot{margin-top:10px}
 .tjob pre{font:11px/1.4 ui-monospace,monospace;color:var(--dim);max-height:260px;overflow:auto;
   background:var(--bg);border-radius:8px;padding:8px;margin:6px 0 0;white-space:pre-wrap}
+/* machine load, on top of the New training tab */
+#tsys{margin-bottom:12px}
+#tsys h2{display:flex;align-items:center;gap:8px}
+#tsys h2 .live{width:7px;height:7px;border-radius:50%;background:var(--c2);animation:xbeat 1.6s ease-in-out infinite}
+.sysg{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:10px}
+.sysp{border:1px solid var(--line);border-radius:12px;padding:12px 14px;display:grid;
+  grid-template-columns:96px 1fr;gap:6px 16px;align-items:center;
+  background:color-mix(in srgb,var(--fg) 2%,transparent);transition:border-color .4s}
+.sysp.hot{border-color:color-mix(in srgb,var(--c3) 50%,var(--line))}
+.sysp .hd{grid-column:1/-1;display:flex;align-items:baseline;gap:8px;min-width:0}
+.sysp .hd b{font-size:13px;letter-spacing:.3px}
+.sysp .hd .sub{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sring{position:relative;width:96px;height:96px}
+.sring svg{width:100%;height:100%;transform:rotate(-90deg)}
+.sring circle{fill:none;stroke-width:9}
+.sring .bg{stroke:var(--line)}
+.sring .fg{stroke-linecap:round;transition:stroke-dashoffset .6s cubic-bezier(.3,.7,.2,1),stroke .4s}
+.sring .in{position:absolute;inset:0;display:grid;place-content:center;text-align:center}
+.sring .pc{font-size:24px;font-weight:700;letter-spacing:-.5px;font-variant-numeric:tabular-nums;line-height:1}
+.sring .pc small{font-size:12px;font-weight:600;color:var(--dim)}
+.sring .lb{font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.6px;margin-top:3px}
+.sside{min-width:0;display:flex;flex-direction:column;gap:7px}
+.spark{display:block;width:100%;height:44px}
+.spark path{transition:stroke .4s,fill .4s}
+.smeter .t{display:flex;justify-content:space-between;font-size:11px;color:var(--dim);font-variant-numeric:tabular-nums}
+.smeter .t b{color:var(--fg);font-weight:600}
+.smeter .bar{height:6px;border-radius:4px;background:var(--line);overflow:hidden;margin-top:3px}
+.smeter .bar i{display:block;height:100%;border-radius:4px;transition:width .6s cubic-bezier(.3,.7,.2,1),background .4s}
+.scores{grid-column:1/-1;display:flex;gap:2px;align-items:flex-end;height:26px;margin-top:2px}
+.scores i{flex:1;min-width:2px;border-radius:2px 2px 0 0;transition:height .6s cubic-bezier(.3,.7,.2,1),background .4s}
+.scores+.sub{grid-column:1/-1;font-size:10.5px;margin-top:-2px}
+#tsysmsg{grid-column:1/-1}
 @keyframes xstripe{to{background-position:17px 0}}
 @keyframes xsheen{from{background-position:120% 0}to{background-position:-120% 0}}
 @keyframes xpop{from{transform:scale(.4);opacity:0}to{transform:scale(1);opacity:1}}
@@ -423,6 +460,7 @@ details.cf>summary b{font-size:14px}
   <span class="sub">Koby : {{VERSION}}</span>
   <span class="spacer"></span>
   <span class="sub" id="who"></span>
+  <button id="theme" title="colour theme: follow the system, light or dark"></button>
 </header>
 
 <main>
@@ -958,6 +996,10 @@ details.cf>summary b{font-size:14px}
 
 <!-- start ar2l.train runs (ar2l.viz.trainer); the form is train's own argparser -->
 <section id="trn" hidden>
+  <div class="card" id="tsys">
+    <h2><span class="live"></span>Machine load &mdash; live, whole machine</h2>
+    <div class="sysg" id="tsysg"><div class="sub" id="tsysmsg">reading&hellip;</div></div>
+  </div>
   <div class="card" id="tjobcard" hidden>
     <h2>Runs started from this server &mdash; full loss curves in the Training tab</h2>
     <div id="tjobs"></div>
@@ -2638,7 +2680,7 @@ let XJOB = null, XPOLL = null, XROWS = {}, XRUN = false, XBAD = false;
 function showTab(t){
   $('#tabgame').hidden = t !== 'game'; $('#exp').hidden = t !== 'exp'; $('#cmp').hidden = t !== 'cmp';
   $('#dash').hidden = t !== 'dash'; $('#trn').hidden = t !== 'trn';
-  if (t === 'trn'){ if (!TFORM) tLoad(); tPoll(); }
+  if (t === 'trn'){ if (!TFORM) tLoad(); tPoll(); sPoll(); }
   if (t === 'dash' && !$('#dashf').src) $('#dashf').src = '/dashboard/';
   document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === t));
   moveInk();
@@ -3309,8 +3351,104 @@ $('#tstart').onclick = async () => {
   $('#terr').textContent = '';
   await tPoll(); tRuns(); tCheck();
 };
+/* ================= machine load (CPU / GPU), on top of New training ================= */
+const SN = 90, SHIST = {};                     // 90 samples at 1.5 s = the last 2¼ minutes
+let SPOLL = null;
+const sCol = v => v == null ? 'var(--dim)' : v >= 85 ? 'var(--c3)' : v >= 60 ? 'var(--c1)' : 'var(--c2)';
+const sGiB = v => v >= 100 ? v.toFixed(0) : v.toFixed(1);
+function sPanel(id, title){
+  const d = document.createElement('div');
+  d.className = 'sysp'; d.dataset.id = id;
+  d.innerHTML = `<div class="hd"><b>${title}</b><span class="sub"></span></div>
+    <div class="sring"><svg viewBox="0 0 100 100"><circle class="bg" cx="50" cy="50" r="44"/>
+      <circle class="fg" cx="50" cy="50" r="44" stroke-dasharray="276.5" stroke-dashoffset="276.5"/></svg>
+      <div class="in"><div class="pc">&ndash;</div><div class="lb">${id === 'cpu' ? 'all cores' : 'compute'}</div></div></div>
+    <div class="sside"><svg class="spark" viewBox="0 0 ${SN - 1} 44" preserveAspectRatio="none">
+      <line x1="0" x2="${SN - 1}" y1="22" y2="22" stroke="var(--line)" stroke-dasharray="2 3" vector-effect="non-scaling-stroke"/>
+      <path class="a" stroke="none" opacity=".18"/><path class="l" fill="none" stroke-width="1.6" vector-effect="non-scaling-stroke"/></svg>
+      <div class="ms"></div></div>`;
+  return d;
+}
+function sMeter(label, val, txt){
+  const c = sCol(val);
+  return `<div class="smeter"><div class="t"><span>${label}</span><b>${txt}</b></div>
+    <div class="bar"><i style="width:${Math.max(0, Math.min(100, val || 0))}%;background:${c}"></i></div></div>`;
+}
+function sFill(d, v, sub, meters){
+  const h = SHIST[d.dataset.id] = (SHIST[d.dataset.id] || []).concat([v ?? 0]).slice(-SN);
+  const c = sCol(v);
+  d.classList.toggle('hot', v != null && v >= 85);
+  d.querySelector('.hd .sub').textContent = sub;
+  d.querySelector('.sring .fg').style.strokeDashoffset = 276.5 * (1 - Math.min(100, v || 0) / 100);
+  d.querySelector('.sring .fg').style.stroke = c;
+  d.querySelector('.sring .pc').innerHTML = v == null ? 'n/a' : `${Math.round(v)}<small>%</small>`;
+  const x0 = SN - h.length, pts = h.map((y, i) => `${x0 + i},${(44 - y * .44).toFixed(1)}`);
+  d.querySelector('.spark .l').setAttribute('d', 'M' + pts.join('L'));
+  d.querySelector('.spark .l').setAttribute('stroke', c);
+  d.querySelector('.spark .a').setAttribute('d', `M${x0},44L${pts.join('L')}L${SN - 1},44Z`);
+  d.querySelector('.spark .a').setAttribute('fill', c);
+  d.querySelector('.ms').innerHTML = meters;
+}
+async function sPoll(){
+  clearTimeout(SPOLL);
+  if ($('#trn').hidden || document.hidden) return;
+  let r;
+  try { r = await fetch('/api/sys').then(x => x.json()); }
+  catch (e) { $('#tsysg').innerHTML = '<div class="sub" id="tsysmsg">the server did not answer</div>'; SPOLL = setTimeout(sPoll, 5000); return; }
+  const g = $('#tsysg');
+  g.querySelector('#tsysmsg')?.remove();
+  const want = ['cpu', ...r.gpus.map(x => 'gpu' + x.index)];
+  g.querySelectorAll('.sysp').forEach(d => { if (!want.includes(d.dataset.id)) d.remove(); });
+  let cpu = g.querySelector('.sysp[data-id="cpu"]');
+  if (!cpu){
+    cpu = g.appendChild(sPanel('cpu', 'CPU'));
+    cpu.insertAdjacentHTML('beforeend', '<div class="scores"></div><div class="sub">each bar is one core</div>');
+  }
+  const ramPct = 100 * r.ram_used / r.ram_total;
+  sFill(cpu, r.cpu,
+    `${r.cores.length} cores` + (r.load ? ` · load ${r.load[0].toFixed(2)}` : ''),
+    sMeter('RAM', ramPct, `${sGiB(r.ram_used)} / ${sGiB(r.ram_total)} GiB`));
+  const bars = cpu.querySelector('.scores');
+  if (bars.children.length !== r.cores.length) bars.innerHTML = r.cores.map(() => '<i></i>').join('');
+  r.cores.forEach((v, i) => {
+    const b = bars.children[i];
+    b.style.height = Math.max(6, v) + '%'; b.style.background = sCol(v); b.title = `core ${i}: ${v.toFixed(0)}%`;
+  });
+  for (const x of r.gpus){
+    let d = g.querySelector(`.sysp[data-id="gpu${x.index}"]`);
+    if (!d) d = g.appendChild(sPanel('gpu' + x.index, r.gpus.length > 1 ? `GPU ${x.index}` : 'GPU'));
+    const vram = x.mem_total ? 100 * x.mem_used / x.mem_total : null;
+    let m = sMeter('VRAM', vram, x.mem_total ? `${sGiB(x.mem_used / 1024)} / ${sGiB(x.mem_total / 1024)} GiB` : 'n/a');
+    if (x.power != null && x.power_limit)
+      m += sMeter('Power', 100 * x.power / x.power_limit, `${Math.round(x.power)} / ${Math.round(x.power_limit)} W`);
+    if (x.temp != null) m += sMeter('Temp', x.temp, `${Math.round(x.temp)} °C`);
+    sFill(d, x.util, x.name, m);
+  }
+  if (!r.gpus.length && !g.querySelector('.nogpu'))
+    g.insertAdjacentHTML('beforeend', '<div class="sysp nogpu"><div class="hd"><b>GPU</b><span class="sub">none found &mdash; nvidia-smi is missing or sees no device</span></div></div>');
+  if (r.gpus.length) g.querySelector('.nogpu')?.remove();
+  SPOLL = setTimeout(sPoll, 1500);
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden && !$('#trn').hidden) sPoll(); });
 document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => showTab(b.dataset.tab));
 addEventListener('resize', moveInk);
+// colour theme: auto (follow the OS) -> light -> dark, remembered per browser.
+// The canvases read their colours at draw time, so a change redraws them; the
+// dashboard iframe shares this origin's storage and picks it up from 'storage'.
+const THEMES = ['auto', 'light', 'dark'], THEME_ICON = {auto: '\u25D0 Auto', light: '\u2600 Light', dark: '\u263E Dark'};
+function setTheme(t){
+  const root = document.documentElement;
+  t === 'auto' ? delete root.dataset.theme : root.dataset.theme = t;
+  try { t === 'auto' ? localStorage.removeItem('ar2l.theme') : localStorage.setItem('ar2l.theme', t); } catch (e) {}
+  $('#theme').textContent = THEME_ICON[t];
+  dispatchEvent(new Event('resize'));
+}
+$('#theme').textContent = THEME_ICON[document.documentElement.dataset.theme || 'auto'];
+$('#theme').onclick = () => {
+  const t = document.documentElement.dataset.theme || 'auto';
+  setTheme(THEMES[(THEMES.indexOf(t) + 1) % THEMES.length]);
+};
+matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => dispatchEvent(new Event('resize')));
 requestAnimationFrame(moveInk);
 if (['#exp', '#cmp', '#trn', '#dash'].includes(location.hash)) setTimeout(() => showTab(location.hash.slice(1)), 300);
 else xPoll();                           // an experiment already running shows its dot
