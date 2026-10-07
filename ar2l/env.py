@@ -268,6 +268,14 @@ def _win_max(m, axis, L, kmax=None):
     return out
 
 
+def _widest(c, cap):
+    """How many window widths a sweep has to produce when only widths `c`
+    are read back out of it: their maximum, rather than every width up to the
+    largest item in the sequence.  A zero side reads window -1, so it keeps
+    the full `cap` and the window it always read."""
+    return int(c.max()) if c.min() >= 1 else int(cap)
+
+
 def _win_maxcount(m, c, axis, L, kmax):
     """Running window max, and how many cells attain it, for widths 1..kmax.
 
@@ -461,10 +469,13 @@ class BPPBatch:
         # (`permute`, which only reorders the items, reorders it instead)
         self._pick_cache = None
         # raw `_feas_one` grids per window slot, {slot: ([feas], [z]) per
-        # orientation}, for the bin and items as they stand: `_placeable`
-        # fills them for the station and `_positions` reuses slot 0, or the
-        # other way round, whichever runs first
+        # orientation}, for the bin and items as they stand: `_positions`
+        # fills slot 0, the only one anything needs in full
         self._slot_fz = {}
+        # the same grids before the arm filter, which `_placeable` and the
+        # end of `step` work from: they only ask whether a placement exists,
+        # and arm-check as few cells as it takes to answer that
+        self._slot_geo = {}
         if hmap:
             self._sweep_cache = None
             self._ems_cache = None
@@ -477,9 +488,12 @@ class BPPBatch:
             # arm verdicts keyed by (bin, (sx, sy, sz), x, y): the index into
             # `robot.base_x_moves` of the first base move that makes the
             # placement, -1 for none.  The landing height follows from the
-            # height map, which is what resets them
+            # height map, which is what resets them -- except in `step`, which
+            # knows what changed and keeps the verdicts it cannot have touched
+            # (`_keep_arm`).  `_arm_box` is the column range each one rests on.
             self._arm_keys = np.zeros(0, np.int64)
             self._arm_move = np.zeros(0, np.int8)
+            self._arm_box = np.zeros((0, 4), np.int64)
 
     def _set_side(self, seq):
         """Largest footprint extent the sweeps must cover, per axis.
@@ -592,9 +606,10 @@ class BPPBatch:
         # the arm verdicts of every bin that was not reset still hold: they
         # depend on that bin's height map alone, which is untouched
         keep = ~np.isin(self._arm_keys // self._arm_bin_stride(), idx)
-        keys, move = self._arm_keys[keep], self._arm_move[keep]
+        keys, move, box = (self._arm_keys[keep], self._arm_move[keep],
+                           self._arm_box[keep])
         self._invalidate()
-        self._arm_keys, self._arm_move = keys, move
+        self._arm_keys, self._arm_move, self._arm_box = keys, move, box
 
     # ------------------------------------------------------------- conveyor
     def window(self):
@@ -634,6 +649,8 @@ class BPPBatch:
         One feasibility sweep per reachable slot -- the sweeps that depend on
         the bin alone are shared, only the per-footprint windows are redone --
         and the preview tail is never asked, since it cannot be chosen anyway.
+        Only existence is asked, so the arm filter is not run over whole grids
+        but through `_arm_any`, every slot and orientation in one batch.
         """
         if self._pick_cache is not None:
             return self._pick_cache
@@ -641,21 +658,37 @@ class BPPBatch:
         k = min(self.n_pick, self.nb)
         out = np.zeros((self.n_env, self.nb), bool)
         alive = ~self.done & (self.head < self.length)
+        grids, slot = [], []
         for i in range(k):
-            if i not in self._slot_fz:
-                dims, types = win[:, i, :3], win[:, i, 3]
-                # an invalid slot is zero-sized, and a zero side would index
-                # window -1; the mask below drops it either way
-                dims = np.maximum(dims, 1)
-                fz = [self._feas_one(d, types) for d in
-                      ([dims] if self.rot < 2 else [dims, dims[:, [1, 0, 2]]])]
-                self._slot_fz[i] = ([f for f, _ in fz], [z for _, z in fz])
-            any_pos = np.zeros(self.n_env, bool)
-            for f in self._slot_fz[i][0]:
-                any_pos |= f.any((1, 2))
-            out[:, i] = any_pos & valid[:, i] & alive
+            if i in self._slot_fz:            # the full grid is known already
+                for f in self._slot_fz[i][0]:
+                    out[:, i] |= f.any((1, 2))
+                continue
+            # an invalid slot is zero-sized, and a zero side would index
+            # window -1; the mask below drops it either way
+            dims = np.maximum(win[:, i, :3], 1)
+            fs, zs = self._geo_slot(i, dims, win[:, i, 3])
+            for d, f, z in zip(self._orients(dims), fs, zs):
+                grids.append((f, z, d)); slot.append(i)
+        if grids:
+            hit = self._arm_any(grids)
+            for g, i in enumerate(slot):
+                out[:, i] |= hit[:, g]
+        out[:, :k] &= valid[:, :k] & alive[:, None]
         self._pick_cache = out
         return out
+
+    def _orients(self, dims):
+        """The orientations an item is offered in: as given, then yawed."""
+        return [dims] if self.rot < 2 else [dims, dims[:, [1, 0, 2]]]
+
+    def _geo_slot(self, i, dims, types):
+        """Window slot `i`'s grids before the arm filter, cached until the bin
+        or the item there changes."""
+        if i not in self._slot_geo:
+            fz = [self._feas_one(d, types, arm=False) for d in self._orients(dims)]
+            self._slot_geo[i] = ([f for f, _ in fz], [z for _, z in fz])
+        return self._slot_geo[i]
 
     def permute(self, idx):
         """Move observable item `idx` (B,) to the front of the conveyor."""
@@ -680,7 +713,7 @@ class BPPBatch:
         the end of the sequence (where the window's clamped offsets alias),
         has nothing cached to carry and drops the caches as before.
         """
-        pick, slots = self._pick_cache, self._slot_fz
+        pick, slots, geo = self._pick_cache, self._slot_fz, self._slot_geo
         self._invalidate(hmap=False)
         moved = idx > 0
         k = min(self.n_pick, self.nb)
@@ -689,6 +722,13 @@ class BPPBatch:
         ar = self._ar
         if pick is not None:
             self._pick_cache = pick[ar[:, None], order]
+        self._slot_fz = self._carry(slots, order, k)
+        self._slot_geo = self._carry(geo, order, k)
+
+    @staticmethod
+    def _carry(slots, order, k):
+        """{slot: ([feas], [z])} as it reads after the window is reordered."""
+        out = {}
         for j in range(k):
             src = order[:, j]
             have = [s for s in np.unique(src).tolist() if s in slots]
@@ -702,7 +742,8 @@ class BPPBatch:
                 for r in range(nf):
                     fs[r][m] = slots[s][0][r][m]
                     zs[r][m] = slots[s][1][r][m]
-            self._slot_fz[j] = (fs, zs)
+            out[j] = (fs, zs)
+        return out
 
     # ------------------------------------------------- empty maximal spaces
     def _ems_list(self):
@@ -960,7 +1001,7 @@ class BPPBatch:
         cx = np.minimum(dims[:, 0], self.sidex)
         cy = np.minimum(dims[:, 1], self.sidey)
         by = self._type_sweep(types)[cy - 1, self._ar]
-        return _win_max(by, 1, self.Lx, self.sidex)[cx - 1, self._ar] < z
+        return _win_max(by, 1, self.Lx, _widest(cx, self.sidex))[cx - 1, self._ar] < z
 
     def _under_sweep(self):
         """y-window maxima of the height map with the column type packed in.
@@ -995,7 +1036,7 @@ class BPPBatch:
         cx = np.minimum(dims[:, 0], self.sidex)
         cy = np.minimum(dims[:, 1], self.sidey)
         by = self._under_sweep()[cy - 1, self._ar]
-        m = _win_max(by, 1, self.Lx, self.sidex)[cx - 1, self._ar]
+        m = _win_max(by, 1, self.Lx, _widest(cx, self.sidex))[cx - 1, self._ar]
         return np.where(m < 0, np.int8(TYPE_FLOOR),
                         (m % (self.n_types + 1) - 1).astype(np.int8))
 
@@ -1018,11 +1059,15 @@ class BPPBatch:
         cx = np.minimum(dims[:, 0], self.sidex)
         cy = np.minimum(dims[:, 1], self.sidey)
         lowest = -_win_max(by[cy - 1, self._ar], 1, self.Lx,
-                           self.sidex)[cx - 1, self._ar]
+                           _widest(cx, self.sidex))[cx - 1, self._ar]
         return z < lowest
 
-    def _feas_one(self, dims, types=None):
-        """Feasible (x, y) grid and landing height for one orientation."""
+    def _feas_one(self, dims, types=None, arm=True):
+        """Feasible (x, y) grid and landing height for one orientation.
+
+        `arm=False` leaves out the arm filter, the last and dearest rule, for
+        callers that only need to know whether a placement exists.
+        """
         Lx, Ly, Lz = self.Lx, self.Ly, self.Lz
         sx, sy, sz = dims[:, 0], dims[:, 1], dims[:, 2]
         ar, gx, gy = self._ar, np.arange(Lx), np.arange(Ly)
@@ -1031,17 +1076,18 @@ class BPPBatch:
         # `inx`/`iny` below drop it, so the clamped sweep is never read out
         cx = np.minimum(sx, self.sidex)
         cy = np.minimum(sy, self.sidey)
+        kx, ky = _widest(cx, self.sidex), _widest(cy, self.sidey)
 
         myd = my[cy - 1, ar]                          # max over the y extent
         if myc is None:                               # ... and x sub-windows
-            mxy, cxy = _win_max(myd, 1, Lx, self.sidex), None
+            mxy, cxy = _win_max(myd, 1, Lx, kx), None
         else:
-            mxy, cxy = _win_maxcount(myd, myc[cy - 1, ar], 1, Lx, self.sidex)
+            mxy, cxy = _win_maxcount(myd, myc[cy - 1, ar], 1, Lx, kx)
         z = mxy[cx - 1, ar].astype(np.int32)
 
         if self.stability == "com":
             mxd = mx[cx - 1, ar]
-            myx = _win_max(mxd, 2, Ly, self.sidey)    # sub-windows along y
+            myx = _win_max(mxd, 2, Ly, ky)            # sub-windows along y
 
             def span(stack, size, axis):
                 """Support both at or before, and at or after, the centre.
@@ -1093,7 +1139,7 @@ class BPPBatch:
             feas &= self._type_ok(dims, z, types)
         if self.stack_cap:
             feas &= self._cap_ok(dims, z)
-        if self.arm_collision:
+        if self.arm_collision and arm:
             feas = self._arm_clear(dims, z, feas)
         return feas, z
 
@@ -1125,7 +1171,20 @@ class BPPBatch:
         bb, xx, yy = np.nonzero(feas)
         if not len(bb):
             return feas
-        sizes = dims[bb].astype(np.int64)
+        move = self._arm_moves(bb, xx, yy, dims[bb], z[bb, xx, yy])
+        out = feas.copy()
+        out[bb, xx, yy] = move >= 0
+        return out
+
+    def _arm_moves(self, bb, xx, yy, sizes, zz):
+        """For each placement -- bin, x, y, item size, landing height -- the
+        index of the first base move it can be made from, -1 for none.
+
+        Answers come from the verdict cache where it has them; the rest are
+        asked of the checker, each distinct placement once, and cached along
+        with the columns the answer rests on (see `_keep_arm`).
+        """
+        sizes = sizes.astype(np.int64)
         # one int64 per (bin, item size, x, y), looked up in a sorted table
         if (sizes >= 1024).any():
             raise ValueError(f"item side {int(sizes.max())} is too large for "
@@ -1133,6 +1192,8 @@ class BPPBatch:
         key = (bb * self._arm_bin_stride()
                + (((sizes[:, 0] * 1024 + sizes[:, 1]) * 1024 + sizes[:, 2])
                   * self.Lx + xx) * self.Ly + yy)
+        key, first, inv = np.unique(key, return_index=True, return_inverse=True)
+        bb, xx, yy, sizes, zz = (a[first] for a in (bb, xx, yy, sizes, zz))
         pos = np.searchsorted(self._arm_keys, key)
         found = pos < len(self._arm_keys)
         found[found] = self._arm_keys[pos[found]] == key[found]
@@ -1142,7 +1203,7 @@ class BPPBatch:
         if len(todo):
             chk, _ = self._arm_checker()
             b, x, y = bb[todo], xx[todo], yy[todo]
-            poses = np.stack([x, y, z[b, x, y]], 1)
+            poses = np.stack([x, y, zz[todo]], 1)
             res = np.full(len(todo), -1, np.int8)
             left = np.arange(len(todo))   # still colliding from every base so far
             for k, B in enumerate(self._arm_bases):
@@ -1153,13 +1214,79 @@ class BPPBatch:
                 if not len(left):
                     break
             move[todo] = res
+            # what each verdict rests on: its own footprint, whose tallest
+            # column is its landing height and so its pose, and the columns
+            # the move that made it reads.  The moves before that one
+            # collided, and stay collisions while heights only rise.
+            st = sizes[todo]
+            box = np.stack([x, x + st[:, 0] - 1, y, y + st[:, 1] - 1], 1)
+            for k, B in enumerate(self._arm_bases):
+                m = np.flatnonzero(res == k)
+                if len(m):
+                    r = chk.columns_read(st[m], poses[m], B)
+                    box[m, 0::2] = np.minimum(box[m, 0::2], r[:, 0::2])
+                    box[m, 1::2] = np.maximum(box[m, 1::2], r[:, 1::2])
             keys = np.concatenate([self._arm_keys, key[todo]])
             order = np.argsort(keys, kind="stable")
             self._arm_keys = keys[order]
             self._arm_move = np.concatenate([self._arm_move, res])[order]
-        out = feas.copy()
-        out[bb, xx, yy] = move >= 0
+            self._arm_box = np.concatenate([self._arm_box,
+                                            box.astype(np.int64)])[order]
+        return move[inv]
+
+    #: candidate cells per (bin, grid) `_arm_any` arm-checks before it falls
+    #: back to all of them; nearly every bin has a clear one among the first
+    ARM_PROBE = 4
+
+    def _arm_any(self, grids):
+        """(n, G): does grid g leave bin b a placement the arm can make?
+
+        `grids` is a list of (feas, z, dims) as `_feas_one(..., arm=False)`
+        gives them.  The arm filter is a per-cell AND applied after every
+        other rule, so this is `_arm_clear(dims, z, feas).any((1, 2))` per
+        grid -- without arm-checking whole grids: `ARM_PROBE` cells of each
+        (bin, grid) first, the remaining cells only where none of those was
+        clear, every grid in the same batch.
+        """
+        n, G = self.n_env, len(grids)
+        out = np.zeros((n, G), bool)
+        if not self.arm_collision:
+            for g, (f, _, _) in enumerate(grids):
+                out[:, g] = f.any((1, 2))
+            return out
+        parts = []
+        for g, (f, z, d) in enumerate(grids):
+            b, x, y = np.nonzero(f)
+            parts.append((b * G + g, b, x, y, d[b], z[b, x, y]))
+        grp, b, x, y, sz, zz = (np.concatenate(c) for c in zip(*parts))
+        if not len(grp):
+            return out
+        o = np.argsort(grp, kind="stable")
+        grp, b, x, y, sz, zz = (a[o] for a in (grp, b, x, y, sz, zz))
+        rank = np.arange(len(grp)) - np.searchsorted(grp, grp)
+        flat = out.reshape(-1)                # a view: (bin, grid) -> b * G + g
+        probe = rank < self.ARM_PROBE
+        for sel in (probe, ~probe):
+            sel = sel & ~flat[grp]
+            if sel.any():
+                ok = self._arm_moves(b[sel], x[sel], y[sel], sz[sel], zz[sel]) >= 0
+                flat[grp[sel][ok]] = True
         return out
+
+    def _keep_arm(self, keys, move, box, x, y, sx, sy, placed):
+        """The arm verdicts a `step` cannot have changed.
+
+        It put a box on footprint [x, x + sx) x [y, y + sy) of each `placed`
+        bin.  Heights only rise between resets, and a collision is a column
+        the arm reads reaching one of its capsules, so a move that collided,
+        or could not be reached, still does.  A verdict can change only when
+        the box raised a column it rests on (`_arm_box`); all others stay.
+        """
+        b = keys // self._arm_bin_stride()
+        hit = (placed[b] & (box[:, 0] < x[b] + sx[b]) & (box[:, 1] >= x[b])
+               & (box[:, 2] < y[b] + sy[b]) & (box[:, 3] >= y[b]))
+        self._arm_keys, self._arm_move, self._arm_box = (
+            keys[~hit], move[~hit], box[~hit])
 
     def _support_ratio(self, dims, cxy, cx):
         """Fraction of the footprint that rests on the contact layer.
@@ -1195,9 +1322,15 @@ class BPPBatch:
         if same and 0 in self._slot_fz:
             raw = list(zip(*self._slot_fz[0]))
         else:
-            raw = [self._feas_one(d, types) for d in orients]
             if same:
+                # slot 0's grids before the arm filter are usually known from
+                # `_placeable` or `step`; only the arm is left to apply
+                fs, zs = self._geo_slot(0, item, types)
+                raw = [(self._arm_clear(d, z, f) if self.arm_collision else f, z)
+                       for d, f, z in zip(orients, fs, zs)]
                 self._slot_fz[0] = ([f for f, _ in raw], [z for _, z in raw])
+            else:
+                raw = [self._feas_one(d, types) for d in orients]
         feas, zs, tu = [], [], []
         for r, (d, (f, z)) in enumerate(zip(orients, raw)):
             if r:   # a square footprint is the same placement turned round
@@ -1371,14 +1504,37 @@ class BPPBatch:
         self.volume += vol * alive
 
         self.head += alive
+        arm = self._arm_keys, self._arm_move, self._arm_box
         self._invalidate()
+        # only the footprint just raised can have changed an arm verdict
+        self._keep_arm(*arm, x, y, sx, sy, alive)
 
         reward = (vol / self.bin_vol) * alive
         # terminate when the new leading item has nowhere to go
         self.done |= ~alive
         self.done |= self.head >= self.length
-        self.done |= self.n_feasible() == 0
+        self.done |= ~self._head_placeable()
         return reward.astype(np.float32), self.done.copy()
+
+    def _head_placeable(self):
+        """(n,) `n_feasible() > 0`, without the full arm-checked grid that
+        only `obs` needs: the leading item's grids before the arm filter, and
+        `_arm_any` over them.  When every bin still has an item they are
+        window slot 0's, and are kept there for `_placeable` and `obs`."""
+        item, types = self.head_item()
+        orients = self._orients(item)
+        if bool((self.head < self.length).all()):
+            fs, zs = self._geo_slot(0, item, types)
+        else:
+            fz = [self._feas_one(d, types, arm=False) for d in orients]
+            fs, zs = [f for f, _ in fz], [z for _, z in fz]
+        grids = []
+        for r, (d, f, z) in enumerate(zip(orients, fs, zs)):
+            if r:   # as in `_positions`: a square footprint turned round
+                f = f & (item[:, 0] != item[:, 1])[:, None, None]
+            grids.append((f, z, d))
+        alive = ~self.done & (self.head < self.length)
+        return self._arm_any(grids).any(1) & alive
 
     # ----------------------------------------------------------------- stats
     def utilization(self):
