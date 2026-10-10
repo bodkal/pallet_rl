@@ -239,6 +239,22 @@ def winners(exps):
     return [j for j in done if score(exps[j]) == best], best
 
 
+def mean_full(e):
+    """-> (mean boxes, mean volume [%]) per pallet, the last pallet left out.
+
+    Pallets 0 .. n-2 summed and divided by n-1: 3, 4, 1 boxes -> (3+4)/2 = 3.5.
+    A run of one pallet gives that pallet's own numbers.  Empty pallets are
+    not counted, as in `winners`.
+    """
+    used = sorted((r for r in e["rows"] if int(r[BOXES]) > 0),
+                  key=lambda r: int(r["pallet_id"]))
+    full = used[:-1] or used
+    if not full:
+        return 0.0, 0.0
+    return (sum(int(r[BOXES]) for r in full) / len(full),
+            sum(float(r[VOLUME]) for r in full) / len(full))
+
+
 def plot_file(path, picks=None):
     exps = select(read_report(path), picks)
     if not exps:

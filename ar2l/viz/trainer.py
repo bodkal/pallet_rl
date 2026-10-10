@@ -115,6 +115,11 @@ def checkpoints():
     return [os.path.relpath(q, ROOT) for q in out]
 
 
+def _switch(a):
+    """An on/off flag written as 0/1 (`--soft_mix 1`): a checkbox on the form."""
+    return a.type is int and a.choices is not None and set(a.choices) == {0, 1}
+
+
 def _text(a, v):
     """A default as the form's text box shows it."""
     if v is None:
@@ -138,6 +143,8 @@ def form(config_path=None):
             default = cfg['env']['min_support']
         if isinstance(a, argparse._StoreTrueAction):
             kind = 'flag'
+        elif _switch(a):
+            kind = 'switch'
         elif a.choices:
             kind = 'choice'
         elif a.type in (int, float):
@@ -147,7 +154,8 @@ def form(config_path=None):
         fields.append({
             'dest': a.dest, 'flag': a.option_strings[-1], 'kind': kind,
             'section': _section(a.dest, cfg),
-            'default': bool(default) if kind == 'flag' else _text(a, default),
+            'default': (bool(default) if kind in ('flag', 'switch')
+                        else _text(a, default)),
             'choices': [str(c) for c in a.choices] if a.choices else None,
             'help': _help(a, default),
             'nargs': a.nargs, 'required': a.required,
@@ -194,7 +202,7 @@ def run_values(name, config_path=None):
             continue
         v = args[a.dest]
         out[a.dest] = (bool(v) if isinstance(a, argparse._StoreTrueAction)
-                       else _text(a, v))
+                       or _switch(a) else _text(a, v))
     return {'values': out, 'config': args.get('config') or ''}
 
 
@@ -211,6 +219,8 @@ def argv_of(values, config_path=None):
             if v:
                 argv.append(a.option_strings[-1])
             continue
+        if _switch(a) and isinstance(v, bool):    # the form's checkbox
+            v = int(v)
         v = str(v).strip()
         if v == '':
             continue

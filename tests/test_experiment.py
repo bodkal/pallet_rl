@@ -131,3 +131,25 @@ def test_order_random_shuffles_by_seed_and_zero_keeps_the_file(tmp_path):
     text = (tmp_path / "out" / "day.csv").read_text()
     assert "order_random=0.5 " in text and " seed=4," in text
     assert "name:,o," in text
+
+
+def test_a_name_already_in_the_results_folder_is_refused(tmp_path):
+    rows = [("P1", 10, 10, 1, 1)] * 3
+    run(tmp_path, rows, type_constraint=0, box_pad_m=0.0,
+        run_kw=dict(name="first"))
+    out = str(tmp_path / "out")
+    assert X.name_used(out, "first") == ["day.csv"]
+    assert X.name_used(out, "First") == [] and X.name_used(out, "") == []
+    p = params(box_pad_m=0.0)
+    try:
+        X.start(str(tmp_path / "in"), out, "heur:dbl", p, G.cell_m(p), "cpu",
+                name=" first ")
+    except ValueError as e:
+        assert "already" in str(e)
+    else:
+        raise AssertionError("a used name was let through")
+    (tmp_path / "in").rename(tmp_path / "in0")      # `run` makes a fresh folder
+    s = run(tmp_path, rows, type_constraint=0, box_pad_m=0.0,
+            run_kw=dict(name="second"))                # same folder, new name
+    assert s["state"] == "done", s
+    assert X.name_used(out, "second") == ["day.csv"]

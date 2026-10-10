@@ -6,9 +6,8 @@
 :root{--bg:#0f1115;--panel:#171a21;--line:#262b36;--fg:#e6e9ef;--dim:#8b93a7;
       --c0:#4cc9f0;--c1:#f7b32b;--c2:#57cc99;--c3:#ef476f;--c4:#b892ff;--c5:#ff9770;
       --arm:#9aa3b5;}
-/* light is the OS default unless the header toggle pins one: <html data-theme> */
+/* dark is the default; the header toggle pins light: <html data-theme=light> */
 :root{color-scheme:dark}
-@media(prefers-color-scheme:light){:root:not([data-theme=dark]){--bg:#f6f7f9;--panel:#fff;--line:#e2e5ea;--fg:#1a1d23;--dim:#6b7280;--arm:#7d8699;color-scheme:light}}
 :root[data-theme=light]{--bg:#f6f7f9;--panel:#fff;--line:#e2e5ea;--fg:#1a1d23;--dim:#6b7280;--arm:#7d8699;color-scheme:light}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--fg);font:13px/1.45 ui-sans-serif,-apple-system,Segoe UI,Roboto,sans-serif}
@@ -87,6 +86,9 @@ kbd{border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;paddi
 .tri{display:grid;grid-template-columns:repeat(3,1fr);gap:5px}
 .pf.off input,.pf.off select{border-color:var(--c1);color:var(--c1)}
 .pf input:disabled,.pf select:disabled{opacity:.6}
+.pf.flag{flex-direction:row;align-items:center;gap:8px;padding-top:16px;cursor:pointer}
+.pf.flag input{width:15px;height:15px;accent-color:var(--c0);margin:0;flex:none}
+.pf.flag input:disabled+span{opacity:.6}
 .pgsrc{margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--line)}
 #perr{color:var(--c3);white-space:pre-line}
 #pwarn{color:var(--c1)}
@@ -187,6 +189,14 @@ input[type=range]{width:100%;accent-color:var(--c0)}
 .ddi.grp::after{content:'\25B8';margin-left:auto;color:var(--dim)}
 .ddi.grp .n{color:var(--dim);font-size:11px}
 .ddsep{height:1px;background:var(--line);margin:4px 2px}
+/* the folder picker: the path stays typeable, the menu walks the server's folders */
+.dirp{display:flex;gap:4px;position:relative}
+.dirp>input{flex:1;min-width:0}
+.dirp>button{flex:none;padding:6px 9px;font-size:10px;color:var(--dim)}
+.dirp>.ddm{width:100%;max-width:none}
+.ddhd{padding:5px 10px 6px;font:11px ui-monospace,monospace;color:var(--dim);word-break:break-all}
+.ddi .n{margin-left:auto;color:var(--dim);font-size:11px;font-variant-numeric:tabular-nums}
+.ddi.has .n{color:var(--c2)}
 /* recalculation: a field held at the game's value, and one moved off it */
 .pf.lock>span{opacity:.6}
 .pf.lock input,.pf.lock select{opacity:.5;cursor:not-allowed}
@@ -235,7 +245,7 @@ nav.tabs .dot{display:inline-block;width:7px;height:7px;border-radius:50%;backgr
 #xpardet{margin-top:14px}
 #xperr{color:var(--c3);white-space:pre-line}
 #xpwarn{color:var(--c1)}
-#xmsg{color:var(--c3);white-space:pre-line}
+#xmsg,#xnerr{color:var(--c3);white-space:pre-line}
 .xsum{display:flex;gap:22px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px}
 .xsum .big{font-size:34px}
 .xsum .k{color:var(--dim);font-size:10px;text-transform:uppercase;letter-spacing:.5px}
@@ -314,6 +324,10 @@ button.del:hover:not(:disabled){border-color:var(--c3);color:var(--c3)}
 .ctab td.res{color:var(--dim);text-align:left}
 .cdot{display:inline-block;width:12px;height:12px;border-radius:50%}
 .cdot.lose{width:6px;height:6px;background:var(--line)}
+.cnote{margin-top:14px;font-size:12px}
+.ctab .cm{display:inline-flex;align-items:center;gap:6px;text-align:right}
+.ctab .cm i{display:flex;justify-content:center;width:12px;flex:none}
+.ctab tr.avg td{border-top:2px solid var(--line);font-weight:600}
 details.cf{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 16px;margin-top:10px}
 details.cf>summary{cursor:pointer;display:flex;gap:10px;align-items:center;flex-wrap:wrap;list-style:none}
 details.cf>summary::-webkit-details-marker{display:none}
@@ -347,7 +361,6 @@ details.cf>summary b{font-size:14px}
 #ttip b{font-family:ui-monospace,monospace;font-weight:600}
 #ttip .d{color:var(--dim);margin-top:4px;font-size:11px}
 :root{--tr:#279cc4;--ho:#c2850a}
-@media(prefers-color-scheme:light){:root:not([data-theme=dark]){--tr:#0b8fb8;--ho:#c47d00}}
 :root[data-theme=light]{--tr:#0b8fb8;--ho:#c47d00}
 .tjob{border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin-top:10px;
   background:linear-gradient(180deg,color-mix(in srgb,var(--fg) 2.5%,transparent),transparent 120px);
@@ -404,6 +417,7 @@ details.cf>summary b{font-size:14px}
 .tchart .lgd{display:flex;gap:16px;font-size:11px;color:var(--dim);margin-bottom:4px}
 .tchart .lgd i{display:inline-block;width:14px;height:2px;vertical-align:3px;margin-right:6px;border-radius:1px}
 .tchart .lgd i.dot{width:8px;height:8px;border-radius:50%;vertical-align:0}
+.tchart .lgd i.dash{background:repeating-linear-gradient(90deg,var(--dim) 0 5px,transparent 5px 9px)}
 .tchart svg{display:block;width:100%;height:190px;overflow:visible}
 .tchart svg text{font:10px ui-sans-serif,-apple-system,Segoe UI,Roboto,sans-serif;fill:var(--dim)}
 .tchart svg text.lab{fill:var(--fg);font-weight:600}
@@ -412,6 +426,19 @@ details.cf>summary b{font-size:14px}
   box-shadow:0 6px 18px rgba(0,0,0,.3);font-variant-numeric:tabular-nums;display:none}
 .tchart .tt .sw{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:6px}
 .tfoot{margin-top:10px}
+/* who is winning: the runs ranked by their latest held-out eval */
+.tlead{display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:11.5px}
+.tlead+.tlead{margin-top:6px}
+#tlead{margin-bottom:2px}
+.tlead .k{color:var(--dim);font-size:10px;text-transform:uppercase;letter-spacing:.55px;margin-right:2px}
+.tlead button{display:inline-flex;gap:6px;align-items:baseline;padding:3px 10px;border-radius:10px;font-size:11.5px;
+  font-variant-numeric:tabular-nums;background:none;color:var(--dim)}
+.tlead button b{color:var(--fg);font-weight:600}
+.tlead button.lead{color:var(--ho);border-color:color-mix(in srgb,var(--ho) 55%,var(--line));
+  background:color-mix(in srgb,var(--ho) 10%,transparent)}
+.tlead button.none{opacity:.55;border-style:dashed}
+.tlead button .its{opacity:.8;padding-left:6px;border-left:1px solid var(--line)}
+.chip.rk.lead{color:var(--ho);border-color:color-mix(in srgb,var(--ho) 55%,transparent);font-weight:600}
 .tjob pre{font:11px/1.4 ui-monospace,monospace;color:var(--dim);max-height:260px;overflow:auto;
   background:var(--bg);border-radius:8px;padding:8px;margin:6px 0 0;white-space:pre-wrap}
 /* machine load, on top of the New training tab */
@@ -460,7 +487,7 @@ details.cf>summary b{font-size:14px}
   <span class="sub">Koby : {{VERSION}}</span>
   <span class="spacer"></span>
   <span class="sub" id="who"></span>
-  <button id="theme" title="colour theme: follow the system, light or dark"></button>
+  <button id="theme" title="colour theme: dark or light"></button>
 </header>
 
 <main>
@@ -488,8 +515,8 @@ details.cf>summary b{font-size:14px}
           <div class="pf"><span>boxes from</span><select id="src">
             <option value="random">the random generator</option>
             <option value="orders">an orders file &mdash; real pallets</option></select></div>
-          <div class="pf pf3 osrc"><span>data file (.csv or .npy, from the project folder)</span>
-            <input id="data" type="text" spellcheck="false" placeholder="data/orders_all.csv"></div>
+          <div class="pf pf3 osrc"><span>data file (.csv or .npy &mdash; type a path or browse)</span>
+            <div class="dirp"><input id="data" type="text" spellcheck="false" placeholder="data/orders_all.csv"></div></div>
           <div class="pf pf3 osrc"><span>pallet</span><select id="palpick">
             <option value="-1">a random pallet (dealt by the seed)</option></select></div>
           <div class="pf osrc"><span>order randomness &mdash; 0 file, 1 random</span>
@@ -545,7 +572,14 @@ details.cf>summary b{font-size:14px}
             <input id="msup" type="number" min="0" max="1" step="0.05"></div>
           <div class="pf"><span>box-type rule</span><select id="trule">
             <option value="touch">touch &mdash; not resting on another type</option>
-            <option value="column">column &mdash; not over another type anywhere below</option></select></div>
+            <option value="column">column &mdash; not over another type anywhere below</option>
+            <option value="mixed_touch">mixed touch &mdash; the cell's blue / white / brown rules, on what it rests on</option>
+            <option value="mixed_column">mixed column &mdash; the same rules, on anything below</option></select></div>
+          <label class="pf flag" title="mixed rules only: a box's own fallback onto another type becomes a last resort for the whole station -- only when no box within reach has any other place -- and brown on blue loses (c) but gains that last resort. Blue on blue keeps its fallback; brown never goes on white."><input id="softmix" type="checkbox"><span>soft mix &mdash; mixes only as a last resort for the station</span></label>
+          <label class="pf flag" title="mixed rules only: when every other step leaves nothing -- the normal rules, a box's own fallback, soft mix's last resort -- the same rules again over every point on an outline: the edges of every packed box (on it flush with an edge, or beside it flush with a side) and the pallet's edges. Nothing to add when the action space is every loading position already."><input id="olresort" type="checkbox"><span>outline points &mdash; a last resort after soft mix</span></label>
+          <div class="pf"><span>outline step opens</span><select id="olwhen">
+            <option value="station">station &mdash; when no box within reach has a place</option>
+            <option value="box">box &mdash; for each box that has no place</option></select></div>
           <div class="pf"><span>robot-arm filter</span><select id="armcol">
             <option value="0">off &mdash; every placement the rules allow</option>
             <option value="1">on &mdash; drop placements the arm collides on</option></select></div>
@@ -772,7 +806,14 @@ details.cf>summary b{font-size:14px}
           <input id="rcmsup" type="number" min="0" max="1" step="0.05"></div>
         <div class="pf"><span>box-type rule</span><select id="rctrule">
           <option value="touch">touch &mdash; not resting on another type</option>
-          <option value="column">column &mdash; not over another type anywhere below</option></select></div>
+          <option value="column">column &mdash; not over another type anywhere below</option>
+          <option value="mixed_touch">mixed touch &mdash; the cell's blue / white / brown rules, on what it rests on</option>
+          <option value="mixed_column">mixed column &mdash; the same rules, on anything below</option></select></div>
+        <label class="pf flag" title="mixed rules only: a box's own fallback onto another type becomes a last resort for the whole station -- only when no box within reach has any other place -- and brown on blue loses (c) but gains that last resort. Blue on blue keeps its fallback; brown never goes on white."><input id="rcsoftmix" type="checkbox"><span>soft mix &mdash; mixes only as a last resort for the station</span></label>
+        <label class="pf flag" title="mixed rules only: when every other step leaves nothing -- the normal rules, a box's own fallback, soft mix's last resort -- the same rules again over every point on an outline: the edges of every packed box (on it flush with an edge, or beside it flush with a side) and the pallet's edges. Nothing to add when the action space is every loading position already."><input id="rcolresort" type="checkbox"><span>outline points &mdash; a last resort after soft mix</span></label>
+        <div class="pf"><span>outline step opens</span><select id="rcolwhen">
+          <option value="station">station &mdash; when no box within reach has a place</option>
+          <option value="box">box &mdash; for each box that has no place</option></select></div>
         <div class="pf"><span>robot-arm filter</span><select id="rcarmcol">
           <option value="0">off &mdash; every placement the rules allow</option>
           <option value="1">on &mdash; drop placements the arm collides on</option></select></div>
@@ -858,13 +899,14 @@ details.cf>summary b{font-size:14px}
     <h2>Big experiment &mdash; every file of a folder, onto as many pallets as it takes</h2>
     <div class="xg">
       <div class="pf"><span>data folder (every .csv in it)</span>
-        <input id="xdir" type="text" spellcheck="false" value="data/box_pallet_data/use_data"></div>
+        <div class="dirp"><input id="xdir" type="text" spellcheck="false" value="data/box_pallet_data/use_data"></div></div>
       <div class="pf"><span>results folder</span>
         <input id="xout" type="text" spellcheck="false" value="results/big_experiment"></div>
       <div class="pf wide"><span>packer</span><select id="xopp"></select></div>
       <div class="pf wide"><span>experiment name &mdash; the compare plot's legend (required)</span>
         <input id="xname" type="text" spellcheck="false" placeholder="required"></div>
     </div>
+    <div id="xnerr" class="opt"></div>
     <details class="par" id="xpardet" open>
       <summary>Experiment parameters <span id="xpsrc" style="text-transform:none;letter-spacing:0"></span></summary>
       <div class="pg pgsrc">
@@ -916,7 +958,14 @@ details.cf>summary b{font-size:14px}
           <option value="0">off &mdash; any type on any</option></select></div>
         <div class="pf"><span>box-type rule</span><select id="xtrule">
           <option value="touch">touch &mdash; not resting on another type</option>
-          <option value="column">column &mdash; not over another type anywhere below</option></select></div>
+          <option value="column">column &mdash; not over another type anywhere below</option>
+          <option value="mixed_touch">mixed touch &mdash; the cell's blue / white / brown rules, on what it rests on</option>
+          <option value="mixed_column">mixed column &mdash; the same rules, on anything below</option></select></div>
+        <label class="pf flag" title="mixed rules only: a box's own fallback onto another type becomes a last resort for the whole station -- only when no box within reach has any other place -- and brown on blue loses (c) but gains that last resort. Blue on blue keeps its fallback; brown never goes on white."><input id="xsoftmix" type="checkbox"><span>soft mix &mdash; mixes only as a last resort for the station</span></label>
+        <label class="pf flag" title="mixed rules only: when every other step leaves nothing -- the normal rules, a box's own fallback, soft mix's last resort -- the same rules again over every point on an outline: the edges of every packed box (on it flush with an edge, or beside it flush with a side) and the pallet's edges. Nothing to add when the action space is every loading position already."><input id="xolresort" type="checkbox"><span>outline points &mdash; a last resort after soft mix</span></label>
+        <div class="pf"><span>outline step opens</span><select id="xolwhen">
+          <option value="station">station &mdash; when no box within reach has a place</option>
+          <option value="box">box &mdash; for each box that has no place</option></select></div>
         <div class="pf"><span>robot-arm filter</span><select id="xarmcol">
           <option value="0">off &mdash; every placement the rules allow</option>
           <option value="1">on &mdash; drop placements the arm collides on</option></select></div>
@@ -985,6 +1034,9 @@ details.cf>summary b{font-size:14px}
   <div class="card" id="cwincard" hidden>
     <h2>Winners &mdash; fewest pallets, then fewest boxes on the last; a tie counts for each</h2>
     <div class="cwins" id="cwins"></div>
+    <div class="sub cnote">In each cell: mean boxes per pallet &middot; mean volume per pallet, over pallets
+      0&hellip;n-2 (the last one left out; a run of one pallet shows that pallet).
+      A name run more than once in a file gets a line per run.</div>
     <div class="ctab" id="ctab"></div>
   </div>
   <div class="row" id="cfold" style="margin-top:16px" hidden>
@@ -1002,6 +1054,7 @@ details.cf>summary b{font-size:14px}
   </div>
   <div class="card" id="tjobcard" hidden>
     <h2>Runs started from this server &mdash; full loss curves in the Training tab</h2>
+    <div id="tlead" hidden></div>
     <div id="tjobs"></div>
   </div>
   <div class="card">
@@ -1063,7 +1116,8 @@ const PF = {
   size_hi: ['#hi0', '#hi1', '#hi2'],
   nb: '#nb', n_pick: '#npick', n_items: '#nitems', max_l: '#maxl',
   rot: '#prot', ems: '#ems', stability: '#stab', min_support: '#msup',
-  type_rule: '#trule', arm_collision: '#armcol', base_x_moves: '#armmoves',
+  type_rule: '#trule', soft_mix: '#softmix',
+  outline_resort: '#olresort', outline_when: '#olwhen', arm_collision: '#armcol', base_x_moves: '#armmoves',
   stack_cap: '#stackcap', stack_cap_types: '#stacktypes',
   stack_cap_side_cm: '#stackside', stack_cap_allow_cm: '#stackallow',
   source: '#src', data: '#data', pallet: '#palpick', order_random: '#ordrnd',
@@ -1075,8 +1129,10 @@ const PF = {
 const EMSTEXT = {1: 'the corners of the empty maximal spaces',
   2: 'the corner cells of the height map',
   3: 'the empty-maximal-space corners and the corner cells'};
-const PSTR = new Set(['stability', 'type_rule', 'source', 'data', 'box_round']);
+const PSTR = new Set(['stability', 'type_rule', 'outline_when', 'source', 'data', 'box_round']);
 const PFLOAT = new Set(['min_support', 'order_random', 'cell_cm', 'box_pad_m', 'box_scale']);
+/* a checkbox, sent as 1 or 0 */
+const PFLAG = new Set(['soft_mix', 'outline_resort']);
 /* a list of numbers typed as "0, -0.5, 0.5"; the server checks the values */
 const PNUMS = new Set(['base_x_moves', 'stack_cap_types', 'stack_cap_side_cm',
   'stack_cap_allow_cm']);
@@ -1090,7 +1146,8 @@ const PLABEL = {source: 'box source', data: 'data file', pallet: 'pallet',
   nb: 'window N_B', n_pick: 'reach k', n_items: 'items in the sequence',
   max_l: 'candidate cap', rot: 'orientations', ems: 'action space',
   stability: 'stability rule', min_support: 'support floor',
-  type_rule: 'box-type rule', arm_collision: 'robot-arm filter', base_x_moves: 'arm base x moves',
+  type_rule: 'box-type rule', soft_mix: 'soft mix',
+  outline_resort: 'outline step', outline_when: 'outline step opens', arm_collision: 'robot-arm filter', base_x_moves: 'arm base x moves',
   stack_cap: 'stack-height limit', stack_cap_types: 'limited box types',
   stack_cap_side_cm: 'stack-limit sides (cm)', stack_cap_allow_cm: 'stack-limit allowances (cm)'};
 
@@ -1105,6 +1162,7 @@ function readParams(pf = PF){
     else if (PSTR.has(k)) o[k] = $(sel).value;
     else if (PNUMS.has(k)) o[k] = readList($(sel).value);
     else if (PFLOAT.has(k)) o[k] = parseFloat($(sel).value);
+    else if (PFLAG.has(k)) o[k] = $(sel).checked ? 1 : 0;
     else o[k] = parseInt($(sel).value, 10);
   }
   return o;
@@ -1117,9 +1175,22 @@ function writeParams(p, pf = PF){
     else if (Array.isArray(sel))
       sel.forEach((t, i) => $(t).value = p[k] == null ? '' : p[k][i]);
     else if (PNUMS.has(k)) $(sel).value = showList(p[k]);
+    else if (PFLAG.has(k)) $(sel).checked = !!p[k];
     else $(sel).value = p[k];
   }
+  syncSoft(pf);
   if (pf === PF){ syncPick(); syncSource(); }
+}
+
+/* soft mix and the outline step mean something only under the mixed rules,
+   and when the outline step opens only with it on */
+function syncSoft(pf = PF){
+  if (!pf.type_rule) return;
+  const mixed = $(pf.type_rule).value.startsWith('mixed');
+  if (pf.soft_mix) $(pf.soft_mix).disabled = !mixed;
+  if (pf.outline_resort) $(pf.outline_resort).disabled = !mixed;
+  if (pf.outline_when)
+    $(pf.outline_when).disabled = !mixed || !$(pf.outline_resort).checked;
 }
 
 /* the pallet picker keeps a value it has no option for yet, so a preset or a
@@ -1774,6 +1845,50 @@ const TFILL = t => t < 0 ? cvar('--panel') : boxColor(t, 0);
 // a swatch rather than coloured text: "white" cannot be written in white
 const TSW   = t => `<span class="tsw" style="background:${TFILL(t)}"></span>`;
 const typed = () => B && B.n_types > 1;
+// whether the board is under one of the cell's blue / white / brown rules
+const isMixed = () => B && (B.type_rule === 'mixed_touch'
+                            || B.type_rule === 'mixed_column');
+// why the mixed rules turn box type `t` down -- blue (0), white (1), brown
+// (2) -- with the numbers the board quotes.  Under mixed touch `u`, the type
+// it would rest on, names the pair; under mixed column the box it may not be
+// over can be anywhere below, so the note gives its type's whole rule.
+function mixedWhy(t, u){
+  const M = B.mixed || {}, soft = !!M.soft;
+  const name = k => `${TNAME(k)} (${PTNAME[k] || 'other'})`;
+  const lid = `its top ends within ${M.top_gap_cm} cm (${M.top_gap}
+               cell${M.top_gap === 1 ? '' : 's'}) of the lid`;
+  const big = `it covers at least ${M.area_pct}% of a small blue box's footprint`;
+  const open = `no small blue box (${(M.small_blue || []).join('×')}) can go on
+                that blue any more, for want of height or of the arm`;
+  const late = soft ? 'when no box within reach has any other place (soft mix)'
+                    : 'when it has no other place at all';
+  // what each pair asks; null is never
+  const when = {
+    '0,0': 'with all of its base on blue, or with less when it has no other place at all',
+    '0,1': `when ${lid}, or ${late}`,
+    '0,2': `when ${lid}, or ${late}`,
+    '1,0': `when ${lid} or ${open}, or ${late}`,
+    '1,2': `when ${lid}, or ${late}`,
+    '2,0': soft ? `when ${lid} or ${open}, or ${late}`
+                : `when ${lid}, when ${big}, or when ${open}, or ${late}`,
+    '2,1': null,
+  };
+  const rule = B.type_rule === 'mixed_column' ? 'mixed column rule' : 'mixed touch rule';
+  if (B.type_rule === 'mixed_column'){
+    const parts = [0, 1, 2].filter(k => k !== t || t === 0).map(k => {
+      const w = when[`${t},${k}`];
+      return w === null ? `never over ${PTNAME[k]}` : `over ${PTNAME[k]} only ${w}`;
+    });
+    return `anywhere under its footprint counts, and a ${name(t)} box goes
+            ${parts.join('; ')} (${rule})`;
+  }
+  const w = when[`${t},${u}`];
+  if (w === undefined)
+    return `it would come to rest on ${TNAME(u)}, and a ${TNAME(t)} box may only
+            be stacked on its own type`;
+  return w === null ? `a ${name(t)} box never goes on ${PTNAME[u]} (${rule})`
+                    : `a ${name(t)} box goes on ${PTNAME[u]} only ${w} (${rule})`;
+}
 // how many of each type a list of placed types holds, indexed by type
 function typeCounts(types){
   const n = Array(B.n_types).fill(0);
@@ -1816,9 +1931,16 @@ function kpis(){
                               : 'next item',
                  B.done ? '—' : B.item.join('×')]];
   if (typed() && !B.done)
-    rows.push([B.type_constraint ? (B.type_rule === 'column' ? 'may be only over'
-                                                             : 'may stack only on')
-                                 : 'box type',
+    rows.push([!B.type_constraint ? 'box type'
+               : B.type_rule === 'column' ? 'may be only over'
+               : isMixed() ? (B.outline ? (B.mixed && B.mixed.outline_when === 'box'
+                                           ? 'no place by the rules: outline points for'
+                                           : 'nothing within reach can go: outline points for')
+                              : B.last_resort ? 'nothing within reach can go: soft mix for'
+                              : B.fallback ? 'no normal place: fallback rules for'
+                              : B.type_rule === 'mixed_column' ? 'mixed column rules for'
+                              : 'mixed touch rules for')
+               : 'may stack only on',
                `${TSW(B.item_type)}${TNAME(B.item_type)}`]);
   $('#kpis').innerHTML = rows.map(([k, v]) =>
     `<div class="kpi"><div class="v">${v}</div><div class="k">${k}</div></div>`).join('');
@@ -1955,6 +2077,7 @@ function onMove(ev){
             : wrongType && column ? `there is a box of another type somewhere under
                            its footprint, and a ${TNAME(B.item_type)} box may only be
                            over its own type (column rule)`
+            : wrongType && isMixed() ? mixedWhy(B.item_type, u)
             : wrongType ? `it would come to rest on ${TNAME(u)}, and a
                            ${TNAME(B.item_type)} box may only be stacked on its own type`
             : 'not enough support underneath — less than 80% of the base would rest on what is below it';
@@ -2236,7 +2359,8 @@ const RPF = {
   bin: ['#rcbin0', '#rcbin1', '#rcbin2'],
   nb: '#rcnb', n_pick: '#rcnpick', max_l: '#rcmaxl',
   rot: '#rcrot', ems: '#rcems', stability: '#rcstab', min_support: '#rcmsup',
-  type_rule: '#rctrule', arm_collision: '#rcarmcol', base_x_moves: '#rcarmmoves',
+  type_rule: '#rctrule', soft_mix: '#rcsoftmix',
+  outline_resort: '#rcolresort', outline_when: '#rcolwhen', arm_collision: '#rcarmcol', base_x_moves: '#rcarmmoves',
   stack_cap: '#rcstackcap', stack_cap_types: '#rcstacktypes',
   stack_cap_side_cm: '#rcstackside', stack_cap_allow_cm: '#rcstackallow',
   box_pad_m: '#rcbpad',
@@ -2251,6 +2375,7 @@ function readRecalc(){
     else if (PSTR.has(k)) o[k] = $(sel).value;
     else if (PNUMS.has(k)) o[k] = readList($(sel).value);
     else if (PFLOAT.has(k)) o[k] = parseFloat($(sel).value);
+    else if (PFLAG.has(k)) o[k] = $(sel).checked ? 1 : 0;
     else o[k] = parseInt($(sel).value, 10);
   }
   return o;
@@ -2268,8 +2393,10 @@ function writeRecalc(p){
   for (const [k, sel] of Object.entries(RPF)){
     if (Array.isArray(sel)) sel.forEach((t, i) => $(t).value = p[k][i]);
     else if (PNUMS.has(k)) $(sel).value = showList(p[k]);
+    else if (PFLAG.has(k)) $(sel).checked = !!p[k];
     else $(sel).value = p[k];
   }
+  syncSoft(RPF);
   $('#rclo').value = p.size_lo.join('\u00d7');
   $('#rchi').value = p.size_hi.join('\u00d7');
   $('#rcitems').value = p.n_items;
@@ -2286,6 +2413,7 @@ function markRecalc(){
     const off = Array.isArray(sel)
       ? sel.some((t, i) => parseInt($(t).value, 10) !== was[k][i])
       : PNUMS.has(k) ? String(readList($(sel).value)) !== String(was[k])
+      : PFLAG.has(k) ? $(sel).checked !== !!was[k]
       : String($(sel).value) !== String(was[k]);
     (Array.isArray(sel) ? sel : [sel]).forEach(t =>
       $(t).closest('.pf').classList.toggle('moved', off));
@@ -2631,6 +2759,71 @@ function ddEnhance(sel){
   label();
 }
 ['#opp', '#rcopp', '#xopp'].forEach(s => ddEnhance($(s)));
+/* a folder field the menu beside it browses: the folders are the server's,
+   since that is where the experiment reads them.  Opening a folder makes it
+   the field's value, each counts its .csv files, and Escape puts back the
+   path the menu opened on.  With `files` it picks a data file instead: the
+   folders are only walked through, and clicking a .csv or .npy takes it. */
+const fmtSize = b => b < 1024 ? b + ' B' : b < 1048576 ? (b / 1024).toFixed(0) + ' KB'
+  : (b / 1048576).toFixed(1) + ' MB';
+function dirPick(inp, files = false){
+  const wrap = inp.parentNode;
+  const btn = document.createElement('button'); btn.type = 'button';
+  btn.title = files ? 'browse data files' : 'browse folders'; btn.innerHTML = '&#9662;';
+  wrap.appendChild(btn);
+  let menu = null, was = '', seq = 0;
+  const close = () => { if (menu){ menu.remove(); menu = null; } };
+  const set = v => { inp.value = v; inp.dispatchEvent(new Event('input', {bubbles: true})); };
+  const div = (cls, txt) => Object.assign(document.createElement('div'), {className: cls, textContent: txt});
+  const item = (txt, n, go, cls = '') => {
+    const d = div('ddi' + (typeof n === 'number' && n ? ' has' : '') + cls, '');
+    d.appendChild(Object.assign(document.createElement('span'), {textContent: txt}));
+    if (n != null) d.appendChild(Object.assign(document.createElement('span'), {className: 'n',
+      textContent: typeof n === 'number' ? `${n} csv` : n}));
+    d.onclick = e => { e.stopPropagation(); go(); };
+    return d;
+  };
+  // a file field keeps its value while the menu walks: only a file sets it
+  const walk = files ? dir => show(dir) : dir => { set(dir); show(dir); };
+  const show = async dir => {
+    const s = ++seq;
+    // a server started before /api/dirs existed answers with its HTML 404 page
+    const r = await fetch('/api/dirs?dir=' + encodeURIComponent(dir) + (files ? '&files=1' : ''))
+      .then(x => x.status === 404
+        ? {error: 'the server predates this folder picker: restart it (python -m ar2l.viz.game)'}
+        : x.json()).catch(e => ({error: String(e)}));
+    if (!menu || s !== seq) return;
+    menu.replaceChildren();
+    if (r.error){ menu.appendChild(div('ddhd', r.error)); return; }
+    menu.appendChild(div('ddhd', r.dir));
+    if (!files) menu.appendChild(item('✓ use this folder', r.csv, () => { set(r.dir); close(); }));
+    if (r.parent !== null) menu.appendChild(item('↑ ..', null, () => walk(r.parent)));
+    menu.appendChild(div('ddsep', ''));
+    for (const d of r.dirs) menu.appendChild(item(d.name + '/', d.csv, () => walk(d.path)));
+    if (files){
+      if (r.dirs.length && r.files.length) menu.appendChild(div('ddsep', ''));
+      const cur = inp.value.trim();
+      for (const f of r.files)
+        menu.appendChild(item(f.name, fmtSize(f.size), () => { set(f.path); close(); },
+                              f.path === cur ? ' on' : ''));
+      if (!r.dirs.length && !r.files.length) menu.appendChild(div('ddhd', 'no folders or data files inside'));
+    } else if (!r.dirs.length) menu.appendChild(div('ddhd', 'no folders inside'));
+  };
+  btn.onclick = e => {
+    e.stopPropagation();
+    if (menu){ close(); return; }
+    document.dispatchEvent(new Event('ddclose'));
+    menu = div('ddm', ''); menu.appendChild(div('ddhd', 'reading…'));
+    wrap.appendChild(menu);
+    was = inp.value; show(inp.value.trim() || (files ? 'data' : ''));
+  };
+  document.addEventListener('click', e => { if (!wrap.contains(e.target)) close(); });
+  document.addEventListener('ddclose', close);
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && menu){ if (inp.value !== was) set(was); close(); } });
+}
+dirPick($('#xdir'));
+dirPick($('#data'), true);
 
 (async () => {
   const m = await (await fetch('/api/setup')).json();
@@ -2705,23 +2898,31 @@ const XPF = {
   bin: ['#xbin0', '#xbin1', '#xbin2'],
   nb: '#xnb', n_pick: '#xnpick', max_l: '#xmaxl',
   rot: '#xprot', ems: '#xems', stability: '#xstab', min_support: '#xmsup',
-  type_constraint: '#xtcon', type_rule: '#xtrule', arm_collision: '#xarmcol', base_x_moves: '#xarmmoves',
+  type_constraint: '#xtcon', type_rule: '#xtrule', soft_mix: '#xsoftmix',
+  outline_resort: '#xolresort', outline_when: '#xolwhen', arm_collision: '#xarmcol', base_x_moves: '#xarmmoves',
   stack_cap: '#xstackcap', stack_cap_types: '#xstacktypes',
   stack_cap_side_cm: '#xstackside', stack_cap_allow_cm: '#xstackallow',
   pallet_cm: ['#xpcm0', '#xpcm1', '#xpcm2'], cell_cm: '#xcellcm',
   box_pad_m: '#xbpad', box_scale: '#xbscale', box_round: '#xbround', order_random: '#xordrnd',
 };
 PLABEL.type_constraint = 'stacking rule';
+for (const pf of [PF, RPF, XPF])
+  for (const k of ['type_rule', 'outline_resort'])
+    $(pf[k]).addEventListener('input', () => syncSoft(pf));
 let XCHECK = null, XFILLED = false;
 /* a run with no name cannot be told apart in Compare, nor deleted by name */
 const xNoName = () => !$('#xname').value.replace(/,/g, ' ').trim();
 function xCheck(){
   clearTimeout(XCHECK);
   XCHECK = setTimeout(async () => {
-    const r = await api('/api/exp/check', {params: readParams(XPF), spec: $('#xopp').value});
-    const err = r.errors || [];
+    const r = await api('/api/exp/check', {params: readParams(XPF), spec: $('#xopp').value,
+                                           name: $('#xname').value.trim(), out: $('#xout').value.trim()});
+    const err = r.errors || [], taken = r.taken || [];
     $('#xperr').textContent = err.join('\n');
-    XBAD = !!err.length;
+    /* a second run under a used name would merge with the first in Compare */
+    $('#xnerr').textContent = taken.length
+      ? `"${$('#xname').value.trim()}" is already in this results folder (${taken.length} report${taken.length > 1 ? 's' : ''}) — pick another name, or delete it in Compare first` : '';
+    XBAD = !!err.length || !!taken.length;
     if (!XRUN) $('#xrun').disabled = XBAD || xNoName();
     const off = new Set((r.mismatch || []).map(m => m.key));
     for (const [k, sel] of Object.entries(XPF))
@@ -2757,7 +2958,7 @@ function xRow(f, i){
 }
 function xDraw(s){
   if (s.id !== XJOB){ XJOB = s.id; XROWS = {}; $('#xfiles').innerHTML = ''; }
-  if (XRUN && s.state !== 'running'){ CMP = null; if (!$('#cmp').hidden) cLoad(); }
+  if (XRUN && s.state !== 'running'){ CMP = null; if (!$('#cmp').hidden) cLoad(); xCheck(); }
   const run = XRUN = s.state === 'running';
   $('#xsumcard').hidden = false;
   $('#xrun').disabled = run || XBAD || xNoName(); $('#xstop').disabled = !run;
@@ -2839,7 +3040,8 @@ $('#xrun').onclick = async () => {
   XJOB = r.job; xPoll();
 };
 for (const sel of Object.values(XPF).flat()) $(sel).addEventListener('input', xCheck);
-$('#xname').addEventListener('input', () => { if (!XRUN) $('#xrun').disabled = XBAD || xNoName(); });
+$('#xname').addEventListener('input', () => { if (!XRUN) $('#xrun').disabled = XBAD || xNoName(); xCheck(); });
+$('#xout').addEventListener('input', xCheck);
 $('#xopp').onchange = xPreset;
 $('#xpreset').onclick = xPreset;
 $('#xfromplay').onclick = () => { writeParams(readParams(), XPF); xCheck(); };
@@ -2949,12 +3151,23 @@ function cDraw(files){
       <em style="width:${pc(x.sole + x.shared)}"><span style="flex:${x.sole};background:${cCol(x.k)}"></span><span
         style="flex:${x.shared};background:color-mix(in srgb,${cCol(x.k)} 40%,transparent)"></span></em>
       <b>${x.sole + x.shared}</b> of ${cPl(x.ran, 'file')}</div>`).join('');
-  // the winner in each file
+  // the winner in each file, and each run's mean boxes · volume per pallet
+  // without the last pallet; the bottom row averages those over every run
+  const cMean = m => `${m[0].toFixed(1)} · ${m[1].toFixed(1)}%`;
+  const cCell = (dot, ms) => `<td title="mean boxes · volume per pallet, the last pallet left out"><span class="cm"><i>${dot}</i>`
+    + `<span>${ms.map(cMean).join('<br>')}</span></span></td>`;
+  const avg = keys.map(k => {
+    const ms = files.flatMap(f => f.exps.filter(e => e.key === k).map(e => e.mean));
+    return ms.length ? [0, 1].map(i => ms.reduce((a, m) => a + m[i], 0) / ms.length) : null;
+  });
   $('#ctab').innerHTML = `<table><tr><th>file</th>${keys.map(k => `<th title="${cEsc(k)}">${cEsc(k)}</th>`).join('')}<th></th></tr>`
-    + files.map((f, i) => `<tr><td><a href="#cf${i}" data-i="${i}">${cEsc(f.file.replace(/\.csv$/, ''))}</a></td>${keys.map(k =>
-        f.win.includes(k) ? `<td><span class="cdot" style="background:${cCol(k)}"></span></td>`
-        : f.exps.some(e => e.key === k) ? '<td><span class="cdot lose"></span></td>' : '<td></td>').join('')}
-      <td class="res">${cPl(f.best[0], 'pallet')} · ${f.best[1]} on the last</td></tr>`).join('') + '</table>';
+    + files.map((f, i) => `<tr><td><a href="#cf${i}" data-i="${i}">${cEsc(f.file.replace(/\.csv$/, ''))}</a></td>${keys.map(k => {
+        const ms = f.exps.filter(e => e.key === k).map(e => e.mean);
+        return !ms.length ? '<td></td>' : cCell(f.win.includes(k)
+          ? `<span class="cdot" style="background:${cCol(k)}"></span>` : '<span class="cdot lose"></span>', ms);
+      }).join('')}
+      <td class="res">${cPl(f.best[0], 'pallet')} · ${f.best[1]} on the last</td></tr>`).join('')
+    + `<tr class="avg"><td>mean</td>${avg.map(m => m ? cCell('', [m]) : '<td></td>').join('')}<td></td></tr></table>`;
   $('#ctab').querySelectorAll('a').forEach(a => a.onclick = ev => {
     ev.preventDefault();
     const d = $('#cf' + a.dataset.i); d.open = true; d.scrollIntoView({behavior: 'smooth', block: 'start'});
@@ -2988,6 +3201,7 @@ $('#cdel').onclick = async () => {
   const n = Object.values(r.removed).reduce((a, b) => a + b, 0);
   names.forEach(k => { CPICK.delete(k.key); CSEEN.delete(k.key); });
   await cLoad();
+  xCheck();         // a deleted name is free again in the experiment form
   $('#cmsg').className = 'opt';
   $('#cmsg').textContent = `deleted ${cPl(n, 'block')} from ${cPl(Object.keys(r.removed).length, 'file')}`;
 };
@@ -3000,6 +3214,8 @@ let TFORM = null, TCHECK = null, TPOLL = null, TREF = null, TRUNS = [];
 const TSEC = {'run name': 'Run', train: 'Training (train:)', env: 'Environment (env:)',
               ppo: 'PPO (ppo:)', model: 'Model (model:)', eval: 'Orders data (eval:)',
               run: 'Run settings (run:)', other: 'Other'};
+// a checkbox: a store_true flag, or a 0/1 switch (`--soft_mix 1`)
+const tBox = f => f.kind === 'flag' || f.kind === 'switch';
 const tEsc = s => String(s).replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'})[c]);
 async function tLoad(){
   const cfg = $('#tcfg').value.trim();
@@ -3011,7 +3227,7 @@ async function tLoad(){
   $('#tform').innerHTML = r.sections.filter(s => by[s]).map(s => {
     const body = by[s].map(f => {
       const id = 'tf_' + f.dest, tip = `data-dest="${f.dest}"`;
-      if (f.kind === 'flag')
+      if (tBox(f))
         return `<label class="pf flag" ${tip}><input id="${id}" type="checkbox"${f.default ? ' checked' : ''}><span>${f.flag}</span></label>`;
       const ctl = f.kind === 'choice'
         ? `<select id="${id}">${f.choices.map(c => `<option${c === f.default ? ' selected' : ''}>${tEsc(c)}</option>`).join('')}</select>`
@@ -3055,7 +3271,7 @@ async function tFromRun(resume){
   TFORM.fields.forEach(f => {
     if (!(f.dest in v)) return;
     const e = $('#tf_' + f.dest);
-    if (f.kind === 'flag') e.checked = !!v[f.dest]; else e.value = v[f.dest];
+    if (tBox(f)) e.checked = !!v[f.dest]; else e.value = v[f.dest];
   });
   TREF = Object.assign({}, res.values, {resume: resume, name: v.name});
   TLOADED = {run: r, resume: resume};
@@ -3081,9 +3297,9 @@ function tValues(){
   const v = {};
   TFORM.fields.forEach(f => {
     const e = $('#tf_' + f.dest);
-    v[f.dest] = f.kind === 'flag' ? e.checked : e.value;
+    v[f.dest] = tBox(f) ? e.checked : e.value;
     const ref = TREF && f.dest in TREF ? TREF[f.dest] : f.default;
-    e.closest('.pf').classList.toggle('chg', f.kind === 'flag' ? e.checked !== ref : e.value.trim() !== ref);
+    e.closest('.pf').classList.toggle('chg', tBox(f) ? e.checked !== ref : e.value.trim() !== ref);
   });
   return v;
 }
@@ -3125,7 +3341,7 @@ function tCard(j){
   const el = document.createElement('div');
   el.className = 'tjob'; el.dataset.name = j.name;
   el.innerHTML = `
-    <div class="thd"><span class="nm">${tEsc(j.name)}</span><span class="st"></span>
+    <div class="thd"><span class="nm">${tEsc(j.name)}</span><span class="chip rk" data-f="rank" hidden></span><span class="st"></span>
       <span class="chip">${tEsc(j.algo)}</span><span class="chip">${tEsc(j.device)}</span><span class="chip" data-f="pid"></span>
       <span class="sub" data-f="beat"></span><span class="tacts" data-f="acts"></span></div>
     <div class="tbody">
@@ -3144,7 +3360,8 @@ function tCard(j){
       </div></div>
     <div class="tcks" data-f="cks"></div>
     <div class="tchart"><div class="lgd"><span><i style="background:var(--tr)"></i>train utilization</span>
-      <span><i class="dot" style="background:var(--ho)"></i>held-out eval</span></div>
+      <span><i class="dot" style="background:var(--ho)"></i>held-out eval</span>
+      <span><i class="dash"></i><span data-f="malg">moving average</span></span></div>
       <svg data-f="svg"></svg><div class="tt"></div></div>
     <div class="tfoot"><div class="xout" data-f="cmd"></div>
       <details><summary class="sub" style="cursor:pointer">output</summary><pre data-f="out"></pre></details></div>`;
@@ -3273,6 +3490,27 @@ function tChart(el){
   g += `<rect x="${now}" y="${T}" width="${Math.max(0, W - R - now)}" height="${H - T - B}" fill="var(--fg)" opacity=".025"/>`;
   g += `<line x1="${now}" x2="${now}" y1="${T}" y2="${H - B}" stroke="var(--dim)" stroke-dasharray="2 3" opacity=".6"/>`;
   const path = a => a.map((p, i) => (i ? 'L' : 'M') + X(p[0]).toFixed(1) + ' ' + Y(p[1]).toFixed(1)).join('');
+  // moving averages, under the curves: each point is the mean of the ones just
+  // before it -- for train the last `span` iterations, for the held-out its last
+  // 3 evals, since those come much more rarely.  The labels give the latest one
+  // at the right edge; when the two are close the lower one's goes below it.
+  const span = Math.round(Math.max(3 * j.log_every, j.iters / 20));
+  const trail = (a, keep) => a.map((p, i) => {
+    let s = 0, n = 0;
+    for (let k = i; k >= 0 && keep(a, k, i); k--){ s += a[k][1]; n++; }
+    return [p[0], s / n];
+  });
+  const maTr = trail(pts, (a, k, i) => a[k][0] > a[i][0] - span);
+  const maHo = trail(ev, (a, k, i) => i - k < 3);
+  const mas = [[maTr, 'var(--tr)']].concat(ev.length ? [[maHo, 'var(--ho)']] : []);
+  const ys = mas.map(([a]) => Y(a[a.length - 1][1])), close = ys.length > 1 && Math.abs(ys[0] - ys[1]) < 12;
+  mas.forEach(([a, c], i) => {
+    const y = ys[i], below = close && y > ys[1 - i];
+    g += `<path d="${path(a)}" fill="none" stroke="${c}" stroke-width="1.5" stroke-dasharray="5 4" opacity=".8"/>`
+       + `<text x="${W - R - 4}" y="${below ? y + 12 : y - 4}" text-anchor="end" style="fill:${c}">avg ${tPct(a[a.length - 1][1])}</text>`;
+  });
+  el.querySelector('[data-f=malg]').textContent =
+    `moving average (train: last ${span.toLocaleString()} it` + (ev.length ? ', held-out: last 3 evals)' : ')');
   g += `<path d="${path(pts)}" fill="none" stroke="var(--tr)" stroke-width="2" stroke-linejoin="round"/>`;
   if (ev.length){
     g += `<path d="${path(ev)}" fill="none" stroke="var(--ho)" stroke-width="1.5" opacity=".75"/>`;
@@ -3288,7 +3526,7 @@ function tChart(el){
   g += `<line class="xh" x1="0" x2="0" y1="${T}" y2="${H - B}" stroke="var(--dim)" visibility="hidden"/>`;
   svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
   svg.innerHTML = g;
-  svg._m = {X, L, R, W};
+  svg._m = {X, L, R, W, maTr, maHo};
 }
 function tHover(el){
   const wrap = el.querySelector('.tchart'), svg = wrap.querySelector('svg'), tt = wrap.querySelector('.tt');
@@ -3302,8 +3540,10 @@ function tHover(el){
     const p = near(j.curve, it), e = j.evals.length ? near(j.evals, it) : null;
     const xh = svg.querySelector('.xh');
     xh.setAttribute('x1', m.X(p[0])); xh.setAttribute('x2', m.X(p[0])); xh.setAttribute('visibility', 'visible');
-    tt.innerHTML = `<b>it ${p[0].toLocaleString()}</b><br><span class="sw" style="background:var(--tr)"></span>train ${tPct(p[1])}`
-      + (e ? `<br><span class="sw" style="background:var(--ho)"></span>held-out ${tPct(e[1])} <span class="sub">(eval at ${e[0]})</span>` : '');
+    // the moving average at that point, as the chart last drew it
+    const avg = (ma, src, q) => { const v = ma[src.indexOf(q)]; return v ? ` <span class="sub">· avg ${tPct(v[1])}</span>` : ''; };
+    tt.innerHTML = `<b>it ${p[0].toLocaleString()}</b><br><span class="sw" style="background:var(--tr)"></span>train ${tPct(p[1])}${avg(m.maTr, j.curve, p)}`
+      + (e ? `<br><span class="sw" style="background:var(--ho)"></span>held-out ${tPct(e[1])}${avg(m.maHo, j.evals, e)} <span class="sub">(eval at ${e[0]})</span>` : '');
     tt.style.display = 'block';
     const w = tt.offsetWidth;
     tt.style.left = Math.min(x + 14, r.width - w) + 'px'; tt.style.top = '28px';
@@ -3325,15 +3565,54 @@ async function tPoll(){
     if (box.children[i] !== c) box.insertBefore(c, box.children[i] || null);
     if (!$('#trn').hidden) tFill(c, j); else c._j = j;
   });
+  tLead(jobs);
   if (live || !$('#trn').hidden) TPOLL = setTimeout(tPoll, live ? 2000 : 5000);
 }
+/* who is winning right now: the runs ranked by their latest held-out eval,
+   one row per number they are judged on (an attacker wins when the packer it
+   faces does worst), with a rank chip on each card.  Shown from two runs up */
+function tLead(jobs){
+  const tIts = j => `<span class="its">${j.it.toLocaleString()} / ${j.iters.toLocaleString()} it</span>`;
+  const groups = {};
+  jobs.forEach(j => (groups[j.held_key] ||= []).push(j));
+  const keys = Object.keys(groups).filter(k => groups[k].length > 1), rank = {};
+  $('#tlead').hidden = !keys.length;
+  $('#tlead').innerHTML = keys.map(k => {
+    const g = groups[k], sc = j => j.lower_better ? -j.held : j.held;
+    const scored = g.filter(j => j.held != null).sort((a, b) => sc(b) - sc(a)), top = scored[0];
+    scored.forEach((j, i) => { rank[j.name] = i; });
+    const pill = (j, i) => {
+      const at = j.evals.length ? j.evals[j.evals.length - 1][0] : null;
+      const tip = `held-out ${tPct(j.held)} at its last eval (it ${at})`
+        + (j.best ? ` · best ${tPct(j.best[1])} at it ${j.best[0]}` : '');
+      const gap = i ? ` · ${(100 * Math.abs(j.held - top.held)).toFixed(1)} pt behind` : '';
+      return `<button type="button" class="${i ? '' : 'lead'}" data-name="${tEsc(j.name)}" title="${tEsc(tip)}">`
+        + `${i ? '#' + (i + 1) : '🏆'} <b>${tEsc(j.name)}</b>${tPct(j.held)}${gap}${tIts(j)}</button>`;
+    };
+    const wait = g.filter(j => j.held == null).map(j =>
+      `<button type="button" class="none" data-name="${tEsc(j.name)}" title="no held-out eval yet${j.next_eval ? ' · first at it ' + j.next_eval : ''}"><b>${tEsc(j.name)}</b>no eval yet${tIts(j)}</button>`);
+    const label = (keys.length > 1 ? k + ' · ' : '') + 'winning now' + (g[0].lower_better ? ' (lower wins)' : '');
+    return `<div class="tlead"><span class="k">${label}</span>${scored.map(pill).join('')}${wait.join('')}</div>`;
+  }).join('');
+  document.querySelectorAll('#tjobs .tjob').forEach(c => {
+    const r = rank[c.dataset.name], chip = c.querySelector('[data-f=rank]');
+    chip.hidden = r == null;
+    chip.textContent = r === 0 ? '🏆 leading' : '#' + (r + 1);
+    chip.classList.toggle('lead', r === 0);
+  });
+}
+$('#tlead').addEventListener('click', ev => {
+  const b = ev.target.closest('button[data-name]');
+  const c = b && $(`#tjobs .tjob[data-name="${CSS.escape(b.dataset.name)}"]`);
+  if (c) c.scrollIntoView({block: 'start', behavior: 'smooth'});
+});
 addEventListener('resize', () => document.querySelectorAll('#tjobs .tjob').forEach(c => c._j && !$('#trn').hidden && tChart(c)));
 /* the explanation of a field, as soon as the mouse is on it */
 $('#tform').addEventListener('mouseover', ev => {
   const pf = ev.target.closest('.pf[data-dest]'), tip = $('#ttip');
   if (!pf){ tip.classList.remove('on'); return; }
   const f = TFORM.fields.find(q => q.dest === pf.dataset.dest);
-  const def = f.kind === 'flag' ? (f.default ? 'on' : 'off') : (f.default === '' ? 'none' : f.default);
+  const def = tBox(f) ? (f.default ? 'on' : 'off') : (f.default === '' ? 'none' : f.default);
   tip.innerHTML = `<b>${f.flag}</b><div>${tEsc(f.help)}</div><div class="d">default: ${tEsc(def)}</div>`;
   const r = pf.getBoundingClientRect(), w = Math.min(340, innerWidth - 16);
   tip.style.left = Math.max(8, Math.min(r.left, innerWidth - w - 8)) + 'px';
@@ -3432,23 +3711,20 @@ async function sPoll(){
 document.addEventListener('visibilitychange', () => { if (!document.hidden && !$('#trn').hidden) sPoll(); });
 document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => showTab(b.dataset.tab));
 addEventListener('resize', moveInk);
-// colour theme: auto (follow the OS) -> light -> dark, remembered per browser.
+// colour theme: dark (default) <-> light, remembered per browser.
 // The canvases read their colours at draw time, so a change redraws them; the
 // dashboard iframe shares this origin's storage and picks it up from 'storage'.
-const THEMES = ['auto', 'light', 'dark'], THEME_ICON = {auto: '\u25D0 Auto', light: '\u2600 Light', dark: '\u263E Dark'};
+const THEME_ICON = {light: '\u2600 Light', dark: '\u263E Dark'};
+const curTheme = () => document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
 function setTheme(t){
   const root = document.documentElement;
-  t === 'auto' ? delete root.dataset.theme : root.dataset.theme = t;
-  try { t === 'auto' ? localStorage.removeItem('ar2l.theme') : localStorage.setItem('ar2l.theme', t); } catch (e) {}
+  t === 'light' ? root.dataset.theme = 'light' : delete root.dataset.theme;
+  try { t === 'light' ? localStorage.setItem('ar2l.theme', 'light') : localStorage.removeItem('ar2l.theme'); } catch (e) {}
   $('#theme').textContent = THEME_ICON[t];
   dispatchEvent(new Event('resize'));
 }
-$('#theme').textContent = THEME_ICON[document.documentElement.dataset.theme || 'auto'];
-$('#theme').onclick = () => {
-  const t = document.documentElement.dataset.theme || 'auto';
-  setTheme(THEMES[(THEMES.indexOf(t) + 1) % THEMES.length]);
-};
-matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => dispatchEvent(new Event('resize')));
+$('#theme').textContent = THEME_ICON[curTheme()];
+$('#theme').onclick = () => setTheme(curTheme() === 'dark' ? 'light' : 'dark');
 requestAnimationFrame(moveInk);
 if (['#exp', '#cmp', '#trn', '#dash'].includes(location.hash)) setTimeout(() => showTab(location.hash.slice(1)), 300);
 else xPoll();                           // an experiment already running shows its dot

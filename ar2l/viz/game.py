@@ -80,8 +80,8 @@ import numpy as np
 
 from .. import pack_collision as PC
 from ..config import CFG
-from ..env import (BPPBatch, TYPE_FLOOR, TYPE_RULES, sample_items,
-                   stack_allowance, type_classes)
+from ..env import (BPPBatch, MIXED_RULES, OUTLINE_WHEN, TYPE_FLOOR,
+                   TYPE_RULES, sample_items, stack_allowance, type_classes)
 from ..orders import (ROUNDING, box_divisor, load_orders, orders_bin,
                       randomize_order)
 from . import agents as A
@@ -103,8 +103,8 @@ CLI: dict = {}
 #: triples; `PARAM_KEYS` adds where the boxes come from, below
 GAME_KEYS = ('bin', 'n_items', 'size_lo', 'size_hi', 'nb', 'n_pick',
              'max_l', 'rot', 'ems', 'stability', 'min_support',
-             'n_types', 'type_constraint', 'type_rule', 'arm_collision',
-             'stack_cap',
+             'n_types', 'type_constraint', 'type_rule', 'soft_mix',
+             'outline_resort', 'outline_when', 'arm_collision', 'stack_cap',
              'stack_cap_types', 'stack_cap_side_cm', 'stack_cap_allow_cm',
              'base_x_moves')
 #: what a run does not record, so there is nothing to compare it on
@@ -210,6 +210,9 @@ def defaults():
          'n_types': int(e['n_types']),
          'type_constraint': int(e['type_constraint']),
          'type_rule': str(e.get('type_rule', 'touch')),
+         'soft_mix': int(e.get('soft_mix', 0)),
+         'outline_resort': int(e.get('outline_resort', 0)),
+         'outline_when': str(e.get('outline_when', 'station')),
          'arm_collision': int(e.get('arm_collision', 0)),
          'stack_cap': int(e['stack_cap']),
          'stack_cap_types': [int(t) for t in e['stack_cap_types'] or []],
@@ -266,13 +269,18 @@ def run_params(spec):
         return p
     a = info['args']
     for k in ('n_items', 'max_l', 'rot', 'ems', 'stability', 'min_support',
-              'nb', 'n_types', 'type_constraint', 'type_rule', 'arm_collision',
-              'stack_cap'):
+              'nb', 'n_types', 'type_constraint', 'type_rule', 'soft_mix',
+              'outline_resort', 'outline_when', 'arm_collision', 'stack_cap'):
         if a.get(k) is not None:
             p[k] = a[k]
-    # a run from before --type_rule existed was trained under `touch`
+    # a run from before --type_rule existed was trained under `touch`, and
+    # one from before --soft_mix or --outline_resort without it
     if a.get('type_rule') is None:
         p['type_rule'] = 'touch'
+    if a.get('soft_mix') is None:
+        p['soft_mix'] = 0
+    if a.get('outline_resort') is None:
+        p['outline_resort'], p['outline_when'] = 0, 'station'
     for k in TRIPLES:
         if a.get(k) is not None:
             p[k] = list(A.extent(a[k]))
@@ -356,6 +364,8 @@ def validate(raw):
     p['n_types'] = whole('n_types', 1, 16, 'box types')
     p['type_constraint'] = whole('type_constraint', 0, 1, 'stacking rule')
     p['arm_collision'] = whole('arm_collision', 0, 1, 'robot-arm filter')
+    p['soft_mix'] = whole('soft_mix', 0, 1, 'soft mix')
+    p['outline_resort'] = whole('outline_resort', 0, 1, 'outline step')
     p['stack_cap'] = whole('stack_cap', 0, 1, 'stack-height limit')
 
     def numbers(k, what, cast=float):
@@ -450,6 +460,12 @@ def validate(raw):
                    f"got {s!r}")
     else:
         p['type_rule'] = s
+    s = str(raw.get('outline_when', p['outline_when']))
+    if s not in OUTLINE_WHEN:
+        err.append(f"outline step opens: expected one of "
+                   f"{', '.join(OUTLINE_WHEN)}, got {s!r}")
+    else:
+        p['outline_when'] = s
     try:
         ms = float(raw.get('min_support', p['min_support']))
         if not 0.0 <= ms <= 1.0:
@@ -624,17 +640,43 @@ def grids(env):
     return cand[0], free_positions(env), z[0], odims[0], k, tunder[0]
 
 
-def type_blocked(env, z, odims):
+def free_rules(env):
+    """`(fallback, last_resort)` for the box in front under the mixed rules
+    (`MIXED_RULES`), as you play it -- the EMS filter off, as in
+    `free_positions`: is it going by its own fallback, and by soft mix's
+    last resort, because nothing within reach can go by the hard rules?"""
+    ems = env.ems
+    env.ems = 0
+    env._invalidate(hmap=False)          # the station is asked afresh
+    try:
+        return bool(env.fallback()[0]), bool(env.last_resort()[0])
+    finally:
+        env.ems = ems
+        env._invalidate(hmap=False)
+
+
+def type_blocked(env, z, odims, fallback=False, soft=False):
     """(R, S, S) the placements the box-type rule rejects, under `type_rule`.
 
     The page says why a cell is illegal; under `column` the foreign box may be
-    deep under the footprint, so the top-type map alone cannot tell it.
+    deep under the footprint, so the top-type map alone cannot tell it.  Under
+    the `MIXED_RULES` it is asked as `free_positions` asks it, the EMS filter
+    off -- which decides where a small blue box could still go -- and by the
+    fallback rules when `fallback` says the box goes by them, soft mix's last
+    resort on top when `soft` does.
     """
     if not (env.type_constraint and env.n_types > 1):
         return np.zeros(z.shape, bool)
     t = env.head_item()[1]
-    return np.stack([~env._type_ok(np.asarray(d)[None], zr[None], t)[0]
-                     for d, zr in zip(odims, z)])
+    ems = env.ems
+    env.ems = 0
+    try:
+        tier = 3 if soft else 2 if fallback else 1
+        return np.stack([~env._type_ok(np.asarray(d)[None], zr[None], t,
+                                       tier)[0]
+                         for d, zr in zip(odims, z)])
+    finally:
+        env.ems = ems
 
 
 def arm_blocked(env, free):
@@ -788,7 +830,11 @@ def replay_hmap(placed, S):
 def stack_kw(p):
     """The type rule and stack-height limit of a parameter set, as `BPPBatch`
     (and `agents.play`) take them."""
-    return dict(type_rule=p['type_rule'], stack_cap=bool(p['stack_cap']), stack_types=p['stack_cap_types'],
+    return dict(type_rule=p['type_rule'], soft_mix=bool(p['soft_mix']),
+                outline_resort=bool(p['outline_resort']),
+                outline_when=p['outline_when'],
+                stack_cap=bool(p['stack_cap']),
+                stack_types=p['stack_cap_types'],
                 stack_side_cm=p['stack_cap_side_cm'],
                 stack_allow_cm=p['stack_cap_allow_cm'])
 
@@ -934,6 +980,12 @@ def board(st):
     item = env.seq[0, min(int(env.head[0]), env.n_items - 1)]
     picks = reach(st)
     nfree = int(free.sum())
+    mixed = (env.type_rule in MIXED_RULES and env.type_constraint
+             and env.n_types > 1)
+    fallback, soft = (free_rules(env) if mixed and not env.done[0]
+                      else (False, False))
+    # the packer's candidates, by the env's own filter: from the outline step?
+    outline = bool(mixed and not env.done[0] and env.outline()[0])
     return {
         'Lx': int(env.Lx), 'Ly': int(env.Ly), 'Lz': int(env.Lz),
         'rot': int(odims.shape[0]),
@@ -947,6 +999,18 @@ def board(st):
         'n_types': int(env.n_types),
         'type_constraint': bool(env.type_constraint),
         'type_rule': env.type_rule,
+        # under the `MIXED_RULES`: whether the box in front has nowhere to go
+        # by the normal rules, and the numbers the hover note quotes
+        'fallback': bool(fallback),
+        'last_resort': bool(soft),
+        'outline': outline,
+        'mixed': ({'top_gap_cm': env.top_gap_cm, 'top_gap': int(env.top_gap),
+                   'area_pct': round(100 * env.area_frac),
+                   'small_blue': list(env.small_blue),
+                   'soft': bool(env.soft_mix),
+                   'outline': bool(env.outline_resort),
+                   'outline_when': env.outline_when}
+                  if mixed else None),
         'arm_collision': bool(env.arm_collision),
         'floor_type': int(TYPE_FLOOR),
         'item': item[:3].tolist(),
@@ -954,7 +1018,8 @@ def board(st):
         'mask': cand.astype(np.uint8).tolist(),      # the packer's candidate list
         'free': free.astype(np.uint8).tolist(),      # everything you may click
         'armblock': arm_blocked(env, free).astype(np.uint8).tolist(),
-        'typeblock': type_blocked(env, z, odims).astype(np.uint8).tolist(),
+        'typeblock': type_blocked(env, z, odims, fallback,
+                                  soft).astype(np.uint8).tolist(),
         'zmap': z.astype(int).tolist(),
         'ncand': k,
         'nfree': nfree,
@@ -1218,8 +1283,8 @@ def exp_params(raw):
 
 #: what the experiment's form carries, and so what drift is judged on there
 EXP_KEYS = ('nb', 'n_pick', 'max_l', 'rot', 'ems', 'stability', 'min_support',
-            'type_constraint', 'type_rule', 'arm_collision', 'stack_cap',
-            'pallet_cm',
+            'type_constraint', 'type_rule', 'soft_mix', 'outline_resort',
+            'outline_when', 'arm_collision', 'stack_cap', 'pallet_cm',
             'box_pad_m', 'box_scale', 'box_round')
 
 
@@ -1235,6 +1300,47 @@ def exp_mismatch(p, spec):
     keys = (EXP_KEYS if info and info['args'].get('data')
             else EXP_KEYS[:EXP_KEYS.index('pallet_cm')])
     return diff_params(p, run_params(spec), keys)
+
+
+def n_csv(folder):
+    """How many .csv files `folder` holds; 0 when it cannot be read."""
+    try:
+        with os.scandir(folder) as it:
+            return sum(1 for e in it if e.name.lower().endswith('.csv')
+                       and e.is_file())
+    except OSError:
+        return 0
+
+
+def list_dirs(folder, files=False):
+    """What the folder picker shows of `folder`: its subfolders, each with
+    how many .csv files it holds, and its parent.  With `files`, also the
+    data files (.csv, .npy) it holds, for the play tab's file picker.
+
+    A path that is not a folder opens at its nearest existing parent, so a
+    half-typed path, or a file's own path, still lands somewhere.
+    """
+    q = X.resolve(folder or '.')
+    while not os.path.isdir(q) and os.path.dirname(q) != q:
+        q = os.path.dirname(q)
+    try:
+        with os.scandir(q) as it:
+            ents = [e for e in it if not e.name.startswith('.')]
+            subs = sorted((e.name for e in ents if e.is_dir()), key=str.lower)
+            data = sorted(((e.name, e.stat().st_size) for e in ents
+                           if e.name.lower().endswith(('.csv', '.npy'))
+                           and e.is_file()), key=lambda f: f[0].lower())
+    except OSError as e:
+        raise ValueError(f'cannot read {folder}: {e.strerror}')
+    up = os.path.dirname(q)
+    out = {'dir': X._show(q), 'parent': X._show(up) if up != q else None,
+           'csv': n_csv(q),
+           'dirs': [{'name': n, 'path': X._show(os.path.join(q, n)),
+                     'csv': n_csv(os.path.join(q, n))} for n in subs]}
+    if files:
+        out['files'] = [{'name': n, 'path': X._show(os.path.join(q, n)),
+                         'size': s} for n, s in data]
+    return out
 
 
 def cmp_reports(folder, picks=None):
@@ -1267,6 +1373,7 @@ def cmp_reports(folder, picks=None):
                       'win': [C.key(exps[j]) for j in win], 'best': list(best),
                       'exps': [{'key': C.key(e), 'num': e['num'], 'time': e['time'],
                                 'boxes': e['boxes'], 'params': e['params'],
+                                'mean': list(C.mean_full(e)),
                                 'pallets': [{'id': int(r['pallet_id']),
                                              'boxes': int(r[C.BOXES]),
                                              'volume': float(r[C.VOLUME])}
@@ -1379,6 +1486,13 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(cmp_reports((q.get('dir') or [''])[0], picks))
             except ValueError as e:
                 return self._json({'error': str(e)}, 400)
+        if p == '/api/dirs':
+            q = parse_qs(u.query)
+            try:
+                return self._json(list_dirs((q.get('dir') or [''])[0],
+                                            files=(q.get('files') or [''])[0] == '1'))
+            except ValueError as e:
+                return self._json({'error': str(e)}, 400)
         if p == '/api/train/form':
             try:
                 return self._json(TR.form((parse_qs(u.query).get('config') or [''])[0]
@@ -1437,7 +1551,9 @@ class Handler(BaseHTTPRequestHandler):
             params, err = exp_params(body.get('params'))
             return self._json({'params': params, 'errors': err,
                                'mismatch': [] if err else
-                               exp_mismatch(params, body.get('spec'))})
+                               exp_mismatch(params, body.get('spec')),
+                               'taken': X.name_used(body.get('out') or '',
+                                                    body.get('name') or '')})
         if p == '/api/exp/start':
             params, err = exp_params(body.get('params'))
             if err:

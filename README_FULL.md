@@ -1095,6 +1095,7 @@ variety (`train.order_random`) and for evaluation robustness
 | `orders_all.orig.csv` | 4,375 real boxes in 89 pallets (1–97 boxes each); sides 7–67 cm; types 0 (1,002 boxes), 1 (1,057), 2 (2,316). |
 | `orders_all.csv` | The same boxes regrouped into **59 pallets of 74–75 boxes**. |
 | `orders_all.merge_map.csv` | Which source pallets and box counts make up each merged pallet. |
+| `orders_all_generated_data.*` | The same three files built from the synthetic days in `box_pallet_data/generated_data`: 2,384 boxes in 49 pallets (1–104 boxes each), regrouped into **32 pallets of 74–75 boxes**; types 0 (508), 1 (565), 2 (1,311). |
 | `orders_example.csv` | A small example showing every column, including `seq` and `qty`. |
 | `pallet_2cm_test.npy` | 3,000 × 120 × 4: generated test set for the pallet config (typed). The default evaluation set. |
 | `pallet_2cm_untyped.npy` | 3,000 × 120 × 3: the same geometry, no types. |

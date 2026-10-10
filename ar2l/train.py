@@ -71,7 +71,7 @@ class Progress:
             self.bar.close()
 
 from .config import CFG, load as load_config
-from .env import BPPBatch, TYPE_RULES
+from .env import BPPBatch, OUTLINE_WHEN, TYPE_RULES
 from .evaluate import attack_score, nominal_score
 from .orders import add_cm_args, load_orders, orders_bin
 from .heuristics import act as heur_act
@@ -280,7 +280,9 @@ def make_env(args, seed, pool=None):
                     min_support=args.min_support, n_pick=args.n_pick,
                     n_types=args.n_types,
                     type_constraint=bool(args.type_constraint),
-                    type_rule=args.type_rule,
+                    type_rule=args.type_rule, soft_mix=bool(args.soft_mix),
+                    outline_resort=bool(args.outline_resort),
+                    outline_when=args.outline_when,
                     stack_cap=bool(args.stack_cap), **kw)
 
 
@@ -538,6 +540,9 @@ def train(args):
                       n_types=args.n_types,
                       type_constraint=bool(args.type_constraint),
                       type_rule=args.type_rule,
+                      soft_mix=bool(args.soft_mix),
+                      outline_resort=bool(args.outline_resort),
+                      outline_when=args.outline_when,
                       stack_cap=bool(args.stack_cap), seqs=held_out)
             if args.algo == "attack":
                 au, ak = attack_score(args.heur_pack or pack, attacker, args.nb,
@@ -723,7 +728,7 @@ def get_parser():
                    help="cuda, cuda:1, ... or cpu (slow)")
     # torch.compile with dynamic node counts miscompiles the pointer head for
     # some N_B and shows up as an illegal memory access; off unless asked for
-    p.add_argument("--compile", type=int, default=r["compile"],
+    p.add_argument("--compile", type=int, choices=(0, 1), default=r["compile"],
                    help="1 = torch.compile the nets; can miscompile the pointer "
                         "head, so 0 unless you are testing it")
     p.add_argument("--resume", action="store_true",
@@ -745,14 +750,29 @@ def get_parser():
                    help="box types; must match the `types:` size classes in "
                         "the config file, and 1 with `types: null` is the "
                         "untyped simulator")
-    p.add_argument("--type_constraint", type=int, default=e["type_constraint"],
+    p.add_argument("--type_constraint", type=int, choices=(0, 1), default=e["type_constraint"],
                    help="0 keeps type_id in the state but lets any box be "
                         "stacked on any other")
     p.add_argument("--type_rule", choices=TYPE_RULES,
                    default=e.get("type_rule", "touch"),
-                   help="touch: a box may not rest on a foreign type; column: "
-                        "nor be anywhere over one, however deep")
-    p.add_argument("--stack_cap", type=int, default=e["stack_cap"],
+                   help="touch: a box may not rest on a foreign type; "
+                        "column: nor be anywhere over one, however deep; "
+                        "mixed_touch / mixed_column: the cell's blue / white "
+                        "/ brown rules on either reading")
+    p.add_argument("--soft_mix", type=int, choices=(0, 1), default=e.get("soft_mix", 0),
+                   help="1 under the mixed rules: a box's own fallback "
+                        "onto another type becomes the station's last resort, "
+                        "brown on blue gets one too, (c) is dropped")
+    p.add_argument("--outline_resort", type=int, choices=(0, 1),
+                   default=e.get("outline_resort", 0),
+                   help="1 under the mixed rules: when every other step "
+                        "leaves nothing, the rules again over every point "
+                        "on a box's or the pallet's outline")
+    p.add_argument("--outline_when", choices=OUTLINE_WHEN,
+                   default=e.get("outline_when", "station"),
+                   help="station: the outline step opens when no box within "
+                        "reach has a place; box: for each box with none")
+    p.add_argument("--stack_cap", type=int, choices=(0, 1), default=e["stack_cap"],
                    help="0 lifts the stack-height limit over small boxes of "
                         "env.stack_cap_types")
     p.add_argument("--type_embed", type=int, default=m["type_embed"],

@@ -31,17 +31,59 @@ env:
 
   # ---- box types ---------------------------------------------------------
   # Every box carries a type_id, and a box may only be stacked on a box of its
-  # own type; the bin floor takes any type.  Only the cells an item actually
-  # rests on are tested, so an overhang that bridges a foreign type is legal
-  # and a contact patch on one is not.
+  # own type -- type_rule below says what exceptions there are; the bin floor
+  # takes any type.  Only the cells an item actually rests on are tested, so
+  # an overhang that bridges a foreign type is legal and a contact patch on
+  # one is not.
   n_types: 3
   type_constraint: 1     # 0 keeps type_id in the state but drops the rule
   # What "stacked on" means for that rule.  touch: only the cells a box rests
   # on are tested (above).  column: a box may not be anywhere over a foreign
   # type -- any box under any cell of its footprint counts, however deep and
-  # across any gap, so the overhang that touch allows is blocked too.  Either
-  # way it only drops candidate placements; the reward is not touched.
-  type_rule: touch       # touch | column
+  # across any gap, so the overhang that touch allows is blocked too.
+  # mixed_touch / mixed_column: the cell's rules for blue (type 0), white (1)
+  # and brown (2), with "on" read as touch / as column reads it.  A box goes
+  # on the floor and its own type -- blue on blue with all of its base on
+  # blue -- and across types:
+  #                    normally          else          else, soft_mix: 1
+  #   blue on white    (a)               fallback      last resort
+  #   blue on brown    (a)               fallback      last resort
+  #   white on blue    (a) or (d)        fallback      last resort
+  #   white on brown   (a)               fallback      last resort
+  #   brown on blue    (a), (c) or (d)   fallback      last resort, and no (c)
+  #   brown on white   never             never         never
+  # (a) its top ends within mixed_top_gap_cm of the pallet height; (c) its
+  # footprint at least mixed_area_frac of the small blue's; (d) no small blue
+  # box (mixed_small_blue_cm) could still go on that blue -- no height left
+  # under the lid, the arm cannot put one there, or (column) a box covers it.
+  # A fallback is a box's own: when that box has no normal place at all;
+  # blue on blue with less than all of its base is one, soft mix or not.
+  # Either way it only drops candidate placements; the reward is not touched.
+  type_rule: mixed_column       # touch | column | mixed_touch | mixed_column
+  # Soft mix, read by the mixed rules only: 1 trades a box's own fallback
+  # onto another type for the station's last resort -- only when no box
+  # within reach (n_pick) has any other place -- and gives brown on blue one
+  # too, without (c).  Brown still never goes on white.
+  soft_mix: 1
+  # Outline step, read by the mixed rules only: 1 adds one more step when
+  # all of the above leave nothing -- the same rules again (normal, then the
+  # box's own fallback, then soft mix's last resort) over every position that
+  # puts a corner of the box on an outline: the edges of every packed box --
+  # its top outline (flush on it) and bottom outline (flush beside it) -- and
+  # the pallet's edges, every cell along them, on top of the `ems` candidates.
+  # outline_when: station -- only when no box within reach has any place by
+  # the steps before; box -- for each box that has none, whatever the rest.
+  # Nothing to add with `ems: 0`, where every position is a candidate already.
+  outline_resort: 0
+  outline_when: station         # station | box
+  # The mixed rules' numbers, in real cm read onto the grid with the arm
+  # filter's cell size (4 cm with the shipped eval.cell_cm * eval.box_scale).
+  # The gap is rounded down to whole cells (5 cm -> 1 cell); the small blue
+  # box is padded by eval.box_pad_m and rounded by eval.box_round like a box
+  # of the data (50 x 30 x 18 cm -> 13 x 8 x 4 cells).
+  mixed_top_gap_cm: 5
+  mixed_area_frac: 0.8
+  mixed_small_blue_cm: [50, 30, 18]
   # Robot-arm filter: 1 drops every candidate placement the UR20 cannot make
   # without one of its links hitting the pack, or cannot reach at all (the
   # IK/capsule check of ar2l/pack_collision.py, set up from `robot:` below).
@@ -101,7 +143,7 @@ train:
   # With `data`: randomise each drawn pallet's box order, as eval.order_random
   # does -- 0 keeps the file's order, 1 is fully random.  More variety from
   # the same pallets.
-  order_random: 0.0
+  order_random: 0.1
 
 ppo:
   lr: 3.0e-4

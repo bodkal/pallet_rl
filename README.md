@@ -203,6 +203,36 @@ type is legal and a contact patch on one is not. It is the same running-window
 machinery the landing height already uses, one extra sweep, and it stays exact:
 `tests/test_types.py` checks it against a voxel grid.
 
+`type_rule: mixed_touch` and `mixed_column` are the cell's own rule for blue
+(0), white (1) and brown (2) cartons. "On" means what the box rests on under
+`mixed_touch`, and everything under its footprint at any depth under
+`mixed_column`, which reads `smap` as `column` does. Both keep that machinery
+and add exceptions:
+
+- Blue on blue needs all of its base on blue: the contact count is already
+  swept beside the landing height.
+- White or brown may go on blue when its top ends within 5 cm of the lid,
+  when a brown box covers at least 80% of a small blue box's footprint, or
+  when no small blue box could still go on that blue.
+- Near the lid, blue may go on white or brown and white on brown
+  (`env.TOP_PAIRS`).
+- A box takes a fallback when it has nowhere to go under those rules:
+  blue and white onto anything, brown onto blue. `soft_mix` swaps it, but
+  for blue on blue's, for a last resort
+  for the whole station: once no box within reach can go any other way,
+  every mix may (`env.SOFT_PAIRS`), and brown on blue loses (c). Brown never
+  goes onto white.
+- `outline_resort` adds one more step when all of that leaves nothing: the
+  same rules again over every position that puts a corner of the box on the
+  edge of a packed box or of the pallet (`omap`, a lattice of cell corners
+  updated in `step`), per station or per box (`outline_when`).
+
+The last condition is one more map per step. The env finds every placement
+the normal rules give a 50 × 30 × 18 cm blue box, arm included, marks the
+cells those placements cover, and sweeps that map like `hbad`. The fallback
+needs to know whether any normal placement exists, so it asks the arm in the
+same batch as the station filter. RUN.md §0a has the table.
+
 Each candidate position carries the type it would land on, `TYPE_FLOOR` on the
 floor, which is the `l_type` the packer is given. That one comes from a second
 coded sweep — `code = h·(n_types+1) + (t+1)` is monotone in the height, so the

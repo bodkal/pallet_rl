@@ -30,6 +30,9 @@ def typed(n_env=8, **kw):
     kw.setdefault("n_items", 120)
     kw.setdefault("types", CLASSES)
     kw.setdefault("n_types", 3)
+    # this file is about the own-type rule, whatever the config says; the
+    # mixed rules' exceptions are tested in test_mixed.py
+    kw.setdefault("type_rule", "touch")
     return BPPBatch(n_env, **kw)
 
 
@@ -172,7 +175,8 @@ def test_an_overhang_over_a_foreign_type_is_legal():
     and the third hangs over the foreign one without touching it.
     """
     env = BPPBatch(1, S=(6, 6, 6), nb=1, rot=1, ems=False, seed=0,
-                   n_types=3, types=CLASSES, min_support=0.6)
+                   n_types=3, types=CLASSES, min_support=0.6,
+                   type_rule="touch")
     def offer(t_far):
         env.reset(np.array([[[3, 1, 1, 0]] * 4], np.int16))
         env.hmap[0, 0:2, 0] = 2          # a type-0 shelf, two cells wide
@@ -291,7 +295,8 @@ def test_a_reach_of_one_ends_the_episode_on_a_blocked_box():
     else -- which is what `type_blocked` reports.
     """
     env = BPPBatch(1, S=(4, 4, 6), nb=1, n_pick=1, rot=1, ems=False, seed=0,
-                   n_types=3, types=CLASSES, min_support=0.0)
+                   n_types=3, types=CLASSES, min_support=0.0,
+                   type_rule="touch")
     env.reset(np.array([[[2, 2, 1, 1]] * 6], np.int16))
     env.hmap[0] = 1
     env.tmap[0] = 0
@@ -305,7 +310,8 @@ def test_a_reach_of_one_ends_the_episode_on_a_blocked_box():
 def test_a_wider_reach_hides_the_blocked_boxes_from_the_permuter():
     """`b_pick` is what the permuter may hand over, so a dead box leaves it."""
     env = BPPBatch(1, S=(4, 4, 6), nb=4, n_pick=3, rot=1, ems=False, seed=0,
-                   n_types=3, types=CLASSES, min_support=0.0)
+                   n_types=3, types=CLASSES, min_support=0.0,
+                   type_rule="touch")
     # slots 0 and 2 are foreign types on a type-0 floor; slot 1 is type 0
     env.reset(np.array([[[2, 2, 1, 1], [2, 2, 1, 0], [2, 2, 1, 2],
                          [2, 2, 1, 0]]], np.int16))
@@ -320,7 +326,8 @@ def test_a_wider_reach_hides_the_blocked_boxes_from_the_permuter():
 
 def test_the_episode_ends_when_the_whole_station_is_blocked():
     env = BPPBatch(1, S=(4, 4, 6), nb=3, n_pick=3, rot=1, ems=False, seed=0,
-                   n_types=3, types=CLASSES, min_support=0.0)
+                   n_types=3, types=CLASSES, min_support=0.0,
+                   type_rule="touch")
     env.reset(np.array([[[2, 2, 1, 1], [2, 2, 1, 2], [2, 2, 1, 1]]], np.int16))
     env.hmap[0] = 1
     env.tmap[0] = 0

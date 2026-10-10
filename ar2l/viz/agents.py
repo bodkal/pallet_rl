@@ -165,7 +165,8 @@ def play(seq, policy, attacker=None, nb=1, S=10, stability="com", record=True,
          size_hi=None, max_l=None, n_pick=None, rot=None, ems=None,
          n_types=None, type_constraint=None, arm_collision=None,
          arm_cell_m=None, arm_moves=None, stack_cap=None, stack_types=None,
-         stack_side_cm=None, stack_allow_cm=None, type_rule=None):
+         stack_side_cm=None, stack_allow_cm=None, type_rule=None,
+         soft_mix=None, outline_resort=None, outline_when=None):
     """One episode; returns the trace the viewers draw.
 
     `S` is an int for a cube or an (Lx, Ly, Lz) triple.  `size_hi` bounds the
@@ -185,6 +186,8 @@ def play(seq, policy, attacker=None, nb=1, S=10, stability="com", record=True,
                    min_support=min_support, n_pick=n_pick, rot=rot, ems=ems,
                    n_types=n_types, types=False,
                    type_constraint=type_constraint, type_rule=type_rule,
+                   soft_mix=soft_mix, outline_resort=outline_resort,
+                   outline_when=outline_when,
                    arm_collision=arm_collision, arm_cell_m=arm_cell_m,
                    arm_moves=arm_moves, stack_cap=stack_cap,
                    stack_types=stack_types, stack_side_cm=stack_side_cm,

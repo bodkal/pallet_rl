@@ -23,7 +23,8 @@ format the cell's own experiment reports use:
 
 `max_height` is in real cm (cells x cell_cm x box_scale), `time_to_pack` is
 the running total since the file started, and `uneven_z_val` is written as 0.
-Every run is named (`start` refuses one without): `name:,<name>,` ends the
+Every run is named (`start` refuses one without, and one whose name a report
+of the results folder already holds): `name:,<name>,` ends the
 first line, and `ar2l.viz.compare` shows that name in its legend.  A report that already exists is appended
 to: each run adds its own block, first line and header included.
 
@@ -50,6 +51,7 @@ from ..env import BPPBatch
 from ..orders import (box_cells, box_divisor, box_pad_cm, box_rounding,
                       orders_bin, randomize_order)
 from . import agents as A
+from . import compare as C
 
 #: the file's columns -> what `ar2l.orders` calls them
 COLS = {"length_cm": "V_BOX_DEPTH", "width_cm": "V_BOX_WIDTH",
@@ -138,6 +140,9 @@ def pack_pallet(seq, policy, picker, S, p, cell_m, tick=None, stop=None):
                    n_types=p["n_types"], types=False,
                    type_constraint=bool(p["type_constraint"]),
                    type_rule=p.get("type_rule", "touch"),
+                   soft_mix=bool(p.get("soft_mix", 0)),
+                   outline_resort=bool(p.get("outline_resort", 0)),
+                   outline_when=p.get("outline_when", "station"),
                    arm_collision=bool(p["arm_collision"]), arm_cell_m=cell_m,
                    arm_moves=p["base_x_moves"],
                    stack_cap=bool(p["stack_cap"]),
@@ -179,6 +184,9 @@ def params_text(spec, p, S):
            f"stability={p['stability']} min_support={p['min_support']:g} "
            f"n_types={p['n_types']} type_constraint={p['type_constraint']} "
            f"type_rule={p.get('type_rule', 'touch')} "
+           f"soft_mix={int(p.get('soft_mix', 0))} "
+           f"outline_resort={int(p.get('outline_resort', 0))} "
+           f"outline_when={p.get('outline_when', 'station')} "
            f"arm_collision={p['arm_collision']} "
            f"base_x_moves={'/'.join(f'{t:g}' for t in p['base_x_moves'])} "
            f"stack_cap={p['stack_cap']} "
@@ -196,6 +204,26 @@ def params_text(spec, p, S):
 def clean_name(name):
     """An experiment name as the report can hold it: one line, comma-free."""
     return " ".join(str(name or "").replace(",", " ").split())
+
+
+def name_used(out, name):
+    """The reports of `out` that already hold a run named `name`.
+
+    Matched as Compare matches runs across files (`compare.key`), so a name
+    taken here is one Compare would have merged with the earlier run.
+    """
+    name = clean_name(name)
+    if not name:
+        return []
+    dst = resolve(out)
+    used = []
+    for f in sorted(glob.glob(os.path.join(dst, "*.csv"))):
+        try:
+            if any(C.key(e) == name for e in C.read_report(f)):
+                used.append(os.path.basename(f))
+        except (OSError, ValueError, IndexError):
+            continue        # not a report this page wrote
+    return used
 
 
 def write_report(path, name, n_boxes, n_ids, fields, rows, exp_name=""):
@@ -236,6 +264,12 @@ def start(folder, out, spec, p, cell_m, device, name="", seed=0):
     dst = resolve(out)
     if os.path.abspath(dst) == os.path.abspath(src):
         raise ValueError("write the results to another folder than the data")
+    used = name_used(dst, name)
+    if used:
+        raise ValueError(f"an experiment named '{clean_name(name)}' is already "
+                         f"in {_show(dst)} ({len(used)} report"
+                         f"{'s' if len(used) > 1 else ''}); pick another name, "
+                         "or delete it in the Compare tab first")
     S = tuple(orders_bin(p["pallet_cm"], p["cell_cm"]) if p["pallet_cm"]
               else p["bin"])
     job = {"id": uuid.uuid4().hex[:10], "state": "running", "spec": spec,
