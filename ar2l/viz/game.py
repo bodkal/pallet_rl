@@ -839,6 +839,18 @@ def stack_kw(p):
                 stack_allow_cm=p['stack_cap_allow_cm'])
 
 
+def play_kw(p):
+    """The env of a parameter set, as `agents.play` (and `episode_env`)
+    take it."""
+    return dict(nb=p['nb'], S=p['bin'], size_hi=p['size_hi'],
+                max_l=p['max_l'], n_pick=p['n_pick'], rot=p['rot'],
+                ems=p['ems'], stability=p['stability'],
+                min_support=p['min_support'], n_types=p['n_types'],
+                type_constraint=bool(p['type_constraint']),
+                arm_collision=bool(p['arm_collision']), arm_cell_m=cell_m(p),
+                arm_moves=p['base_x_moves'], **stack_kw(p))
+
+
 def arm_replay(st, placed, S, moves=None):
     """The arm placing the last of `placed`, against the pack the others left.
 
@@ -1125,6 +1137,9 @@ def new_game(seed, attacker_spec, params, human_pick=True, opp_spec=None):
           'human_pick': bool(human_pick) and p['n_pick'] > 1,
           'promoted': None, 'opp_spec': None, 'opp': None,
           'hcands': [], 'htaken': [], 'hwin': [], 'hprobs': [],
+          # what `replay` needs to put your bin back as it stood at any
+          # step: the attacker's move before it, and where the box went
+          'hprom': [], 'hplace': [],
           'pol': None, 'picker': None, 'plabel': None}
     # the opponent, asked at every position what it would do there: its
     # packer scores your candidate points, and with no attacker on a select
@@ -1185,13 +1200,7 @@ def hand_over(st, spec, p, seq=None):
     policy, label, _ = A.load_policy(spec, DEVICE)
     perm, plabel = opp_permuter(st, spec, p['n_pick'])
     t0 = time.time()
-    ep = A.play(seq, policy, perm, nb=p['nb'], S=p['bin'],
-                size_hi=p['size_hi'], max_l=p['max_l'], n_pick=p['n_pick'],
-                rot=p['rot'], ems=p['ems'], stability=p['stability'],
-                min_support=p['min_support'], n_types=p['n_types'],
-                type_constraint=bool(p['type_constraint']),
-                arm_collision=bool(p['arm_collision']), arm_cell_m=cell_m(p),
-                arm_moves=p['base_x_moves'], **stack_kw(p))
+    ep = A.play(seq, policy, perm, **play_kw(p))
     return {'label': label, 'util': ep['util'], 'items': ep['items'],
             'placed': ep['placed'], 'placed_types': ep['placed_types'],
             # before box n went in, the placements the packer had for it
@@ -1258,14 +1267,174 @@ def recalc_params(st, raw):
 def recalc(st, spec, p):
     """One row of the recalculation table: the same instance, other rules."""
     # `placed` stays in: the page draws the rerun's bin in 3D beside the game's
-    out = hand_over(st, spec, p, session_seq(st, p))
+    seq = session_seq(st, p)
+    out = hand_over(st, spec, p, seq)
     out['params'] = p
+    # kept on the session, so `replay` can put its bin back at any step
+    rows = st.setdefault('rows', {})
+    out['rid'] = rid = max(rows, default=0) + 1
+    rows[rid] = (spec, p, out, seq)
+    for old in list(rows)[:-ROWS_KEPT]:
+        rows.pop(old)
     # what moved from the game that was played, and what that leaves the agent
     # standing on: a rerun can walk a policy off its training configuration
     # just as the setup form can, and for the same reason it has to say so
     out['changed'] = diff_params(p, st['p'], RECALC_KEYS)
     out['drift'] = mismatch(p, spec)
     return out
+
+
+# ------------------------------------------- replay: the points at any step
+# The result screen draws, for each step of a bin, where the box that went in
+# could have gone.  Which other box of the station could have gone where, and
+# which of the packer's positions the rules turned down, nobody recorded: the
+# bin is put back as it stood and asked again.
+ROWS_KEPT = 20         # recalculation rows a session keeps for `replay`
+SNAP_EVERY = 10        # steps between the checkpoints a replay jumps back to
+STATE = ('seq', 'length', 'head', 'done', 'hmap', 'tmap', 'smap', 'cmap',
+         'omap', 'packed', 'ptype', 'n_packed', 'volume')
+_REPLAY = threading.Lock()
+
+
+def env_state(env):
+    """A copy of everything `step` and `permute` change."""
+    return {k: getattr(env, k).copy() for k in STATE}
+
+
+def set_state(env, s):
+    """Put `env_state` back, every cache dropped."""
+    for k, v in s.items():
+        setattr(env, k, v.copy())
+    env._invalidate()
+
+
+def track(st, side):
+    """One bin of the result screen as `replay` re-plays it.
+
+    `side` is 'h' for yours, 'a' for the agent's, or a recalculation row's
+    `rid`.  Each step is the conveyor as the page draws it -- yours after the
+    attacker moved a box to the front (`prom`), the agent's before -- then
+    the box that went in (`pick`) and where: the agent's by its index into
+    the candidate list (`act`), yours by orientation and cell (`rxy`), since
+    you were free to go off the list.
+    """
+    if side == 'h':
+        return {'key': 'h', 'p': st['p'], 'seq': st['seq'], 'pol': st['pol'],
+                'steps': [{'prom': pr, 'pick': w['pick'], 'rxy': rxy}
+                          for pr, w, rxy in zip(st['hprom'], st['hwin'],
+                                                st['hplace'])],
+                'prom': st['promoted'] or 0, 'placed': None}
+    if side == 'a':
+        if st.get('opp') is None:
+            raise ValueError('the agent has not played this game yet')
+        spec, p, out, seq = st['opp_spec'], st['p'], st['opp'], st['seq']
+        key = 'a:' + spec
+    else:
+        row = st.get('rows', {}).get(side)
+        if row is None:
+            raise ValueError('that recalculation is no longer kept')
+        spec, p, out, seq = row
+        key = f'r:{side}'
+    return {'key': key, 'p': p, 'seq': seq, 'pol': A.load_policy(spec, DEVICE)[0],
+            'steps': [{'prom': 0, 'pick': w['pick'], 'act': a}
+                      for w, a in zip(out['windows'], out['taken'])],
+            'prom': 0, 'placed': out['placed']}
+
+
+def replay(st, tr, n):
+    """`tr`'s env as the page draws step `n`: `n` boxes in, the conveyor as
+    it stood when the next was chosen.
+
+    Kept on the session and stepped forward, with a checkpoint every
+    `SNAP_EVERY` steps to jump back to, so scrubbing costs a step or a few.
+    """
+    def front(env, j):          # the attacker's move, before the page draws
+        pr = tr['steps'][j]['prom'] if j < len(tr['steps']) else tr['prom']
+        env.permute(np.array([pr]))
+
+    rps = st.setdefault('replays', {})
+    rp = rps.get(tr['key'])
+    if rp is None:
+        env = A.episode_env(tr['seq'], **play_kw(tr['p']))
+        front(env, 0)
+        rp = rps[tr['key']] = {'env': env, 'at': 0, 'snaps': {0: env_state(env)}}
+    env = rp['env']
+    if rp['at'] > n:
+        j = max(k for k in rp['snaps'] if k <= n)
+        set_state(env, rp['snaps'][j])
+        rp['at'] = j
+    while rp['at'] < n:
+        j, s = rp['at'], tr['steps'][rp['at']]
+        env.permute(np.array([s['pick']]))
+        if 'act' in s:
+            env.obs()                   # the candidate list `act` indexes
+            env.step(np.array([s['act']]))
+            got = (env.packed[0, j] * env.scale).round().astype(int).tolist()
+            if got != tr['placed'][j]:
+                raise ValueError(f'the replay drifted at box {j + 1}: '
+                                 f'{got} where the game had {tr["placed"][j]}')
+        elif not place(env, *s['rxy']):
+            raise ValueError(f'the replay drifted at box {j + 1}: it will not '
+                             f'rest where you put it')
+        rp['at'] = j + 1
+        front(env, j + 1)
+        if rp['at'] % SNAP_EVERY == 0:
+            rp['snaps'][rp['at']] = env_state(env)
+    return env
+
+
+def turned_down(env, feas, z, odims):
+    """[[x, y, z, r]] every position the packer's action space offers the item
+    in front that the rules turn down -- the stability rule, the box-type
+    rule, the stack-height limit, the robot arm, the lid.  With `ems` 0 that
+    is every cell the footprint fits in."""
+    late = bool(env._pos_ol[0])                 # the outline step's positions
+    item = env.head_item()[0][0]
+    gx, gy = np.arange(env.Lx)[:, None], np.arange(env.Ly)[None, :]
+    out = []
+    for r in range(odims.shape[1]):
+        if r and item[0] == item[1]:            # a square box turned round
+            break
+        d = odims[:, r]
+        space = env._space(d, z[:, r], late)[0]
+        space &= (gx + int(d[0, 0]) <= env.Lx) & (gy + int(d[0, 1]) <= env.Ly)
+        xs, ys = np.nonzero(space & ~feas[0, r])
+        out += [[int(x), int(y), int(z[0, r, x, y]), r] for x, y in zip(xs, ys)]
+    return out
+
+
+def points(st, side, n, i):
+    """Where box `i` of the station could go at step `n` of one bin:
+    the packer's candidate list for it, the side's policy over that list,
+    and the positions of its action space the rules turned down.
+
+    A step past the end of the bin is the conveyor it was left with, and the
+    box is asked as though the bin were still open: why it stopped.
+    """
+    with _REPLAY:
+        tr = track(st, side)
+        n = max(0, min(int(n), len(tr['steps'])))
+        env = replay(st, tr, n)
+        i = int(i)
+        k = min(env.n_pick, env.nb, int(env.length[0] - env.head[0]))
+        if not 0 <= i < k:
+            raise ValueError(f'box {i + 1} is not within reach at that step')
+        seq, done = env.seq.copy(), env.done.copy()
+        env.done[:] = False
+        env.permute(np.array([i]))
+        try:
+            cands = cand_points(env)
+            feas, z, odims, _ = env._positions()
+            bad = turned_down(env, feas, z, odims)
+            probs = None
+            if tr['pol'] is not None and cands:
+                probs = rounded(tr['pol'](env)[1][0][:len(cands)])
+            capped = int(feas.sum()) - len(cands)
+        finally:
+            env.seq, env.done = seq, done
+            env._invalidate(hmap=False)
+    return {'n': n, 'i': i, 'cands': cands, 'probs': probs, 'bad': bad,
+            'capped': capped}
 
 
 def exp_params(raw):
@@ -1629,6 +1798,8 @@ class Handler(BaseHTTPRequestHandler):
             st['hcands'].append(pts)
             st['hwin'].append(win)
             st['hprobs'].append(probs)
+            st['hprom'].append(st['promoted'] or 0)
+            st['hplace'].append((r, x, y))
             st['htaken'].append(next((i for i, c in enumerate(pts)
                                       if (c[3], c[0], c[1]) == (r, x, y)), -1))
             advance(st)
@@ -1657,6 +1828,14 @@ class Handler(BaseHTTPRequestHandler):
                                        human_taken=st['htaken'],
                                        human_windows=st['hwin'] + human_final(st),
                                        human_cand_probs=st['hprobs']))
+            except Exception as e:
+                return self._json({'error': f'{type(e).__name__}: {e}'}, 500)
+        if p == '/api/points':
+            try:
+                return self._json(points(st, body.get('side'), body.get('n', 0),
+                                         body.get('i', 0)))
+            except (TypeError, ValueError) as e:
+                return self._json({'error': str(e)}, 400)
             except Exception as e:
                 return self._json({'error': f'{type(e).__name__}: {e}'}, 500)
         if p == '/api/recalc':

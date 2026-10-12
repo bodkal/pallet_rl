@@ -136,7 +136,7 @@ train:
   # .csv (read with eval's cell_cm / pallet_cm / box_scale; pallet_cm, when
   # set, is also the bin trained on) or an instance .npy -- makes every
   # episode one of its pallets, drawn at random.
-  data: data/orders_all.csv
+  data: data/train_data/all_data.csv  # real_date + generated_data + db_sys_1 + db_sys_2
   # With `data`: the share of its pallets kept out of training and used for
   # the held-out evals that select best.pt.  0 scores on the training pallets.
   holdout: 0.2

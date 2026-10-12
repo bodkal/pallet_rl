@@ -95,7 +95,7 @@ def test_drift_from_the_run_is_reported_field_by_field():
         finally:
             G.CLI.pop("source")
     assert {m["key"] for m in G.mismatch(dict(p, source="orders",
-                                              data="data/orders_all.csv"),
+                                              data="data/train_data/orders_all.csv"),
                                          "run:sel_2cm_k5")} >= {"source"}
 
 

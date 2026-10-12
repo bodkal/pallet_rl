@@ -141,6 +141,11 @@ details.par>summary::marker{color:var(--dim)}
 .rwin .rwt .num{color:var(--dim);font-size:10px}
 .rwin .rwt.sel .num{color:var(--c0);font-weight:640}
 .rwin .rwsep{align-self:stretch;border-left:1px dashed var(--line);margin:0 2px}
+/* a box within reach is clicked to show where it could go; the one shown is ringed */
+.rwin .rwt.pk{cursor:pointer}
+.rwin .rwt.pk:hover{border-color:var(--fg)}
+.rwin .rwt.look{outline:2px solid var(--c1);outline-offset:1px}
+.rpts .bad{color:var(--c3);font-size:10.5px;margin-top:4px}
 #msg{margin-top:9px;min-height:20px;color:var(--dim)}
 
 /* result */
@@ -516,7 +521,7 @@ details.cf>summary b{font-size:14px}
             <option value="random">the random generator</option>
             <option value="orders">an orders file &mdash; real pallets</option></select></div>
           <div class="pf pf3 osrc"><span>data file (.csv or .npy &mdash; type a path or browse)</span>
-            <div class="dirp"><input id="data" type="text" spellcheck="false" placeholder="data/orders_all.csv"></div></div>
+            <div class="dirp"><input id="data" type="text" spellcheck="false" placeholder="data/train_data/orders_all.csv"></div></div>
           <div class="pf pf3 osrc"><span>pallet</span><select id="palpick">
             <option value="-1">a random pallet (dealt by the seed)</option></select></div>
           <div class="pf osrc"><span>order randomness &mdash; 0 file, 1 random</span>
@@ -728,15 +733,22 @@ details.cf>summary b{font-size:14px}
       box could go &mdash; the packer's candidate list for it, one point per
       placement corner</span>
     </label>
+    <label class="row" style="cursor:pointer;margin-top:4px;padding-left:22px">
+      <input type="checkbox" id="showbad" checked> <span>also show the points
+      its action space offered that the rules turn down, in red</span>
+    </label>
     <div class="lg ptslg">
       <span><svg width="12" height="12" viewBox="0 0 12 12"><circle cx="6" cy="6" r="4" fill="var(--c0)" stroke="#000"/></svg>orientation 1, as it came</span>
       <span><svg width="12" height="12" viewBox="0 0 12 12"><path d="M6 1L11 6L6 11L1 6Z" fill="none" stroke="var(--c4)" stroke-width="2"/></svg>orientation 2, turned 90&deg;</span>
       <span><svg width="12" height="12" viewBox="0 0 12 12"><circle cx="6" cy="6" r="4.5" fill="none" stroke="var(--fg)" stroke-width="1.5"/></svg>the one actually taken</span>
+      <span class="badlg"><svg width="12" height="12" viewBox="0 0 12 12"><circle cx="6" cy="6" r="3.5" fill="var(--c3)" stroke="#000"/></svg><svg width="12" height="12" viewBox="0 0 12 12"><path d="M6 1L11 6L6 11L1 6Z" fill="none" stroke="var(--c3)" stroke-width="2"/></svg>turned down by the rules</span>
     </div>
     <div class="sub" style="margin-top:6px;opacity:.8">Drag either bin to rotate both together
       &mdash; same angle, fair comparison. Scroll to zoom, shift-drag (or right-drag) to pan.
       Double-click resets.
-      The slider sits right above the bins; <kbd>&larr;</kbd>/<kbd>&rarr;</kbd> step it.</div>
+      The slider sits right above the bins; <kbd>&larr;</kbd>/<kbd>&rarr;</kbd> step it.
+      Under each bin, click a box within reach to see where <b>it</b> could
+      have gone instead; the box that was packed is shown until you do.</div>
   </div>
 
   <div class="scrubbar">
@@ -1465,7 +1477,21 @@ function drawIso(cv, boxes, L, W, H, opts){
   // ---- where the next box could go: one mark per candidate corner ----
   // orientation 1 a filled dot, orientation 2 a hollow diamond a size larger,
   // so a corner open to both shows both.  `pointsTaken` is the index the
-  // next step actually chose, ringed.
+  // next step actually chose, ringed.  `bad` are the corners the rules turned
+  // down, the same shapes in red and a size smaller, drawn first so the
+  // packer's own sit on top of them.
+  if(opts.bad && opts.bad.length){
+    const R = Math.max(2, Math.min(4.5, s*0.17));
+    for(const [x,y,z,r] of opts.bad){
+      const [px,py] = P(x,y,z);
+      g.beginPath();
+      if(r){ const d = R*1.45;
+             g.moveTo(px,py-d); g.lineTo(px+d,py); g.lineTo(px,py+d); g.lineTo(px-d,py); g.closePath();
+             g.strokeStyle = css('--c3'); g.lineWidth = 1.5; g.stroke(); }
+      else { g.arc(px,py,R,0,7); g.fillStyle = css('--c3'); g.fill();
+             g.strokeStyle = '#000'; g.lineWidth = .8; g.stroke(); }
+    }
+  }
   if(opts.points && opts.points.length){
     const R = Math.max(2.5, Math.min(6, s*0.22));
     for(const [k, [x,y,z,r]] of opts.points.entries()){
@@ -2173,11 +2199,11 @@ async function finish(){
             placed_types: B.placed_types, skipped: SKIP,
             cands: r.human_cands || [], taken: r.human_taken || [],
             windows: r.human_windows || [],
-            cand_probs: r.human_cand_probs || [],
+            cand_probs: r.human_cand_probs || [], _pk: 'h',
             seconds: (Date.now() - T0) / 1000, reason: REASON || 'ran out of room'},
-    agent: r,
+    agent: Object.assign(r, {_pk: 'a'}),
   };
-  ARMC.clear();
+  ARMC.clear(); PTSC.clear(); BOXSEL.clear();
   renderResult();
 }
 
@@ -2244,7 +2270,7 @@ function renderResult(){
              seconds: a.seconds, changed: [], drift: [],
              placed: a.placed, placed_types: a.placed_types, params: p,
              cands: a.cands, taken: a.taken, windows: a.windows,
-             cand_probs: a.cand_probs}];
+             cand_probs: a.cand_probs, _pk: 'a'}];
   RCSEL = 0;
   $('#rc3d').hidden = true;
   writeRecalc(p);
@@ -2261,36 +2287,79 @@ function renderResult(){
   }).catch(() => {});
 }
 
-/* After n boxes, the placements the packer had for box n+1: `cands[n]` was
-   recorded just before that box went in, and `taken[n]` is the one it went
-   to (-1 when you put it somewhere off the packer's list). */
-function nextPoints(side, n){
-  if (!$('#showpts').checked || !side.cands || !side.cands[n]) return {};
-  const top = topPoints(side.cands[n], side.cand_probs && side.cand_probs[n], NTOP);
-  return {points: side.cands[n], pointsTaken: side.taken ? side.taken[n] : -1,
+/* After n boxes, the placements the packer had for box n+1.  The box is the
+   one that went in unless a box within reach was clicked under the bin
+   (`BOXSEL`, by panel, for that step only).  For the box that went in,
+   `cands[n]` was recorded just before it did and `taken[n]` is the one it
+   went to (-1 when you put it somewhere off the packer's list); for any
+   other, and for the points the rules turned down, the server puts the bin
+   back as it stood and asks (`/api/points`, cached in `PTSC`). */
+const PTSC = new Map();
+const BOXSEL = new Map();
+function viewPoints(pid, side, n, redraw){
+  const ws = side.windows || [], last = ws[ws.length - 1];
+  const step = ws[n] ? n : last && last.pick < 0 ? ws.length - 1 : -1;
+  const win = ws[step];
+  if (!$('#showpts').checked || !win || !win.w.length) return null;
+  const sel = BOXSEL.get(pid);
+  const i = sel && sel.side === side && sel.n === n ? sel.i : Math.max(0, win.pick);
+  const own = i === win.pick && side.cands && side.cands[n];
+  const v = {i, n, own: i === win.pick, left: win.pick < 0,
+             pts: own ? side.cands[n] : null,
+             probs: own && side.cand_probs ? side.cand_probs[n] : null,
+             taken: own && side.taken ? side.taken[n] : -1, bad: null};
+  if (own && !$('#showbad').checked) return v;
+  const key = `${side._pk}:${step}:${i}`;
+  if (!PTSC.has(key)){
+    PTSC.set(key, null);
+    api('/api/points', {gid: G.gid, side: side._pk, n: step, i})
+      .then(r => { PTSC.set(key, r); redraw(); })
+      .catch(() => PTSC.delete(key));
+  }
+  const r = PTSC.get(key);
+  if (!r){ v.wait = true; return v; }
+  if (r.error){ v.error = r.error; return v; }
+  if (!own){ v.pts = r.cands; v.probs = r.probs; }
+  if ($('#showbad').checked) v.bad = r.bad;
+  v.capped = r.capped;
+  return v;
+}
+
+/* those points as `drawIso` takes them */
+function isoPoints(v){
+  if (!v || !v.pts) return {};
+  const top = topPoints(v.pts, v.probs, NTOP);
+  return {points: v.pts, pointsTaken: v.taken, bad: v.bad,
           pointRanks: new Map(top.map((t, k) => [t.i, k + 1]))};
 }
 
 /* The agent's probability for each of those points, best first, as a list
-   whose numbers match the ones drawn next to the points in the bin. */
-function drawPoints(el, side, n){
-  const pts = side.cands && side.cands[n], pr = side.cand_probs && side.cand_probs[n];
-  const top = $('#showpts').checked ? topPoints(pts, pr, NTOP) : [];
-  const taken = side.taken ? side.taken[n] : -1;
-  el.innerHTML = top.length
-    ? `<div class="rwh">box ${n + 1} &middot; top ${top.length}</div><ol class="plist short">`
-      + top.map((t, k) => `<li class="${t.i === taken ? 'tk' : ''}"
-          title="(${t.x}, ${t.y}) z ${t.z}${t.r ? ', turned' : ''}${t.i === taken ? ', taken' : ''}"
+   whose numbers match the ones drawn next to the points in the bin, and how
+   many the rules turned down. */
+function drawPoints(el, v){
+  if (!v){ el.innerHTML = ''; return; }
+  const top = topPoints(v.pts, v.probs, NTOP);
+  const box = v.left ? `#${v.i + 1}, left over` : v.own ? `box ${v.n + 1}`
+            : `box ${v.n + 1}, #${v.i + 1} instead`;
+  el.innerHTML = (top.length
+    ? `<div class="rwh">${box} &middot; top ${top.length}</div><ol class="plist short">`
+      + top.map((t, k) => `<li class="${t.i === v.taken ? 'tk' : ''}"
+          title="(${t.x}, ${t.y}) z ${t.z}${t.r ? ', turned' : ''}${t.i === v.taken ? ', taken' : ''}"
           ><span class="rk">${k + 1}</span><span>${t.x},${t.y},${t.z}${t.r ? '↻' : ''}</span
           ><b>${PCT(t.p)}</b></li>`).join('') + '</ol>'
-    : '';
+    : v.pts ? `<div class="rwh">${box} &middot; ${v.pts.length
+        ? v.pts.length + ' points' : 'no place it may go'}</div>` : '')
+    + (v.wait ? '<div class="rwh">asking&hellip;</div>' : '')
+    + (v.error ? `<div class="bad">${v.error}</div>` : '')
+    + (v.bad ? `<div class="bad">${v.bad.length} turned down</div>` : '')
+    + (v.capped ? `<div class="rwh">${v.capped} more cut by N<sub>L</sub></div>` : '');
 }
 
 /* The conveyor as it stood when box n+1 was chosen: every box in view, the
    first k within reach (numbered, solid) and the rest preview (dashed), with
    the one that went in marked.  Box colours match the 3D blocks: the picked
    box gets the colour it has once it is in the bin. */
-function drawWindow(el, side, n, k){
+function drawWindow(el, side, n, k, v){
   // a side that stopped before step n keeps showing what it was left with
   const ws = side.windows || [], last = ws[ws.length - 1];
   const win = ws[n] || (last && last.pick < 0 && n >= ws.length ? last : null);
@@ -2307,11 +2376,13 @@ function drawWindow(el, side, n, k){
          none of the <b>${reach}</b> in reach could be placed`
       : `<div class="rwh">conveyor before box ${n + 1} &mdash; sees
       <b>${win.w.length}</b>, can pick from <b>${reach}</b>, packed
-      #${win.pick + 1}`) + `${win.probs ? ' &middot; % = the picker\'s probability' : ''}</div><div class="rws">`
+      #${win.pick + 1}`) + `${win.probs ? ' &middot; % = the picker\'s probability' : ''}`
+    + `${v ? ' &middot; click one in reach for its points' : ''}</div><div class="rws">`
     + win.w.map((w, i) => {
-        const cls = 'rwt' + (i >= reach ? ' peek' : '') + (i === win.pick ? ' sel' : '');
+        const cls = 'rwt' + (i >= reach ? ' peek' : v ? ' pk' : '') + (i === win.pick ? ' sel' : '')
+          + (v && i === v.i ? ' look' : '');
         return (i === reach && reach < win.w.length ? '<span class="rwsep"></span>' : '')
-          + `<div class="${cls}"><span class="num">${i < reach ? i + 1 : '&middot;'}${
+          + `<div class="${cls}" data-i="${i}"${v && i < reach ? ' title="show where this box could go"' : ''}><span class="num">${i < reach ? i + 1 : '&middot;'}${
                i === win.pick ? ' packed' : ''}</span>${i < reach ? ppBadge(win.probs, i) : ''}<canvas data-i="${i}"></canvas>
              <span>${w.join('×')}${typed() ? ' ' + 'ABCDEFGHIJKLMNOP'[win.t[i]] : ''}</span></div>`;
       }).join('') + '</div>';
@@ -2320,6 +2391,19 @@ function drawWindow(el, side, n, k){
     drawFootprint(cv, win.w[i], u, i === win.pick ? n : n + 1 + i,
                   i >= reach, typed() ? win.t[i] : -1);
   });
+  el._pick = {side, n, reach};
+}
+/* a click on a box within reach shows its points at this step; another
+   click on it, or on the box that went in, goes back to that one */
+function boxClicks(pid, el, redraw){
+  el.addEventListener('click', e => {
+    const t = e.target.closest('.rwt.pk'), at = el._pick;
+    if (!t || !at || !$('#showpts').checked) return;
+    const i = +t.dataset.i, cur = BOXSEL.get(pid);
+    if (cur && cur.side === at.side && cur.n === at.n && cur.i === i) BOXSEL.delete(pid);
+    else BOXSEL.set(pid, {side: at.side, n: at.n, i});
+    redraw();
+  });
 }
 
 function drawReplay(n){
@@ -2327,18 +2411,20 @@ function drawReplay(n){
   const again = () => drawReplay(parseInt($('#scrub').value, 10));
   const ah = stepArm('h:' + n, RES.human.placed, n, [LX, LY, LZ], again),
         aa = stepArm('a:' + n, RES.agent.placed, n, [LX, LY, LZ], again);
+  const vh = RES.human.skipped ? null : viewPoints('h', RES.human, n, again),
+        va = viewPoints('a', RES.agent, n, again);
   drawIso($('#iso-h'), h, LX, LY, LZ,
           {highlight: h.length - 1, height: 290, arm: ah,
            types: typed() ? RES.human.placed_types : null,
-           ...nextPoints(RES.human, n)});
+           ...isoPoints(vh)});
   drawIso($('#iso-a'), a, LX, LY, LZ,
           {highlight: a.length - 1, height: 290, arm: aa,
            types: typed() ? RES.agent.placed_types : null,
-           ...nextPoints(RES.agent, n)});
-  drawWindow($('#win-h'), RES.human, n, G.params.n_pick);
-  drawWindow($('#win-a'), RES.agent, n, G.params.n_pick);
-  drawPoints($('#pts-h'), RES.human, n);
-  drawPoints($('#pts-a'), RES.agent, n);
+           ...isoPoints(va)});
+  drawWindow($('#win-h'), RES.human, n, G.params.n_pick, vh);
+  drawWindow($('#win-a'), RES.agent, n, G.params.n_pick, va);
+  drawPoints($('#pts-h'), vh);
+  drawPoints($('#pts-a'), va);
   armReplayText('#scrubarm', n,
                 RES.human.skipped ? [['agent', RES.agent.placed, aa]]
                                   : [['you', RES.human.placed, ah], ['agent', RES.agent.placed, aa]]);
@@ -2519,12 +2605,14 @@ function drawRcReplay(n){
     const arm = stepArm(`rc${r._aid}:${n}`, r.placed, n, [bx, by, bz],
                         () => drawRcReplay(parseInt($('#rcscrub').value, 10)),
                         r.params.base_x_moves);
+    const v = viewPoints('rc' + k, r, n,
+                         () => drawRcReplay(parseInt($('#rcscrub').value, 10)));
     drawIso($('#iso-rc' + k), pl, bx, by, bz,
             {highlight: pl.length - 1, height: 290, arm,
              types: typed() ? r.placed_types : null,
-             ...nextPoints(r, n)});
-    drawWindow($('#win-rc' + k), r, n, r.params.n_pick);
-    drawPoints($('#pts-rc' + k), r, n);
+             ...isoPoints(v)});
+    drawWindow($('#win-rc' + k), r, n, r.params.n_pick, v);
+    drawPoints($('#pts-rc' + k), v);
     $('#rcs' + k).textContent = `${(r.util * 100).toFixed(1)}% filled · `
       + `${r.items} boxes · ${bx}\u00d7${by}\u00d7${bz} bin`;
   });
@@ -2559,6 +2647,7 @@ async function recalcRun(){
                                || ['no reply from the server']).join('\n');
     return;
   }
+  r._pk = r.rid;
   RCROWS.push(r);
   showRecalc(RCROWS.length - 1);
 }
@@ -2617,7 +2706,18 @@ function armToggle(on){
 }
 $('#showarm').onchange = e => armToggle(e.target.checked);
 $('#showarm-r').onchange = e => armToggle(e.target.checked);
-$('#showpts').onchange = () => redrawIsos();
+$('#showpts').onchange = e => {
+  $('#showbad').disabled = !e.target.checked;
+  redrawIsos();
+};
+$('#showbad').onchange = e => {
+  document.querySelectorAll('.badlg').forEach(el => el.hidden = !e.target.checked);
+  redrawIsos();
+};
+boxClicks('h', $('#win-h'), () => drawReplay(parseInt($('#scrub').value, 10)));
+boxClicks('a', $('#win-a'), () => drawReplay(parseInt($('#scrub').value, 10)));
+for (const k of [0, 1])
+  boxClicks('rc' + k, $('#win-rc' + k), () => drawRcReplay(parseInt($('#rcscrub').value, 10)));
 $('#zoom').oninput = e => setZoom(parseInt(e.target.value, 10));
 $('#zoomfit').onclick = () => setZoom(null);
 try {
@@ -3277,6 +3377,7 @@ async function tFromRun(resume){
   TLOADED = {run: r, resume: resume};
   if (!resume) $('#tf_name').focus();
   tCheck();
+  return true;
 }
 /* what loading the run means, kept current as the form is edited */
 let TLOADED = null;
@@ -3291,7 +3392,9 @@ function tRunMsg(){
     : `Resumes ${r.name} from last.pt at iteration ${it} and trains on to ${want.toLocaleString()}. Marked fields differ from what it was trained with.`;
 }
 $('#trun').onchange = tRunPick;
-$('#tresume').onclick = () => tFromRun(true);
+$('#tresume').onclick = async () => {
+  if (await tFromRun(true)) $('#tstart').scrollIntoView({block: 'center', behavior: 'smooth'});
+};
 $('#tcopy').onclick = () => tFromRun(false);
 function tValues(){
   const v = {};

@@ -273,6 +273,10 @@ def make_env(args, seed, pool=None):
           dict(pool=pool, pool_order_random=args.order_random, types=False,
                size_hi=pool[..., :3].reshape(-1, 3).max(0)))
     kw.setdefault("size_hi", args.size_hi)
+    # nothing reaches past a blocked front box in a run that never permutes,
+    # so its episode ends there, as a FIFO conveyor's does
+    if args.algo in ("pct", "cppo", "rfmdp"):
+        kw["pick_feasible"] = False
     return BPPBatch(args.n_env, S=args.bin, nb=args.nb, n_items=args.n_items,
                     size_lo=args.size_lo, seed=seed,
                     max_l=args.max_l, stability=args.stability,

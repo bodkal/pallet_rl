@@ -160,14 +160,14 @@ def extent(S):
     return int(a[0]), int(a[1]), int(a[2])
 
 
-def play(seq, policy, attacker=None, nb=1, S=10, stability="com", record=True,
-         min_support=None,
-         size_hi=None, max_l=None, n_pick=None, rot=None, ems=None,
-         n_types=None, type_constraint=None, arm_collision=None,
-         arm_cell_m=None, arm_moves=None, stack_cap=None, stack_types=None,
-         stack_side_cm=None, stack_allow_cm=None, type_rule=None,
-         soft_mix=None, outline_resort=None, outline_when=None):
-    """One episode; returns the trace the viewers draw.
+def episode_env(seq, nb=1, S=10, stability="com", min_support=None,
+                size_hi=None, max_l=None, n_pick=None, rot=None, ems=None,
+                n_types=None, type_constraint=None, arm_collision=None,
+                arm_cell_m=None, arm_moves=None, stack_cap=None,
+                stack_types=None, stack_side_cm=None, stack_allow_cm=None,
+                type_rule=None, soft_mix=None, outline_resort=None,
+                outline_when=None):
+    """The one-bin env `play` packs `seq` in, reset to its first box.
 
     `S` is an int for a cube or an (Lx, Ly, Lz) triple.  `size_hi` bounds the
     items the env draws for itself once this sequence runs out, so it defaults
@@ -177,7 +177,8 @@ def play(seq, policy, attacker=None, nb=1, S=10, stability="com", record=True,
     `rot` and `ems` are here for the same reason the rest are: a viewer that
     lets the geometry be chosen has to be able to hand the agent *that*
     geometry, and a policy trained with one orientation replayed with two is
-    not the policy that was trained.
+    not the policy that was trained.  A viewer that re-plays an episode
+    step by step builds its env here too, so it is the same env.
     """
     seq = np.asarray(seq, np.int16)
     # the sequence carries its own types, so the env is told how many to expect
@@ -196,6 +197,15 @@ def play(seq, policy, attacker=None, nb=1, S=10, stability="com", record=True,
                             if size_hi is None else size_hi),
                    **({} if max_l is None else {"max_l": max_l}))
     env.reset(seq[None])
+    return env
+
+
+def play(seq, policy, attacker=None, record=True, **kw):
+    """One episode; returns the trace the viewers draw.
+
+    `kw` is the env, as `episode_env` takes it.
+    """
+    env = episode_env(seq, **kw)
     scale = env.scale        # one divisor for every axis, as in the env itself
     trace = []
     while not env.done[0]:

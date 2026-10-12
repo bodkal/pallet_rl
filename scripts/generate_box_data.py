@@ -3,6 +3,12 @@
 
     python3 scripts/generate_box_data.py                 # -> generated_data/1.csv .. 20.csv
     python3 scripts/generate_box_data.py --n 20 --seed 2024
+    python3 scripts/generate_box_data.py --start 21 --n 30 --brown 0.9   # -> 21.csv .. 50.csv
+
+`--start K` adds files K.. after the 1..K-1 already in the folder: same type-3
+catalog, and dates, pallet ids and container ids carry on from file K-1.
+`--brown F` keeps F of each pallet's type-3 boxes (0.9 = ~10% fewer); the
+type 1 and 2 boxes are left as they are.
 
 Each generated day takes the *shape* of one real day -- how many pallets,
 roughly how many boxes of each type each pallet holds, how many pallets are
@@ -225,7 +231,7 @@ def _jitter_share(p, conc, rng, floor=0.0):
     return out
 
 
-def make_day(m, tmpl, skus, pop, rng):
+def make_day(m, tmpl, skus, pop, rng, brown=1.0):
     """One day's boxes in true time order: (pallet index, type, dims, t-seconds)."""
     # pallets: each real pallet's size and type mix, jittered; a pure pallet
     # stays pure
@@ -239,6 +245,11 @@ def make_day(m, tmpl, skus, pop, rng):
         f = np.clip(total, m["n_lo"], m["n_hi"]) / total
         comp = [np.maximum(np.round(c * f).astype(int), 0) for c in comp]
         comp = [c if c.sum() else np.array([0, 0, 1]) for c in comp]
+    if brown != 1.0:                    # fewer type-3 boxes, rounded at random
+        for c in comp:
+            x = c[2] * brown
+            c[2] = int(x) + (rng.random() < x - int(x))
+        comp = [c for c in comp if c.sum()] or [np.array([0, 0, 1])]
 
     # each pallet's order: types sit where they sit on real pallets
     tall = {}
@@ -336,6 +347,13 @@ class Ids:
                 self.used.add(str(v))
                 return v
 
+    def resume(self, rows):
+        """Carry on after generated rows already written."""
+        self.used |= {r["CONTAINER_ID"] for r in rows}
+        self.used_pallets |= {r["PALLET_ID"] for r in rows}
+        self.t3 = max([self.t3] + [int(r["CONTAINER_ID"]) for r in rows if int(r["TYPE"]) == 3])
+        self.pallet = max(int(r["PALLET_ID"]) for r in rows)
+
     def new_pallet(self):
         while True:
             self.pallet += int(self.rng.integers(1, 9))
@@ -356,18 +374,31 @@ def fmt(v):
     return f"{v:.1f}"
 
 
-def generate(src, dst, n, seed):
+def generate(src, dst, n, seed, start=1, brown=1.0):
     rng = np.random.default_rng(seed)
     days = read_days(src)
     m = fit(days)
-    skus, pop = make_catalog(m, rng)
+    skus, pop = make_catalog(m, rng)             # the same catalog for every batch of a seed
     ids = Ids(m, rng)
+    date, last_pallet = m["last_date"], None
+    if start > 1:                                # carry on after 1..start-1, on a fresh stream
+        prev = []
+        for k in range(1, start):
+            with open(os.path.join(dst, f"{k}.csv"), newline="") as fh:
+                prev += list(csv.DictReader(fh))
+        ids.resume(prev)
+        ids.rng = rng = np.random.default_rng([seed, start])
+        date = dt.date.fromisoformat(prev[-1]["TRAN_DATE"])
+        last_pallet = int(prev[-1]["PALLET_ID"])
     tmpls = rng.choice(len(m["days"]), size=n, replace=n > len(m["days"]))
     os.makedirs(dst, exist_ok=True)
-    date, last_pallet = m["last_date"], None
-    for k, ti in enumerate(tmpls, start=1):
+    # boxes per type written, next to the real days they were modelled on
+    got = Counter()
+    want = sum(np.sum(m["days"][ti]["comp"], axis=0) for ti in tmpls)
+    for k, ti in enumerate(tmpls, start=start):
         date = next_date(m, date, rng)
-        boxes = make_day(m, m["days"][ti], skus, pop, rng)
+        boxes = make_day(m, m["days"][ti], skus, pop, rng, brown)
+        got.update(t for _, t, *_ in boxes)
         n_pal = 1 + max(p for p, *_ in boxes)
         pid = [ids.new_pallet() for _ in range(n_pal)]
         if last_pallet and n_pal > 1 and rng.random() < m["carry_p"]:
@@ -388,17 +419,20 @@ def generate(src, dst, n, seed):
             w = csv.DictWriter(fh, COLS, lineterminator="\n")
             w.writeheader()
             w.writerows(rows)
-    check(m, dst, n)
-    return m
+    check(m, dst, start + n - 1)
+    return m, got, want
 
 
 def check(m, dst, n):
-    """The rules, asserted on what was written."""
+    """The rules, asserted on what was written (files 1..n)."""
     real_skus = {tuple(float(x) for x in k) for k in m["skus"]}
     b = m["bounds"]
+    seen = set()
     for k in range(1, n + 1):
         with open(os.path.join(dst, f"{k}.csv"), newline="") as fh:
             for r in csv.DictReader(fh):
+                assert r["CONTAINER_ID"] not in seen, (k, r)    # no label twice, in any file
+                seen.add(r["CONTAINER_ID"])
                 t, s = int(r["TYPE"]), dims(r)
                 if t in (1, 2):
                     f = m["fixed"][t]
@@ -415,9 +449,15 @@ def main():
     p.add_argument("--dst", default=os.path.join(DATA, "generated_data"))
     p.add_argument("--n", type=int, default=20)
     p.add_argument("--seed", type=int, default=2024)
+    p.add_argument("--start", type=int, default=1,
+                   help="number of the first file; 1..start-1 must already be in --dst")
+    p.add_argument("--brown", type=float, default=1.0,
+                   help="share of type-3 boxes to keep, e.g. 0.9 for ~10%% fewer")
     a = p.parse_args()
-    generate(a.src, a.dst, a.n, a.seed)
-    print(f"wrote {a.n} files to {os.path.relpath(a.dst, ROOT)}")
+    _, got, want = generate(a.src, a.dst, a.n, a.seed, a.start, a.brown)
+    print(f"wrote {a.start}.csv .. {a.start + a.n - 1}.csv to {os.path.relpath(a.dst, ROOT)}")
+    for t, w in zip(TYPES, want):
+        print(f"  type {t}: {got[t]:5d} boxes, {got[t] / w - 1:+.1%} vs the real days they follow")
 
 
 if __name__ == "__main__":

@@ -1092,10 +1092,8 @@ variety (`train.order_random`) and for evaluation robustness
 
 | File | Content |
 |---|---|
-| `orders_all.orig.csv` | 4,375 real boxes in 89 pallets (1–97 boxes each); sides 7–67 cm; types 0 (1,002 boxes), 1 (1,057), 2 (2,316). |
-| `orders_all.csv` | The same boxes regrouped into **59 pallets of 74–75 boxes**. |
-| `orders_all.merge_map.csv` | Which source pallets and box counts make up each merged pallet. |
-| `orders_all_generated_data.*` | The same three files built from the synthetic days in `box_pallet_data/generated_data`: 2,384 boxes in 49 pallets (1–104 boxes each), regrouped into **32 pallets of 74–75 boxes**; types 0 (508), 1 (565), 2 (1,311). |
+| `train_data/orders_all.csv` | 4,375 real boxes from the 89 pallets (1–97 boxes each) of `box_pallet_data/use_data`, regrouped into **59 pallets of 74–75 boxes**; sides 7–67 cm; types 0 (1,002 boxes), 1 (1,057), 2 (2,316). Built by `scripts/make_orders.py`. |
+| `train_data/orders_all_generated_data.csv` | The same from the 50 synthetic days in `box_pallet_data/generated_data`: 5,701 boxes in 115 pallets (1–118 boxes each), regrouped into **77 pallets of 74–75 boxes**; types 0 (1,177), 1 (1,499), 2 (3,025). Days 21–50 keep ~90% of their type-2 boxes (`--brown 0.9`). |
 | `orders_example.csv` | A small example showing every column, including `seq` and `qty`. |
 | `pallet_2cm_test.npy` | 3,000 × 120 × 4: generated test set for the pallet config (typed). The default evaluation set. |
 | `pallet_2cm_untyped.npy` | 3,000 × 120 × 3: the same geometry, no types. |
@@ -1377,7 +1375,7 @@ learned selector with a reach of 5 recovers them and more.
 | `train.algo`, `nb`, `n_pick` | pct, 10, 1 | |
 | `train.iters`, `n_env`, `T` | 8000, 64, 30 | |
 | `train.alpha`, `rho`, `dist_coef`, `cvar_q` | 1.0, 0.1, 1.0, 0.5 | |
-| `train.data` | data/orders_all.csv | Training uses the real orders by default. |
+| `train.data` | data/train_data/orders_real_gen.csv | Training uses the real and generated orders together by default. |
 | `train.holdout`, `order_random` | 0.2, 0.0 | |
 | `ppo.*` | lr 3e-4, γ 1.0, λ 0.95, 4 epochs, 4 minibatches, entropy 0.01, clip 0.2, value coefficient 0.5, gradient clip 0.5 | |
 | `model.*` | width 64, 1 head, 1 layer, `c_temp` 10, `type_embed` 16 | |

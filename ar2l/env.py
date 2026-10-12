@@ -514,8 +514,10 @@ class BPPBatch:
         # episode simply ends, which is what the pre-type simulator did; once
         # the stacking rule can block a box while its neighbour in the station
         # is fine, the permuter has to be able to reach past it, so the mask
-        # is filtered by default exactly there.  It costs one feasibility
-        # sweep per reachable box, so it stays off when it cannot matter.
+        # is filtered by default exactly there, and the episode then ends only
+        # when the whole station is blocked (`step`).  It costs one
+        # feasibility sweep per reachable box, so it stays off when it cannot
+        # matter -- and a caller that never permutes, a FIFO, turns it off.
         self.pick_feasible = bool(
             (self.type_constraint and self.n_types > 1 and self.n_pick > 1)
             if pick_feasible is None else pick_feasible)
@@ -1135,11 +1137,18 @@ class BPPBatch:
         if np.all(idx == 0):
             return
         off = self.head[:, None] + np.arange(self.nb)[None, :]
+        # past the end of the sequence the offsets clamp onto its last item:
+        # those slots are copies of it, and writing them back would put it
+        # over whatever the move sent there -- the last box picked would lose
+        # the one before it -- so only the real offsets are written
+        real = off < self.n_items
         off = np.minimum(off, self.n_items - 1)
-        win = self.seq[self._ar[:, None], off].copy()          # (B, nb, 3)
+        win = self.seq[self._ar[:, None], off].copy()          # (B, nb, 4)
         order = np.argsort(np.where(np.arange(self.nb)[None, :] == idx[:, None],
                                     -1, np.arange(self.nb)[None, :]), axis=1)
-        self.seq[self._ar[:, None], off] = win[self._ar[:, None], order]
+        new = win[self._ar[:, None], order]
+        b, j = np.nonzero(real)
+        self.seq[b, off[b, j]] = new[b, j]
         self._permute_caches(idx, order)
 
     def _permute_caches(self, idx, order):
@@ -1763,21 +1772,30 @@ class BPPBatch:
         fits = z + sz[:, None, None] <= Lz
         feas = stable & inx & iny & fits
         if self.ems != EMS_OFF:
-            if self.ems == EMS_SPACES:
-                cand = self._ems_corners(dims)
-            elif self.ems == EMS_CORNER:
-                cand = self._corner_mask(dims, z)
-            else:
-                cand = self._ems_corners(dims) | self._corner_mask(dims, z)
-            if outline:
-                cand |= self._outline_mask(dims)
-            feas &= cand
+            feas &= self._space(dims, z, outline)
         if self.stack_cap:
             feas &= self._cap_ok(dims, z)
         full = None
         if self._mixed:
             full = cxy[cx - 1, ar] == (sx.astype(np.int32) * sy)[:, None, None]
         return feas, z, full
+
+    def _space(self, dims, z, outline=False):
+        """(n, Lx, Ly) the positions the `ems` mode offers `dims`, landing at
+        `z`, before any rule asks whether the box would stand there: every
+        cell with `ems` 0.  `outline` adds the outline step's positions.  A
+        footprint that overruns the bin may be in it; `inx`/`iny` drop it."""
+        if self.ems == EMS_OFF:
+            return np.ones((self.n_env, self.Lx, self.Ly), bool)
+        if self.ems == EMS_SPACES:
+            cand = self._ems_corners(dims)
+        elif self.ems == EMS_CORNER:
+            cand = self._corner_mask(dims, z)
+        else:
+            cand = self._ems_corners(dims) | self._corner_mask(dims, z)
+        if outline:
+            cand |= self._outline_mask(dims)
+        return cand
 
     def _arm_checker(self):
         if self._arm is None:
@@ -2205,10 +2223,18 @@ class BPPBatch:
         self._keep_arm(*arm, x, y, sx, sy, alive)
 
         reward = (vol / self.bin_vol) * alive
-        # terminate when the new leading item has nowhere to go
+        # terminate when the new leading item has nowhere to go -- and, with
+        # the station filtered (`pick_feasible`), no other box within reach
+        # has either: the permuter reaches past a blocked front box, so the
+        # bin is finished only when `b_pick` is empty.  The rest of the
+        # station is asked only where the front box is blocked.
         self.done |= ~alive
         self.done |= self.head >= self.length
-        self.done |= ~self._head_placeable()
+        ok = self._head_placeable()
+        if self.pick_feasible and (~ok & ~self.done).any():
+            k = min(self.n_pick, self.nb)
+            ok = ok | self._placeable()[:, :k].any(1)
+        self.done |= ~ok
         return reward.astype(np.float32), self.done.copy()
 
     def _head_placeable(self):

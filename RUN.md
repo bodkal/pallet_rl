@@ -156,7 +156,7 @@ they can be changed there without editing the config. A run does not record
 the types, sides or allowances, only `stack_cap`, so editing them is not
 flagged as drift from the opponent's training.
 
-On the 59 real pallets of `data/orders_all.csv`, DBL on a FIFO conveyor (arm
+On the 59 real pallets of `data/train_data/orders_all.csv`, DBL on a FIFO conveyor (arm
 filter off) starts 240 boxes past these limits with the type rule off and 50
 with it on; with the limit both are 0, for 47.1% → 43.8% and 24.3% → 23.7%
 utilisation. The policy network is unchanged, so an existing checkpoint loads
@@ -187,14 +187,14 @@ file order. Pallets of different lengths share one array, padded with zero
 rows the env reads as "end of this pallet".
 
 ```bash
-python3 -m ar2l.evaluate --data data/orders_all.csv --pallet_cm 120 80 180 --heuristic dbl --beta 0 \
+python3 -m ar2l.evaluate --data data/train_data/orders_all.csv --pallet_cm 120 80 180 --heuristic dbl --beta 0 \
         --per_pallet results/orders_dbl.csv
-python3 -m ar2l.evaluate --data data/orders_all.csv --pallet_cm 120 80 180 \
+python3 -m ar2l.evaluate --data data/train_data/orders_all.csv --pallet_cm 120 80 180 \
         --ckpt runs/sel_types_k5/best.pt --attacker runs/sel_types_k5/best.pt \
         --permuter mixer --nb 10 --n_pick 5 --beta 100 --per_pallet results/orders_sel.csv
-python3 -m ar2l.viz.replay3d --data data/orders_all.csv --pallet_cm 120 80 180 --seq 0 \
+python3 -m ar2l.viz.replay3d --data data/train_data/orders_all.csv --pallet_cm 120 80 180 --seq 0 \
         --policy run:sel_types_k5 --attacker mix:sel_types_k5 --gif
-python3 -m ar2l.orders data/orders_all.csv data/orders_all.npy --pallet_cm 120 80 180   # convert once, if wanted
+python3 -m ar2l.orders data/train_data/orders_all.csv data/train_data/orders_all.npy --pallet_cm 120 80 180   # convert once, if wanted
 ```
 
 `--box_scale N` (or `eval.box_scale`) divides every box side — x, y and z
@@ -232,7 +232,7 @@ before, a path — an orders `.csv` or an instance `.npy` — makes every episod
 one of its pallets, drawn at random.
 
 ```bash
-python3 -m ar2l.train --name sel_orders --data data/orders_all.csv \
+python3 -m ar2l.train --name sel_orders --data data/train_data/orders_all.csv \
         --pallet_cm 120 80 180 --cell_cm 4 --algo select --nb 10 --n_pick 5 \
         --iters 10000 --order_random 0.2
 ```
@@ -273,7 +273,7 @@ the default and have since been deleted; retrain under the flag to reproduce the
 **`--algo select --n_pick 5` at `--width 128`, trained on the orders file.**
 The cooperative selector picks which of the 5 reachable boxes goes next, *for*
 the packer, and the packer is trained on the stream it produces. It is the best
-run on the current problem — the real orders of `data/orders_all.csv` on the
+run on the current problem — the real orders of `data/train_data/orders_all.csv` on the
 30 × 25 × 40-cell pallet (1 cm cells, boxes divided by 4), 3 box types with
 the stacking rule, `ems: 3` candidates and the UR20 arm filter on — all of
 which are the `config.yaml` defaults now, so the command needs few flags.
@@ -299,19 +299,19 @@ Three commands: train, score the held-out pallets, look at one.
 ```bash
 # 1. train — select, width 128, on the orders file (reproduces arm_pack_124)
 python3 -m ar2l.train --name best_orders --algo select --nb 10 --n_pick 5 \
-    --data data/orders_all.csv --pallet_cm 30 25 40 --cell_cm 1 --box_scale 4 \
+    --data data/train_data/orders_all.csv --pallet_cm 30 25 40 --cell_cm 1 --box_scale 4 \
     --width 128 --heads 1 --layers 1 --ems 3 --min_support 0.3 \
     --iters 10000 --eval_every 250 --save_every 250 --resume
 
 # 2. score it: the selector (the `mixer` net of the same checkpoint) picks at beta 100
 python3 -m ar2l.evaluate --ckpt runs/best_orders/best.pt \
     --attacker runs/best_orders/best.pt --permuter mixer \
-    --data data/orders_all.csv --pallet_cm 30 25 40 --cell_cm 1 --box_scale 4 \
+    --data data/train_data/orders_all.csv --pallet_cm 30 25 40 --cell_cm 1 --box_scale 4 \
     --nb 10 --n_pick 5 --min_support 0.3 --beta 0 100 \
     --per_pallet results/best_orders.csv
 
 # 3. watch one pallet packed
-python3 -m ar2l.viz.replay3d --data data/orders_all.csv --pallet_cm 30 25 40 \
+python3 -m ar2l.viz.replay3d --data data/train_data/orders_all.csv --pallet_cm 30 25 40 \
     --seq 0 --policy run:best_orders --attacker mix:best_orders --gif
 ```
 
@@ -470,7 +470,7 @@ python3 -m ar2l.train \
   --name best_orders --algo select --nb 10 --n_pick 5 \
   --config config.yaml \
   --alpha 1.0 --rho 0.1 --dist_coef 1.0 --cvar_q 0.5 \
-  --data data/orders_all.csv --holdout 0.2 --order_random 0.0 \
+  --data data/train_data/orders_all.csv --holdout 0.2 --order_random 0.0 \
   --pallet_cm 30 25 40 --cell_cm 1.0 --box_scale 4 --box_round nearest \
   --iters 8000 --n_env 64 --T 30 \
   --bin 30x24x40 --n_items 120 --size_lo 4 --size_hi 15x10x10 --max_l 256 --max_c 128 \
@@ -651,7 +651,7 @@ the rest.
 | `--freeze_pack` | off | `attack` | hold the packer fixed and play it greedily; this is what makes the attacker train against the packer it will be tested against |
 | `--heur_pack` | — | `attack` | attack a heuristic (`dbl`, `bmf`, `lsah`, `onlinebph`, `hmm`, `macs`) instead of a network |
 | `--ent_final` | — | `attack` | anneal the attacker's entropy bonus linearly from `--ent_coef` to this value (the grid uses `0.001`) |
-| `--data` | `data/orders_all.csv` | any | where episodes come from: an orders `.csv` or an instance `.npy`; empty/`null` in the config is the random generator |
+| `--data` | `data/train_data/orders_real_gen.csv` | any | where episodes come from: an orders `.csv` or an instance `.npy`; empty/`null` in the config is the random generator |
 | `--holdout` | `0.2` | any, with `--data` | share of pallets kept out of training for the held-out evals that pick `best.pt` |
 | `--order_random` | `0.0` | any, with `--data` | randomise each drawn pallet's box order, 0..1 |
 | `--pallet_cm` / `--cell_cm` / `--box_pad_m` / `--box_scale` / `--box_round` | `30 25 40` / `1.0` / `0` / `4` / `nearest` | any, with an orders `.csv` | how the CSV is gridded; `--pallet_cm` is also the bin trained on |
