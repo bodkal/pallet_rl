@@ -15,7 +15,8 @@ import numpy as np
 import torch
 
 from .config import CFG, load as load_config
-from .env import BPPBatch, MIN_SUPPORT, OUTLINE_WHEN, TYPE_RULES
+from .env import (BPPBatch, MIN_SUPPORT, OUTLINE_AREA, OUTLINE_WHEN,
+                  TYPE_RULES)
 from .heuristics import NAMES as HEURISTICS, act as heur_act
 from .model import PackNet, PermNet, sample
 from .orders import (add_cm_args, add_order_args, load_orders, orders_bin,
@@ -110,7 +111,7 @@ def run(seqs, policy, nb, attacker=None, attacked=None, batch=None, S=None,
         device=None, greedy=True, stability=None, ems=None, rot=None,
         max_l=None, min_support=None, n_pick=None, n_types=None,
         type_constraint=None, stack_cap=None, type_rule=None, soft_mix=None,
-        outline_resort=None, outline_when=None):
+        outline_resort=None, outline_when=None, outline_area=None):
     """Play every instance once.  `policy` is a net or a heuristic name.
 
     Anything left `None` comes from `config.yaml`; the env arguments are
@@ -135,7 +136,8 @@ def run(seqs, policy, nb, attacker=None, attacked=None, batch=None, S=None,
                        n_pick=n_pick, n_types=n_types, types=False,
                        type_constraint=type_constraint, type_rule=type_rule,
                        soft_mix=soft_mix, outline_resort=outline_resort,
-                       outline_when=outline_when, stack_cap=stack_cap)
+                       outline_when=outline_when, outline_area=outline_area,
+                       stack_cap=stack_cap)
         env.reset(chunk)
         on = torch.as_tensor(attacked[s:s + batch]).to(device)
         while not env.done.all():
@@ -170,7 +172,7 @@ def nominal_score(pack, nb, n_inst=256, n_items=150, seed=999, device="cuda",
                   min_support=None, n_pick=None, n_types=None,
                   type_constraint=None, stack_cap=None, seqs=None,
                   type_rule=None, soft_mix=None, outline_resort=None,
-                  outline_when=None):
+                  outline_when=None, outline_area=None):
     """Quick greedy score on a fixed held-out slice, for training curves.
 
     `seqs` scores those instances (a run's held-out real pallets) instead of
@@ -182,7 +184,8 @@ def nominal_score(pack, nb, n_inst=256, n_items=150, seed=999, device="cuda",
                rot=rot, S=S, max_l=max_l, min_support=min_support,
                n_pick=n_pick, n_types=n_types, type_constraint=type_constraint,
                stack_cap=stack_cap, type_rule=type_rule, soft_mix=soft_mix,
-               outline_resort=outline_resort, outline_when=outline_when)
+               outline_resort=outline_resort, outline_when=outline_when,
+               outline_area=outline_area)
     return float(u.mean()), float(k.mean())
 
 
@@ -192,7 +195,7 @@ def attack_score(policy, attacker, nb, n_inst=256, n_items=150, seed=998,
                  max_l=120, min_support=None, n_pick=None, n_types=None,
                  type_constraint=None, stack_cap=None, seqs=None,
                  type_rule=None, soft_mix=None, outline_resort=None,
-                 outline_when=None):
+                 outline_when=None, outline_area=None):
     """Greedy utilisation of `policy` with every conveyor reordered.
 
     The attacker is selected and reported under the conditions it will be
@@ -209,7 +212,8 @@ def attack_score(policy, attacker, nb, n_inst=256, n_items=150, seed=998,
                min_support=min_support, n_pick=n_pick, n_types=n_types,
                type_constraint=type_constraint, stack_cap=stack_cap,
                type_rule=type_rule, soft_mix=soft_mix,
-               outline_resort=outline_resort, outline_when=outline_when)
+               outline_resort=outline_resort, outline_when=outline_when,
+               outline_area=outline_area)
     return float(u.mean()), float(k.mean())
 
 
@@ -265,6 +269,10 @@ def get_parser():
     p.add_argument("--outline_when", choices=OUTLINE_WHEN,
                    default=e.get("outline_when", "station"),
                    help="when the outline step opens: station or box")
+    p.add_argument("--outline_area", choices=OUTLINE_AREA,
+                   default=e.get("outline_area", "outline"),
+                   help="where the outline step looks: outline (the outline "
+                        "points) or all (every cell of the grid)")
     p.add_argument("--stack_cap", type=int, default=e["stack_cap"],
                    help="0 scores the policy with the stack-height limit over "
                         "small boxes lifted")
@@ -321,6 +329,7 @@ def main(argv=None):
                    type_rule=a.type_rule, soft_mix=bool(a.soft_mix),
                    outline_resort=bool(a.outline_resort),
                    outline_when=a.outline_when,
+                   outline_area=a.outline_area,
                    stack_cap=bool(a.stack_cap))
         m = res[str(int(b))] = metrics(u, k, length)
         print(f"beta={b:5.0f}  Uti {m['uti']:5.1f}  Std {m['std']:4.1f}  "

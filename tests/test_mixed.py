@@ -786,6 +786,26 @@ def test_the_outline_step_slides_along_an_edge(rule):
     assert corners < along and {(x, 2) for x in range(7)} <= along
 
 
+@pytest.mark.parametrize("soft", [False, True])
+def test_the_outline_step_can_look_at_every_cell(rule, soft):
+    """A wide blue patch level with a white floor, and a brown box that may
+    go on it: the corners give nothing -- the bin's corners are white -- the
+    outline only the places that touch the patch's edges, and `all` every
+    place on it, as `ems: 0` offers them."""
+    cols = {**WHITE_FLOOR, (1, 6, 1, 6): (2, BLUE)}
+    box = [(3, 2, 1, BROWN)]
+    ol = ol_station(rule, box, cols, soft_mix=soft, outline_resort=True)
+    every = ol_station(rule, box, cols, soft_mix=soft, outline_resort=True,
+                       outline_area="all")
+    ref = ol_station(rule, box, cols, soft_mix=soft, ems=0)
+    assert ol.outline()[0] and every.outline()[0]
+    on_ol = {tuple(c) for c in np.argwhere(ol._positions()[0][0, 0])}
+    on_all = {tuple(c) for c in np.argwhere(every._positions()[0][0, 0])}
+    assert on_all == {(x, y) for x in range(1, 4) for y in range(1, 5)}
+    assert on_all - on_ol == {(2, 2), (2, 3)}
+    assert (every._positions()[0] == ref._positions()[0]).all()
+
+
 def test_the_outline_lattice_follows_the_boxes():
     env = mixed("mixed_touch", n_items=3, ems=0, rot=1)
     env.reset(np.array([[(3, 2, 1, WHITE), (1, 1, 1, WHITE),
@@ -824,20 +844,27 @@ def test_the_command_lines_hand_the_outline_step_to_the_env():
     a = train.get_parser().parse_args(["--name", "t", "--type_rule",
                                        "mixed_column", "--outline_resort", "1",
                                        "--outline_when", "box",
+                                       "--outline_area", "all",
                                        "--n_env", "2"])
     env = train.make_env(a, seed=0)
     assert env.outline_resort is True and env.outline_when == "box"
+    assert env.outline_area == "all"
     e = evaluate.get_parser().parse_args(["--outline_resort", "1"])
     assert e.outline_resort == 1 and e.outline_when == "station"
+    assert e.outline_area == "outline"
     with pytest.raises(ValueError):
         mixed("mixed_touch", outline_when="pallet")
+    with pytest.raises(ValueError):
+        mixed("mixed_touch", outline_area="pallet")
 
 
 def test_the_game_reads_the_outline_step():
     from ar2l.viz import game as G
     p, err = G.validate({"type_rule": "mixed_column", "outline_resort": 1,
-                         "outline_when": "box"})
+                         "outline_when": "box", "outline_area": "all"})
     assert not err, err
     assert G.stack_kw(p)["outline_resort"] is True
     assert G.stack_kw(p)["outline_when"] == "box"
+    assert G.stack_kw(p)["outline_area"] == "all"
     assert G.validate({"outline_when": "pallet"})[1]
+    assert G.validate({"outline_area": "pallet"})[1]

@@ -73,9 +73,13 @@ env:
   # the pallet's edges, every cell along them, on top of the `ems` candidates.
   # outline_when: station -- only when no box within reach has any place by
   # the steps before; box -- for each box that has none, whatever the rest.
+  # outline_area: outline -- the outline positions above; all -- every cell
+  # of the grid, as `ems: 0` offers them, so the step misses nothing a rule
+  # would allow.
   # Nothing to add with `ems: 0`, where every position is a candidate already.
   outline_resort: 0
   outline_when: station         # station | box
+  outline_area: outline         # outline | all
   # The mixed rules' numbers, in real cm read onto the grid with the arm
   # filter's cell size (4 cm with the shipped eval.cell_cm * eval.box_scale).
   # The gap is rounded down to whole cells (5 cm -> 1 cell); the small blue

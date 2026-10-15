@@ -225,7 +225,8 @@ and add exceptions:
 - `outline_resort` adds one more step when all of that leaves nothing: the
   same rules again over every position that puts a corner of the box on the
   edge of a packed box or of the pallet (`omap`, a lattice of cell corners
-  updated in `step`), per station or per box (`outline_when`).
+  updated in `step`), per station or per box (`outline_when`) -- or, with
+  `outline_area: all`, over every cell of the grid.
 
 The last condition is one more map per step. The env finds every placement
 the normal rules give a 50 × 30 × 18 cm blue box, arm included, marks the

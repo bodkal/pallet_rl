@@ -585,6 +585,9 @@ details.cf>summary b{font-size:14px}
           <div class="pf"><span>outline step opens</span><select id="olwhen">
             <option value="station">station &mdash; when no box within reach has a place</option>
             <option value="box">box &mdash; for each box that has no place</option></select></div>
+          <div class="pf" title="where the outline step runs the rules again: the outline points on top of the action space's own, or every cell of the grid, as the 'every loading position' action space offers them"><span>outline step looks at</span><select id="olarea">
+            <option value="outline">outline &mdash; the edges of every box and of the pallet</option>
+            <option value="all">all &mdash; every cell of the grid</option></select></div>
           <div class="pf"><span>robot-arm filter</span><select id="armcol">
             <option value="0">off &mdash; every placement the rules allow</option>
             <option value="1">on &mdash; drop placements the arm collides on</option></select></div>
@@ -826,6 +829,9 @@ details.cf>summary b{font-size:14px}
         <div class="pf"><span>outline step opens</span><select id="rcolwhen">
           <option value="station">station &mdash; when no box within reach has a place</option>
           <option value="box">box &mdash; for each box that has no place</option></select></div>
+        <div class="pf" title="where the outline step runs the rules again: the outline points on top of the action space's own, or every cell of the grid, as the 'every loading position' action space offers them"><span>outline step looks at</span><select id="rcolarea">
+          <option value="outline">outline &mdash; the edges of every box and of the pallet</option>
+          <option value="all">all &mdash; every cell of the grid</option></select></div>
         <div class="pf"><span>robot-arm filter</span><select id="rcarmcol">
           <option value="0">off &mdash; every placement the rules allow</option>
           <option value="1">on &mdash; drop placements the arm collides on</option></select></div>
@@ -978,6 +984,9 @@ details.cf>summary b{font-size:14px}
         <div class="pf"><span>outline step opens</span><select id="xolwhen">
           <option value="station">station &mdash; when no box within reach has a place</option>
           <option value="box">box &mdash; for each box that has no place</option></select></div>
+        <div class="pf" title="where the outline step runs the rules again: the outline points on top of the action space's own, or every cell of the grid, as the 'every loading position' action space offers them"><span>outline step looks at</span><select id="xolarea">
+          <option value="outline">outline &mdash; the edges of every box and of the pallet</option>
+          <option value="all">all &mdash; every cell of the grid</option></select></div>
         <div class="pf"><span>robot-arm filter</span><select id="xarmcol">
           <option value="0">off &mdash; every placement the rules allow</option>
           <option value="1">on &mdash; drop placements the arm collides on</option></select></div>
@@ -1129,7 +1138,7 @@ const PF = {
   nb: '#nb', n_pick: '#npick', n_items: '#nitems', max_l: '#maxl',
   rot: '#prot', ems: '#ems', stability: '#stab', min_support: '#msup',
   type_rule: '#trule', soft_mix: '#softmix',
-  outline_resort: '#olresort', outline_when: '#olwhen', arm_collision: '#armcol', base_x_moves: '#armmoves',
+  outline_resort: '#olresort', outline_when: '#olwhen', outline_area: '#olarea', arm_collision: '#armcol', base_x_moves: '#armmoves',
   stack_cap: '#stackcap', stack_cap_types: '#stacktypes',
   stack_cap_side_cm: '#stackside', stack_cap_allow_cm: '#stackallow',
   source: '#src', data: '#data', pallet: '#palpick', order_random: '#ordrnd',
@@ -1141,7 +1150,7 @@ const PF = {
 const EMSTEXT = {1: 'the corners of the empty maximal spaces',
   2: 'the corner cells of the height map',
   3: 'the empty-maximal-space corners and the corner cells'};
-const PSTR = new Set(['stability', 'type_rule', 'outline_when', 'source', 'data', 'box_round']);
+const PSTR = new Set(['stability', 'type_rule', 'outline_when', 'outline_area', 'source', 'data', 'box_round']);
 const PFLOAT = new Set(['min_support', 'order_random', 'cell_cm', 'box_pad_m', 'box_scale']);
 /* a checkbox, sent as 1 or 0 */
 const PFLAG = new Set(['soft_mix', 'outline_resort']);
@@ -1159,7 +1168,7 @@ const PLABEL = {source: 'box source', data: 'data file', pallet: 'pallet',
   max_l: 'candidate cap', rot: 'orientations', ems: 'action space',
   stability: 'stability rule', min_support: 'support floor',
   type_rule: 'box-type rule', soft_mix: 'soft mix',
-  outline_resort: 'outline step', outline_when: 'outline step opens', arm_collision: 'robot-arm filter', base_x_moves: 'arm base x moves',
+  outline_resort: 'outline step', outline_when: 'outline step opens', outline_area: 'outline step looks at', arm_collision: 'robot-arm filter', base_x_moves: 'arm base x moves',
   stack_cap: 'stack-height limit', stack_cap_types: 'limited box types',
   stack_cap_side_cm: 'stack-limit sides (cm)', stack_cap_allow_cm: 'stack-limit allowances (cm)'};
 
@@ -1195,14 +1204,14 @@ function writeParams(p, pf = PF){
 }
 
 /* soft mix and the outline step mean something only under the mixed rules,
-   and when the outline step opens only with it on */
+   and when the outline step opens and where it looks only with it on */
 function syncSoft(pf = PF){
   if (!pf.type_rule) return;
   const mixed = $(pf.type_rule).value.startsWith('mixed');
   if (pf.soft_mix) $(pf.soft_mix).disabled = !mixed;
   if (pf.outline_resort) $(pf.outline_resort).disabled = !mixed;
-  if (pf.outline_when)
-    $(pf.outline_when).disabled = !mixed || !$(pf.outline_resort).checked;
+  for (const k of ['outline_when', 'outline_area'])
+    if (pf[k]) $(pf[k]).disabled = !mixed || !$(pf.outline_resort).checked;
 }
 
 /* the pallet picker keeps a value it has no option for yet, so a preset or a
@@ -1960,8 +1969,9 @@ function kpis(){
     rows.push([!B.type_constraint ? 'box type'
                : B.type_rule === 'column' ? 'may be only over'
                : isMixed() ? (B.outline ? (B.mixed && B.mixed.outline_when === 'box'
-                                           ? 'no place by the rules: outline points for'
-                                           : 'nothing within reach can go: outline points for')
+                                           ? 'no place by the rules: ' : 'nothing within reach can go: ')
+                                          + (B.mixed && B.mixed.outline_area === 'all'
+                                             ? 'every cell for' : 'outline points for')
                               : B.last_resort ? 'nothing within reach can go: soft mix for'
                               : B.fallback ? 'no normal place: fallback rules for'
                               : B.type_rule === 'mixed_column' ? 'mixed column rules for'
@@ -2446,7 +2456,7 @@ const RPF = {
   nb: '#rcnb', n_pick: '#rcnpick', max_l: '#rcmaxl',
   rot: '#rcrot', ems: '#rcems', stability: '#rcstab', min_support: '#rcmsup',
   type_rule: '#rctrule', soft_mix: '#rcsoftmix',
-  outline_resort: '#rcolresort', outline_when: '#rcolwhen', arm_collision: '#rcarmcol', base_x_moves: '#rcarmmoves',
+  outline_resort: '#rcolresort', outline_when: '#rcolwhen', outline_area: '#rcolarea', arm_collision: '#rcarmcol', base_x_moves: '#rcarmmoves',
   stack_cap: '#rcstackcap', stack_cap_types: '#rcstacktypes',
   stack_cap_side_cm: '#rcstackside', stack_cap_allow_cm: '#rcstackallow',
   box_pad_m: '#rcbpad',
@@ -2999,7 +3009,7 @@ const XPF = {
   nb: '#xnb', n_pick: '#xnpick', max_l: '#xmaxl',
   rot: '#xprot', ems: '#xems', stability: '#xstab', min_support: '#xmsup',
   type_constraint: '#xtcon', type_rule: '#xtrule', soft_mix: '#xsoftmix',
-  outline_resort: '#xolresort', outline_when: '#xolwhen', arm_collision: '#xarmcol', base_x_moves: '#xarmmoves',
+  outline_resort: '#xolresort', outline_when: '#xolwhen', outline_area: '#xolarea', arm_collision: '#xarmcol', base_x_moves: '#xarmmoves',
   stack_cap: '#xstackcap', stack_cap_types: '#xstacktypes',
   stack_cap_side_cm: '#xstackside', stack_cap_allow_cm: '#xstackallow',
   pallet_cm: ['#xpcm0', '#xpcm1', '#xpcm2'], cell_cm: '#xcellcm',

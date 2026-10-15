@@ -200,6 +200,11 @@ SOFT_PAIRS = ((BLUE, WHITE), (BLUE, BROWN), (WHITE, BLUE), (WHITE, BROWN),
 # says when it opens: `station`, when no box within reach has a place by the
 # steps before it; `box`, for each box with none, whatever the others have.
 OUTLINE_WHEN = ("station", "box")
+# `outline_area` says which positions it runs the rules over: `outline`, the
+# `ems` candidates and the outline positions above; `all`, every position on
+# the grid, as `ems` 0 offers them -- the step then holds back nothing a rule
+# would allow.
+OUTLINE_AREA = ("outline", "all")
 
 # What `cmap` holds for a column no small box has limited: a later box may
 # start over column (x, y) only below `cmap[x, y]`, and no bin is this tall.
@@ -446,7 +451,7 @@ class BPPBatch:
                  stack_allow_cm=None, stack_cell_cm=None,
                  mixed_top_gap_cm=None, mixed_area_frac=None,
                  mixed_small_blue=None, soft_mix=None, outline_resort=None,
-                 outline_when=None):
+                 outline_when=None, outline_area=None):
         # `None` means "whatever config.yaml says"; an explicit argument wins
         e = CFG["env"]
         S = e["bin"] if S is None else S
@@ -607,7 +612,8 @@ class BPPBatch:
         self._soft_types = (self._tables[True][0][2]
                             != self._tables[True][0][1]).any(1)
         # `outline_resort`: the outline step after every other (see
-        # `OUTLINE_WHEN`), opening per station or per box.  `_ol` is whether
+        # `OUTLINE_WHEN`), opening per station or per box, over the outline
+        # positions or the whole grid (`OUTLINE_AREA`).  `_ol` is whether
         # its pass is the one in force (`_outline`).
         self.outline_resort = bool(e.get("outline_resort", 0)
                                    if outline_resort is None
@@ -617,6 +623,11 @@ class BPPBatch:
         if self.outline_when not in OUTLINE_WHEN:
             raise ValueError(f"outline_when is one of {OUTLINE_WHEN}, got "
                              f"{self.outline_when!r}")
+        self.outline_area = str(e.get("outline_area", "outline")
+                                if outline_area is None else outline_area)
+        if self.outline_area not in OUTLINE_AREA:
+            raise ValueError(f"outline_area is one of {OUTLINE_AREA}, got "
+                             f"{self.outline_area!r}")
         self._ol = False
         # the contact count costs a second sweep, so only pay for it when a
         # rule actually reads it -- the `MIXED_RULES` do too, for blue on blue,
@@ -1783,9 +1794,10 @@ class BPPBatch:
     def _space(self, dims, z, outline=False):
         """(n, Lx, Ly) the positions the `ems` mode offers `dims`, landing at
         `z`, before any rule asks whether the box would stand there: every
-        cell with `ems` 0.  `outline` adds the outline step's positions.  A
-        footprint that overruns the bin may be in it; `inx`/`iny` drop it."""
-        if self.ems == EMS_OFF:
+        cell with `ems` 0.  `outline` adds the outline step's positions --
+        every cell with `outline_area: all`.  A footprint that overruns the
+        bin may be in it; `inx`/`iny` drop it."""
+        if self.ems == EMS_OFF or (outline and self.outline_area == "all"):
             return np.ones((self.n_env, self.Lx, self.Ly), bool)
         if self.ems == EMS_SPACES:
             cand = self._ems_corners(dims)

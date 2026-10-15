@@ -71,7 +71,7 @@ class Progress:
             self.bar.close()
 
 from .config import CFG, load as load_config
-from .env import BPPBatch, OUTLINE_WHEN, TYPE_RULES
+from .env import BPPBatch, OUTLINE_AREA, OUTLINE_WHEN, TYPE_RULES
 from .evaluate import attack_score, nominal_score
 from .orders import add_cm_args, load_orders, orders_bin
 from .heuristics import act as heur_act
@@ -287,6 +287,7 @@ def make_env(args, seed, pool=None):
                     type_rule=args.type_rule, soft_mix=bool(args.soft_mix),
                     outline_resort=bool(args.outline_resort),
                     outline_when=args.outline_when,
+                    outline_area=args.outline_area,
                     stack_cap=bool(args.stack_cap), **kw)
 
 
@@ -547,6 +548,7 @@ def train(args):
                       soft_mix=bool(args.soft_mix),
                       outline_resort=bool(args.outline_resort),
                       outline_when=args.outline_when,
+                      outline_area=args.outline_area,
                       stack_cap=bool(args.stack_cap), seqs=held_out)
             if args.algo == "attack":
                 au, ak = attack_score(args.heur_pack or pack, attacker, args.nb,
@@ -776,6 +778,10 @@ def get_parser():
                    default=e.get("outline_when", "station"),
                    help="station: the outline step opens when no box within "
                         "reach has a place; box: for each box with none")
+    p.add_argument("--outline_area", choices=OUTLINE_AREA,
+                   default=e.get("outline_area", "outline"),
+                   help="outline: the outline step looks at the outline "
+                        "points; all: at every cell of the grid")
     p.add_argument("--stack_cap", type=int, choices=(0, 1), default=e["stack_cap"],
                    help="0 lifts the stack-height limit over small boxes of "
                         "env.stack_cap_types")

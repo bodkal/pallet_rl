@@ -80,8 +80,9 @@ import numpy as np
 
 from .. import pack_collision as PC
 from ..config import CFG
-from ..env import (BPPBatch, MIXED_RULES, OUTLINE_WHEN, TYPE_FLOOR,
-                   TYPE_RULES, sample_items, stack_allowance, type_classes)
+from ..env import (BPPBatch, MIXED_RULES, OUTLINE_AREA, OUTLINE_WHEN,
+                   TYPE_FLOOR, TYPE_RULES, sample_items, stack_allowance,
+                   type_classes)
 from ..orders import (ROUNDING, box_divisor, load_orders, orders_bin,
                       randomize_order)
 from . import agents as A
@@ -104,8 +105,8 @@ CLI: dict = {}
 GAME_KEYS = ('bin', 'n_items', 'size_lo', 'size_hi', 'nb', 'n_pick',
              'max_l', 'rot', 'ems', 'stability', 'min_support',
              'n_types', 'type_constraint', 'type_rule', 'soft_mix',
-             'outline_resort', 'outline_when', 'arm_collision', 'stack_cap',
-             'stack_cap_types', 'stack_cap_side_cm', 'stack_cap_allow_cm',
+             'outline_resort', 'outline_when', 'outline_area', 'arm_collision',
+             'stack_cap', 'stack_cap_types', 'stack_cap_side_cm', 'stack_cap_allow_cm',
              'base_x_moves')
 #: what a run does not record, so there is nothing to compare it on
 UNRECORDED = ('base_x_moves', 'stack_cap_types', 'stack_cap_side_cm',
@@ -213,6 +214,7 @@ def defaults():
          'soft_mix': int(e.get('soft_mix', 0)),
          'outline_resort': int(e.get('outline_resort', 0)),
          'outline_when': str(e.get('outline_when', 'station')),
+         'outline_area': str(e.get('outline_area', 'outline')),
          'arm_collision': int(e.get('arm_collision', 0)),
          'stack_cap': int(e['stack_cap']),
          'stack_cap_types': [int(t) for t in e['stack_cap_types'] or []],
@@ -270,17 +272,20 @@ def run_params(spec):
     a = info['args']
     for k in ('n_items', 'max_l', 'rot', 'ems', 'stability', 'min_support',
               'nb', 'n_types', 'type_constraint', 'type_rule', 'soft_mix',
-              'outline_resort', 'outline_when', 'arm_collision', 'stack_cap'):
+              'outline_resort', 'outline_when', 'outline_area', 'arm_collision',
+              'stack_cap'):
         if a.get(k) is not None:
             p[k] = a[k]
     # a run from before --type_rule existed was trained under `touch`, and
-    # one from before --soft_mix or --outline_resort without it
+    # one from before --soft_mix, --outline_resort or --outline_area without it
     if a.get('type_rule') is None:
         p['type_rule'] = 'touch'
     if a.get('soft_mix') is None:
         p['soft_mix'] = 0
     if a.get('outline_resort') is None:
         p['outline_resort'], p['outline_when'] = 0, 'station'
+    if a.get('outline_area') is None:
+        p['outline_area'] = 'outline'
     for k in TRIPLES:
         if a.get(k) is not None:
             p[k] = list(A.extent(a[k]))
@@ -466,6 +471,12 @@ def validate(raw):
                    f"{', '.join(OUTLINE_WHEN)}, got {s!r}")
     else:
         p['outline_when'] = s
+    s = str(raw.get('outline_area', p['outline_area']))
+    if s not in OUTLINE_AREA:
+        err.append(f"outline step looks at: expected one of "
+                   f"{', '.join(OUTLINE_AREA)}, got {s!r}")
+    else:
+        p['outline_area'] = s
     try:
         ms = float(raw.get('min_support', p['min_support']))
         if not 0.0 <= ms <= 1.0:
@@ -833,6 +844,7 @@ def stack_kw(p):
     return dict(type_rule=p['type_rule'], soft_mix=bool(p['soft_mix']),
                 outline_resort=bool(p['outline_resort']),
                 outline_when=p['outline_when'],
+                outline_area=p['outline_area'],
                 stack_cap=bool(p['stack_cap']),
                 stack_types=p['stack_cap_types'],
                 stack_side_cm=p['stack_cap_side_cm'],
@@ -1021,7 +1033,8 @@ def board(st):
                    'small_blue': list(env.small_blue),
                    'soft': bool(env.soft_mix),
                    'outline': bool(env.outline_resort),
-                   'outline_when': env.outline_when}
+                   'outline_when': env.outline_when,
+                   'outline_area': env.outline_area}
                   if mixed else None),
         'arm_collision': bool(env.arm_collision),
         'floor_type': int(TYPE_FLOOR),
@@ -1453,7 +1466,8 @@ def exp_params(raw):
 #: what the experiment's form carries, and so what drift is judged on there
 EXP_KEYS = ('nb', 'n_pick', 'max_l', 'rot', 'ems', 'stability', 'min_support',
             'type_constraint', 'type_rule', 'soft_mix', 'outline_resort',
-            'outline_when', 'arm_collision', 'stack_cap', 'pallet_cm',
+            'outline_when', 'outline_area', 'arm_collision', 'stack_cap',
+            'pallet_cm',
             'box_pad_m', 'box_scale', 'box_round')
 
 

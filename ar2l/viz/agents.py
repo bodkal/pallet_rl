@@ -166,7 +166,7 @@ def episode_env(seq, nb=1, S=10, stability="com", min_support=None,
                 arm_cell_m=None, arm_moves=None, stack_cap=None,
                 stack_types=None, stack_side_cm=None, stack_allow_cm=None,
                 type_rule=None, soft_mix=None, outline_resort=None,
-                outline_when=None):
+                outline_when=None, outline_area=None):
     """The one-bin env `play` packs `seq` in, reset to its first box.
 
     `S` is an int for a cube or an (Lx, Ly, Lz) triple.  `size_hi` bounds the
@@ -188,7 +188,7 @@ def episode_env(seq, nb=1, S=10, stability="com", min_support=None,
                    n_types=n_types, types=False,
                    type_constraint=type_constraint, type_rule=type_rule,
                    soft_mix=soft_mix, outline_resort=outline_resort,
-                   outline_when=outline_when,
+                   outline_when=outline_when, outline_area=outline_area,
                    arm_collision=arm_collision, arm_cell_m=arm_cell_m,
                    arm_moves=arm_moves, stack_cap=stack_cap,
                    stack_types=stack_types, stack_side_cm=stack_side_cm,

@@ -5,7 +5,7 @@ Packing"** — Pan, Chen & Lin, NeurIPS 2023
 ([arXiv:2310.04323](https://arxiv.org/abs/2310.04323)), and its extension to
 real orders, box types and the UR20 cell.
 
-*Last updated: 2026-09-28* — only open items are listed; finished work is in
+*Last updated: 2026-10-12* — only open items are listed; finished work is in
 the git history (the full list as of 2026-09-27 is `git show eb38e8c:TODO.md`).
 
 The official implementation is at <https://github.com/panyxy/ar2l_bpp>. **No
@@ -124,15 +124,12 @@ which is roughly half the shortfall at `N_B = 10` and almost none of it at
 
 The batched check (`ArmPackChecker.collides_batch`) costs ~25 ms extra per env
 step (64 bins, ~1500 candidates); on the orders pallet a `select` iteration is
-~13 s. Verdicts are cached per `(bin, item size, x, y)` but the cache is
-cleared on every height-map change.
+~13 s. Verdicts are cached per `(bin, item size, x, y)` and kept across steps
+unless the new box raised a column they rest on (`_keep_arm`).
 
 - [ ] **`--arm_collision` flag for `train` / `evaluate`**, so `args.json`
       records whether a run trained with the filter. None of the runs in
       `runs/` records it today
-- [ ] Reuse verdicts across steps: a placement only changes the height map
-      under its footprint, so a candidate whose capsules' AABBs miss that
-      patch keeps its verdict
 - [ ] Skip the check when the other rules leave a single candidate (it can
       only end the episode, not change the choice)
 - [ ] Numba (not installed yet) or a small C++ extension for the column test —
@@ -143,7 +140,43 @@ cleared on every height-map change.
 
 ### D.5 Tests that depend on `config.yaml`
 
+35 failures on 2026-10-12, the same set on HEAD `8172bcc`. All but the
+experiment's come from a test inheriting what `config.yaml` now ships:
+
 - [ ] The brute-force feasibility tests in `tests/test_env.py`
       (`test_feasibility_matches_brute_force`, `..._non_cubic_...`,
       `test_contact_area_...`) inherit `env.ems` and fail with `ems: 3`
-      (11 failures, 2026-09-28); pin `ems` in `plain()` or parametrise over it
+      (11 failures); pin `ems` in `plain()` or parametrise over it
+- [ ] The fallback tests in `tests/test_mixed.py` (14) inherit `soft_mix: 1`,
+      which turns a box's own fallback into the station's last resort; pin
+      `soft_mix=False` in `mixed()` -- with `soft_mix: 0` all 96 pass
+- [ ] `tests/test_experiment.py` (6): `experiment.start` now refuses a run
+      with no name; give the tests one
+- [ ] Boxes read from an orders file come out wider and longer than the
+      tests expect, heights unchanged -- the config's `eval.box_pad_m`
+      padding (`test_experiment` 1, `test_game` 2); pin it in the tests
+- [ ] `tests/test_types.py::test_no_box_is_ever_stacked_on_another_type`
+      pins `type_rule: touch` but inherits the rest (`ems`, arm, stack cap,
+      `min_support`); no box is ever stacked, so it tests nothing
+
+### D.6 Stack cap (`env.stack_cap`)
+
+A small brown box limits how high a later box may start over its footprint
+(its top plus an allowance set by its shorter side: 12 cm -> 8 cm,
+20 cm -> 64 cm, 32 cm and up -> none). Measured 2026-10-12 on 128 pallets of
+`data/train_data/all_data.csv` with `runs/w_128_h_1_l_1_soft_mix_all_data`:
+65.2% utilisation, 48.9 boxes a pallet, and 126 of the 128 end with boxes
+left. The candidate points are not what ends them -- the outline step over
+the whole grid (`outline_area: all`) would have rescued none -- the rules are.
+
+- [ ] **Stack-cap last resort**: when the station is stuck -- after soft mix
+      and the outline step -- allow one placement with the cap loosened,
+      then restore it. Two forms measured: lifted (+0.4 boxes a pallet,
+      65.4%; 41 rescues in 128 pallets) and every limit +20 cm (+0.3, 65.3%;
+      29 rescues). As a config switch, off by default (`stack_cap_resort`,
+      `stack_cap_resort_cm`), with a field in the game. Per bin through
+      `cmap`: save it, loosen it in the stuck bins, `step`, then
+      `cmap = min(saved, cmap)` so a brown box placed in that step keeps its
+      own limit. **Waiting on operations**: it puts more on a small brown
+      box than the cell's C++ `stable_grid` allows, and the real cell would
+      refuse the placement unless that rule changes too

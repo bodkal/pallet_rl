@@ -143,6 +143,7 @@ def pack_pallet(seq, policy, picker, S, p, cell_m, tick=None, stop=None):
                    soft_mix=bool(p.get("soft_mix", 0)),
                    outline_resort=bool(p.get("outline_resort", 0)),
                    outline_when=p.get("outline_when", "station"),
+                   outline_area=p.get("outline_area", "outline"),
                    arm_collision=bool(p["arm_collision"]), arm_cell_m=cell_m,
                    arm_moves=p["base_x_moves"],
                    stack_cap=bool(p["stack_cap"]),
@@ -187,6 +188,7 @@ def params_text(spec, p, S):
            f"soft_mix={int(p.get('soft_mix', 0))} "
            f"outline_resort={int(p.get('outline_resort', 0))} "
            f"outline_when={p.get('outline_when', 'station')} "
+           f"outline_area={p.get('outline_area', 'outline')} "
            f"arm_collision={p['arm_collision']} "
            f"base_x_moves={'/'.join(f'{t:g}' for t in p['base_x_moves'])} "
            f"stack_cap={p['stack_cap']} "

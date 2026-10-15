@@ -97,9 +97,13 @@ Brown never goes on white, with or without soft mix.
   `outline_when` (`--outline_when`) says when the step opens: `station`
   (the default) waits until no box within reach has a place by the steps
   before, as the last resort does; `box` opens it for each box that has
-  none, even while another box in the station can still go. Off by default;
-  only the mixed rules read it, and it adds nothing under `ems: 0`, where
-  every position is a candidate already.
+  none, even while another box in the station can still go.
+  `outline_area` (`--outline_area`, "outline step looks at" in the game)
+  says where it looks: `outline` (the default) is the outline positions
+  above; `all` is every cell of the grid, as `ems: 0` offers them, so the
+  step misses nothing the rules would allow. Off by default; only the mixed
+  rules read it, and it adds nothing under `ems: 0`, where every position
+  is a candidate already.
 
 The two variants differ only in what a box counts as being "on":
 
@@ -677,6 +681,7 @@ comparable to another trained with the same ones.
 | `--soft_mix` | `0` | `1` under the mixed rules: a box's own fallback onto another type becomes the station's last resort, brown on blue gets one too, and (c) is dropped (section 0a) |
 | `--outline_resort` | `0` | `1` under the mixed rules: when every other step leaves nothing, the same rules again over every point on a box's or the pallet's outline (section 0a) |
 | `--outline_when` | `station` | when the outline step opens: `station`, once no box within reach has a place; `box`, for each box that has none |
+| `--outline_area` | `outline` | where the outline step looks: `outline`, the outline points; `all`, every cell of the grid |
 | `--stack_cap` | `1` | `0` lifts the stack-height limit over small boxes of `env.stack_cap_types` (section 0a) |
 | `--min_support` | `env.min_support`, `0.80` | fraction of the item's base that must rest on the layer below for a placement to be offered. `0` is the bare centre-of-mass rule every published number was measured under. Ignored by `--stability cdrl` |
 
@@ -741,7 +746,7 @@ Defaults from the `eval:` section, plus `env:` for `--rot` / `--min_support`.
 | `--type_constraint` | `1` | `0` scores the policy with the stacking rule lifted |
 | `--type_rule` | `touch` | `column` scores it with no box allowed anywhere over a foreign type, `mixed_touch` / `mixed_column` under the cell's blue / white / brown rules; **match the policy's** |
 | `--soft_mix` | `0` | `1` scores it with the mixed rules' soft mix: mixes only as the station's last resort; **match the policy's** |
-| `--outline_resort` / `--outline_when` | `0` / `station` | score it with the mixed rules' outline step after every other; **match the policy's** |
+| `--outline_resort` / `--outline_when` / `--outline_area` | `0` / `station` / `outline` | score it with the mixed rules' outline step after every other; **match the policy's** |
 | `--seed` | `0` | which instances the β subsets pick |
 | `--out` | — | write the metrics to this JSON path |
 | `--device` | `cuda` | |
