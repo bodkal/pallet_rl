@@ -1,0 +1,1153 @@
+<title>PL33PR Synthetic Days</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;800&family=Big+Shoulders+Stencil+Display:wght@800&family=Archivo:wdth,wght@62..125,400..700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: a night-shift readout of the PL33PR line -- the hero puts a real and a
+   generated pallet side by side, then one band per CSV column the section studies. */
+:root {
+  color-scheme: dark;
+  --bg: #0b1017;
+  --surface: #121922;
+  --surface-2: #18212c;
+  --line: #222d3a;
+  --line-2: #2f3c4c;
+  --ink: #edf1f5;
+  --ink-2: #a9b5c3;
+  --muted: #748395;
+  --band: rgba(169, 181, 195, .13);
+  --hl: rgba(237, 241, 245, .06);
+  --real: #7f78d6;
+  --gen: #c8800d;
+  --accent: #f2b54a;
+  --t1: #3673cb;
+  --t2: #19aa8e;
+  --t3: #b66b31;
+  --good: #34c759;
+  --warn: #fab219;
+  --bad: #e05252;
+  --tape-a: #f2b54a;
+  --tape-b: #0b1017;
+  --display: "Big Shoulders Display", "Big Shoulders", "Oswald", "Arial Narrow", sans-serif;
+  --stencil: "Big Shoulders Stencil Display", "Big Shoulders Display", "Arial Narrow", sans-serif;
+  --body: "Archivo", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    color-scheme: light;
+    --bg: #eef1f5; --surface: #ffffff; --surface-2: #f5f7fa; --line: #dfe5ec; --line-2: #cbd4df;
+    --ink: #0e1621; --ink-2: #455265; --muted: #6f7c8f; --band: rgba(69, 82, 101, .12);
+    --hl: rgba(14, 22, 33, .05); --real: #6358ba; --gen: #c17a00; --accent: #9a5c00;
+    --t1: #2171cc; --t2: #009b8f; --t3: #b0652a; --good: #17803a; --warn: #a66a00; --bad: #c53030;
+    --tape-a: #e8a92c; --tape-b: #1a2230;
+  }
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #eef1f5; --surface: #ffffff; --surface-2: #f5f7fa; --line: #dfe5ec; --line-2: #cbd4df;
+  --ink: #0e1621; --ink-2: #455265; --muted: #6f7c8f; --band: rgba(69, 82, 101, .12);
+  --hl: rgba(14, 22, 33, .05); --real: #6358ba; --gen: #c17a00; --accent: #9a5c00;
+  --t1: #2171cc; --t2: #009b8f; --t3: #b0652a; --good: #17803a; --warn: #a66a00; --bad: #c53030;
+  --tape-a: #e8a92c; --tape-b: #1a2230;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 400 15px/1.55 var(--body); font-stretch: 96%;
+  -webkit-font-smoothing: antialiased;
+}
+.wrap { max-width: 1180px; margin: 0 auto; padding-inline: clamp(16px, 4vw, 40px); }
+a { color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+.num { font-variant-numeric: tabular-nums; }
+.mono { font-family: var(--mono); }
+
+/* ---------- masthead */
+.mast { border-bottom: 1px solid var(--line); }
+.mast .wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; padding-block: 14px; }
+.mark { font: 800 22px/1 var(--stencil); letter-spacing: .04em; }
+.mast-meta { font: 500 12px/1.4 var(--mono); color: var(--muted); letter-spacing: .02em; }
+.mast-meta b { color: var(--ink-2); font-weight: 600; }
+.mast .spacer { flex: 1; }
+
+/* ---------- hero */
+.hero { position: relative; overflow: hidden; }
+.hero::before {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background-image:
+    linear-gradient(var(--line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--line) 1px, transparent 1px);
+  background-size: 56px 56px; opacity: .45;
+  mask-image: radial-gradient(ellipse 80% 70% at 70% 40%, #000 30%, transparent 75%);
+  -webkit-mask-image: radial-gradient(ellipse 80% 70% at 70% 40%, #000 30%, transparent 75%);
+}
+.hero .wrap { position: relative; display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: 40px; padding-block: 56px 48px; align-items: center; }
+.kicker { font: 600 12px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); display: flex; align-items: center; gap: 10px; margin: 0 0 20px; }
+.kicker .arrow { color: var(--accent); }
+h1 {
+  font: 800 clamp(46px, 6.4vw, 86px)/.92 var(--display); letter-spacing: .005em;
+  text-transform: uppercase; margin: 0 0 22px; text-wrap: balance;
+}
+h1 em { font-style: normal; color: var(--accent); }
+.lede { font-size: 17px; line-height: 1.6; color: var(--ink-2); max-width: 54ch; margin: 0 0 30px; }
+.lede code, p code, td code, li code { font: 500 .88em var(--mono); color: var(--ink); background: var(--surface-2); border: 1px solid var(--line); padding: 1px 5px; border-radius: 4px; }
+.stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.stat { background: var(--surface); padding: 16px 18px 14px; display: grid; gap: 4px; align-content: start; }
+.stat .v { font: 800 44px/1 var(--stencil); letter-spacing: .01em; }
+.stat .v small { font: 700 22px/1 var(--display); color: var(--muted); margin-left: 4px; }
+.stat .l { font-size: 13px; color: var(--ink-2); line-height: 1.4; }
+.stat .ok { color: var(--good); font-weight: 600; }
+
+.stage { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 18px 18px 16px; box-shadow: 0 30px 80px -40px rgba(0,0,0,.6); }
+.stage-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 14px; margin-bottom: 8px; }
+.stage-head h2 { font: 800 26px/1.05 var(--display); text-transform: uppercase; margin: 0; letter-spacing: .01em; }
+.score-pill { font: 600 12px/1 var(--mono); color: var(--ink-2); border: 1px solid var(--line-2); border-radius: 999px; padding: 6px 10px; }
+.pallets { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.pallet { position: relative; min-width: 0; }
+.pallet canvas { display: block; width: 100%; aspect-ratio: 5 / 6; max-width: 100%; }
+.pallet .tag { position: absolute; top: 4px; left: 6px; font: 800 34px/1 var(--stencil); color: var(--ink); opacity: .9; }
+.cap { min-height: 3.2em; font-size: 13px; line-height: 1.45; color: var(--ink-2); border-top: 1px solid var(--line); padding-top: 8px; }
+.cap b { color: var(--ink); font-weight: 600; }
+.cap .src { display: inline-flex; align-items: center; gap: 6px; font: 600 11px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; padding: 4px 7px; border-radius: 4px; margin-bottom: 5px; }
+.cap .src.real { background: color-mix(in srgb, var(--real) 22%, transparent); color: var(--ink); }
+.cap .src.gen { background: color-mix(in srgb, var(--gen) 26%, transparent); color: var(--ink); }
+.cap .hidden-note { color: var(--muted); }
+.guess { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }
+.btn {
+  font: 600 14px/1 var(--body); color: var(--ink); background: var(--surface-2);
+  border: 1px solid var(--line-2); border-radius: 8px; padding: 11px 14px; cursor: pointer;
+  transition: background .15s, border-color .15s, transform .1s;
+}
+.btn:hover { border-color: var(--muted); background: var(--hl); }
+.btn:active { transform: translateY(1px); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #141006; }
+.btn.primary:hover { filter: brightness(1.06); }
+.verdict-line { flex: 1 1 200px; font-size: 14px; color: var(--ink-2); min-height: 1.4em; }
+.verdict-line b { color: var(--ink); }
+.legend-row { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 12px; font-size: 12.5px; color: var(--ink-2); }
+.legend-row .k { display: inline-flex; align-items: center; gap: 7px; }
+.sw { width: 12px; height: 12px; border-radius: 3px; display: inline-block; flex: none; }
+.sw.line { height: 3px; border-radius: 2px; width: 16px; }
+.note { font-size: 12px; color: var(--muted); margin: 8px 0 0; }
+
+.tape { height: 10px; background: repeating-linear-gradient(-45deg, var(--tape-a) 0 14px, var(--tape-b) 14px 28px); opacity: .9; }
+
+/* ---------- sections */
+section.band { padding-block: 72px 24px; }
+section.band + section.band { border-top: 1px solid var(--line); }
+.eyebrow { font: 600 11.5px/1.4 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin: 0 0 10px; }
+.eyebrow span { color: var(--accent); }
+h2.title { font: 800 clamp(34px, 4.4vw, 52px)/.98 var(--display); text-transform: uppercase; letter-spacing: .005em; margin: 0 0 14px; text-wrap: balance; max-width: 22ch; }
+.dek { color: var(--ink-2); max-width: 66ch; margin: 0 0 28px; font-size: 16px; }
+.grid { display: grid; gap: 16px; }
+.g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.g-wide { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 18px 18px 14px; min-width: 0; }
+.panel h3 { font: 600 15px/1.3 var(--body); margin: 0; }
+.panel .sub { font-size: 12.5px; color: var(--muted); margin: 3px 0 12px; }
+.panel-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; align-items: baseline; }
+.chip { display: inline-flex; align-items: center; gap: 6px; font: 600 11.5px/1 var(--mono); padding: 5px 8px; border-radius: 999px; border: 1px solid var(--line-2); color: var(--ink-2); white-space: nowrap; }
+.chip svg { width: 12px; height: 12px; }
+.chip.good { color: var(--good); border-color: color-mix(in srgb, var(--good) 45%, transparent); }
+.chip.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
+.chip.bad { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 45%, transparent); }
+.chart { width: 100%; min-height: 40px; position: relative; }
+.chart svg { display: block; overflow: visible; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12.5px; color: var(--ink-2); margin-bottom: 10px; }
+.legend .k { display: inline-flex; align-items: center; gap: 7px; }
+
+/* svg chart parts */
+.grid-l { stroke: var(--line); stroke-width: 1; }
+.base-l { stroke: var(--line-2); stroke-width: 1; }
+.ax { fill: var(--muted); font: 500 11px var(--mono); font-variant-numeric: tabular-nums; }
+.ax-ink { fill: var(--ink-2); font: 500 12px var(--body); }
+.lbl { fill: var(--ink); font: 600 12px var(--body); font-variant-numeric: tabular-nums; }
+.lbl-2 { fill: var(--ink-2); font: 500 11.5px var(--body); font-variant-numeric: tabular-nums; }
+.f-real { fill: var(--real); } .f-gen { fill: var(--gen); }
+.s-real { stroke: var(--real); fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.s-gen { stroke: var(--gen); fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.f-t1 { fill: var(--t1); } .f-t2 { fill: var(--t2); } .f-t3 { fill: var(--t3); }
+.f-band { fill: var(--band); }
+.f-hl { fill: var(--hl); }
+.ring { stroke: var(--surface); stroke-width: 1.5; }
+.hit { fill: transparent; cursor: crosshair; }
+.hit:focus { outline: none; }
+.hit:focus-visible { stroke: var(--accent); stroke-width: 1.5; }
+.xhair { stroke: var(--muted); stroke-width: 1; }
+.bound { fill: none; stroke: var(--muted); stroke-width: 1; }
+.bg-real { background: var(--real); } .bg-gen { background: var(--gen); }
+.bg-t1 { background: var(--t1); } .bg-t2 { background: var(--t2); } .bg-t3 { background: var(--t3); }
+
+/* tooltip */
+.tip { position: fixed; top: 0; left: 0; z-index: 50; pointer-events: none; background: var(--surface-2); border: 1px solid var(--line-2); border-radius: 8px; padding: 9px 11px; font-size: 12.5px; box-shadow: 0 12px 30px -12px rgba(0,0,0,.55); max-width: 280px; }
+.tip-t { color: var(--muted); font: 600 11px/1.3 var(--mono); letter-spacing: .04em; margin-bottom: 5px; }
+.tip-r { display: flex; align-items: center; gap: 8px; line-height: 1.6; }
+.tip-r b { font-weight: 700; font-variant-numeric: tabular-nums; color: var(--ink); }
+.tip-r span { color: var(--ink-2); }
+.tip-k { width: 12px; height: 3px; border-radius: 2px; flex: none; }
+
+/* rules */
+.rules { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+.rule { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 12px; align-content: start; }
+.rule .ic { grid-row: span 3; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: color-mix(in srgb, var(--good) 16%, transparent); color: var(--good); }
+.rule .ic.bad { background: color-mix(in srgb, var(--bad) 16%, transparent); color: var(--bad); }
+.rule .ic svg { width: 16px; height: 16px; }
+.rule h3 { font: 600 14.5px/1.35 var(--body); margin: 0; }
+.rule .val { font: 600 13px/1.4 var(--mono); color: var(--ink); }
+.rule p { margin: 0; font-size: 13px; color: var(--ink-2); line-height: 1.45; }
+
+/* scorecard */
+.score { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.score-top { display: flex; flex-wrap: wrap; gap: 10px 24px; align-items: center; justify-content: space-between; padding: 16px 18px; border-bottom: 1px solid var(--line); }
+.score-big { display: flex; align-items: baseline; gap: 12px; }
+.score-big .v { font: 800 54px/1 var(--stencil); }
+.score-big .l { color: var(--ink-2); font-size: 14px; max-width: 30ch; line-height: 1.4; }
+.score-scroll { overflow-x: auto; }
+.srow { display: grid; grid-template-columns: minmax(200px, 2.3fr) minmax(76px, .8fr) minmax(76px, .8fr) minmax(200px, 2.6fr) 104px; gap: 12px; align-items: center; padding: 8px 18px; border-bottom: 1px solid var(--line); min-width: 760px; }
+.srow:last-child { border-bottom: 0; }
+.srow.group { background: var(--surface-2); padding-block: 7px; }
+.srow.group div { font: 600 11px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.srow.head div { font: 600 11px/1.2 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.srow .n { font-size: 13.5px; }
+.srow .r, .srow .g { font: 500 13px var(--mono); font-variant-numeric: tabular-nums; text-align: right; }
+.srow .r { color: var(--ink-2); }
+.srow .gap svg { display: block; width: 100%; height: 26px; overflow: visible; }
+.srow:hover:not(.group):not(.head) { background: var(--hl); }
+
+/* stacked bars (html) */
+.stack-row { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 12px; align-items: center; margin-bottom: 10px; }
+.stack-row .who { font-size: 13px; color: var(--ink-2); display: flex; align-items: center; gap: 7px; }
+.stack { display: flex; gap: 2px; height: 30px; border-radius: 5px; overflow: hidden; }
+.seg { min-width: 0; display: flex; align-items: center; justify-content: center; font: 600 12px/1 var(--body); color: #fff; font-variant-numeric: tabular-nums; white-space: nowrap; cursor: default; }
+.seg.soft { color: var(--ink); }
+.seg:hover { filter: brightness(1.1); }
+.pair-title { font-size: 13.5px; font-weight: 600; margin: 4px 0 10px; display: flex; gap: 8px; align-items: center; }
+
+/* files table */
+.tbl-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+table { border-collapse: collapse; width: 100%; min-width: 760px; font-size: 13.5px; }
+th { text-align: left; font: 600 11px/1.2 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); padding: 12px 14px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+td { padding: 9px 14px; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; white-space: nowrap; }
+tr:last-child td { border-bottom: 0; }
+tbody tr:hover td { background: var(--hl); }
+td.r, th.r { text-align: right; }
+.fname { font: 600 13px var(--mono); }
+.mini { display: flex; gap: 2px; width: 150px; height: 10px; border-radius: 3px; overflow: hidden; }
+.mini i { display: block; height: 100%; }
+
+/* raw rows */
+.raw { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; min-width: 0; }
+.raw-h { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--line); font: 600 12px var(--mono); color: var(--ink-2); }
+.raw pre { margin: 0; padding: 12px 14px; font: 400 12px/1.75 var(--mono); color: var(--ink-2); overflow-x: auto; }
+.raw pre .hd { color: var(--muted); }
+.raw pre .mo { color: var(--accent); font-weight: 600; }
+
+/* diffs + method */
+.diffs { display: grid; gap: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.diff { display: grid; grid-template-columns: minmax(160px, 1.2fr) minmax(120px, 1fr) minmax(120px, 1fr) minmax(220px, 2.2fr); gap: 14px; padding: 12px 18px; border-bottom: 1px solid var(--line); font-size: 13.5px; align-items: baseline; }
+.diff:last-child { border-bottom: 0; }
+.diff.head { font: 600 11px/1.2 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.diff .w { color: var(--ink-2); }
+.diff .num { font-family: var(--mono); font-size: 13px; }
+.steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; counter-reset: s; }
+.steps li { counter-increment: s; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px 16px 14px 60px; position: relative; font-size: 14px; color: var(--ink-2); line-height: 1.55; }
+.steps li::before { content: counter(s); position: absolute; left: 16px; top: 12px; font: 800 30px/1 var(--stencil); color: var(--accent); }
+.steps li b { color: var(--ink); font-weight: 600; display: block; margin-bottom: 3px; font-size: 14.5px; }
+.cmd { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; font: 500 13px/1.8 var(--mono); color: var(--ink-2); overflow-x: auto; white-space: pre; }
+.cmd .p { color: var(--accent); user-select: none; }
+footer { border-top: 1px solid var(--line); margin-top: 56px; }
+footer .wrap { padding-block: 24px 40px; font: 500 12px/1.6 var(--mono); color: var(--muted); display: flex; flex-wrap: wrap; gap: 6px 24px; }
+
+@media (max-width: 980px) {
+  .hero .wrap { grid-template-columns: minmax(0, 1fr); gap: 32px; padding-block: 40px 36px; }
+  .rules { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .g3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .g-wide { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 640px) {
+  .g2, .g3, .rules, .steps { grid-template-columns: minmax(0, 1fr); }
+  .stat .v { font-size: 36px; }
+  section.band { padding-block: 52px 16px; }
+  .pallet .tag { font-size: 26px; }
+  .diff { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .diff .why { grid-column: 1 / -1; }
+  .diff.head .why { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+<!--/head-->
+
+<header class="mast">
+  <div class="wrap">
+    <span class="mark">PL33PR</span>
+    <span class="mast-meta">Box stream · <b>use_data</b> → <b>generated_data</b></span>
+    <span class="spacer"></span>
+    <span class="mast-meta" id="mast-date"></span>
+  </div>
+</header>
+
+<div class="hero">
+  <div class="wrap">
+    <div>
+      <p class="kicker"><span>38 real days</span><span class="arrow">→</span><span>20 generated days</span></p>
+      <h1>Twenty days on the line <em>that never happened</em></h1>
+      <p class="lede" id="lede"></p>
+      <div class="stats" id="stats"></div>
+    </div>
+    <div class="stage" aria-labelledby="stage-h">
+      <div class="stage-head">
+        <h2 id="stage-h">Which pallet is real?</h2>
+        <span class="score-pill" id="guess-score">Your guesses: 0 of 0</span>
+      </div>
+      <div class="pallets">
+        <div class="pallet"><span class="tag">A</span><canvas id="cv-a" aria-label="Pallet A, stacked boxes"></canvas><div class="cap" id="cap-a"></div></div>
+        <div class="pallet"><span class="tag">B</span><canvas id="cv-b" aria-label="Pallet B, stacked boxes"></canvas><div class="cap" id="cap-b"></div></div>
+      </div>
+      <div class="guess" id="guess">
+        <button class="btn" id="pick-a" type="button">A is real</button>
+        <button class="btn" id="pick-b" type="button">B is real</button>
+        <span class="verdict-line" id="verdict-line" aria-live="polite">One pallet is from the real files and one was generated. Pick one.</span>
+        <button class="btn primary" id="next-pair" type="button" hidden>Show another pair</button>
+      </div>
+      <div class="legend-row">
+        <span class="k"><i class="sw" style="background:#3d7fd6"></i>Type 1 · blue box 50 × 30</span>
+        <span class="k"><i class="sw" style="background:#e3e8ee;outline:1px solid rgba(0,0,0,.25)"></i>Type 2 · white box 45.5 × 27.5</span>
+        <span class="k"><i class="sw" style="background:#c4915c"></i>Type 3 · brown carton, mixed sizes</span>
+      </div>
+      <p class="note">Boxes are stacked in their order from the file on a 120 × 100 cm pallet, using a simple row-by-row rule to draw them. Only the box sizes and order come from the data.</p>
+    </div>
+  </div>
+  <div class="tape" aria-hidden="true"></div>
+</div>
+
+<main>
+  <section class="band" id="rules">
+    <div class="wrap">
+      <p class="eyebrow"><span>TYPE</span> · V_BOX_DEPTH · V_BOX_WIDTH · V_BOX_HEIGHT</p>
+      <h2 class="title">The rules hold on every row</h2>
+      <p class="dek" id="rules-dek"></p>
+      <div class="rules" id="rule-cards"></div>
+      <div class="panel">
+        <div class="panel-head"><h3>Type 3 size range, real vs generated</h3><span class="chip good" id="bounds-chip"></span></div>
+        <p class="sub">The bar is the smallest-to-largest real carton on each side. The amber line is the range the generated cartons use. It never reaches outside the bar.</p>
+        <div class="legend"><span class="k"><i class="sw bg-real" style="opacity:.45"></i>Real range (use_data)</span><span class="k"><i class="sw line bg-gen"></i>Generated range</span></div>
+        <div class="chart" id="ch-bounds"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="band" id="score">
+    <div class="wrap">
+      <p class="eyebrow"><span id="score-n"></span> measures · real vs generated</p>
+      <h2 class="title">As close as real days are to each other</h2>
+      <p class="dek" id="score-dek"></p>
+      <div class="score">
+        <div class="score-top">
+          <div class="score-big"><span class="v" id="score-v"></span><span class="l" id="score-l"></span></div>
+          <div class="legend" style="margin:0">
+            <span class="k"><i class="sw" style="background:var(--band);outline:1px solid var(--line-2)"></i>Real vs real: 90% of random splits land here</span>
+            <span class="k"><i class="sw line" style="background:var(--muted)"></i>Real vs real, typical</span>
+            <span class="k"><i class="sw bg-gen" style="border-radius:50%"></i>Generated vs real</span>
+          </div>
+        </div>
+        <div class="score-scroll"><div id="score-rows"></div></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="band" id="sizes">
+    <div class="wrap">
+      <p class="eyebrow"><span>TYPE = 3</span> · V_BOX_DEPTH · V_BOX_WIDTH · V_BOX_HEIGHT</p>
+      <h2 class="title">Brown cartons: new sizes, same spread</h2>
+      <p class="dek" id="sizes-dek"></p>
+      <div class="legend"><span class="k"><i class="sw line bg-real"></i>Real (use_data)</span><span class="k"><i class="sw line bg-gen"></i>Generated</span></div>
+      <div class="grid g2" id="size-hists"></div>
+      <div class="grid g-wide" style="margin-top:16px">
+        <div class="panel">
+          <div class="panel-head"><h3>Footprints: depth × width</h3><span class="chip" id="sku-chip"></span></div>
+          <p class="sub">One dot per carton size, sized by how many boxes of it shipped. The outline is the real min–max range.</p>
+          <div class="legend"><span class="k"><i class="sw bg-real" style="border-radius:50%;opacity:.6"></i>Real carton size</span><span class="k"><i class="sw bg-gen" style="border-radius:50%"></i>Generated carton size</span></div>
+          <div class="chart" id="ch-scatter"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><h3>How much the top sizes carry</h3></div>
+          <p class="sub">Share of all brown cartons covered by the N most-shipped sizes. A few sizes dominate in both.</p>
+          <div class="legend"><span class="k"><i class="sw line bg-real"></i>Real</span><span class="k"><i class="sw line bg-gen"></i>Generated</span></div>
+          <div class="chart" id="ch-rank"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="band" id="fixed">
+    <div class="wrap">
+      <p class="eyebrow"><span>TYPE = 1 · TYPE = 2</span> · V_BOX_HEIGHT</p>
+      <h2 class="title">Blue and white boxes keep their two heights</h2>
+      <p class="dek" id="fixed-dek"></p>
+      <div class="grid g2">
+        <div class="panel">
+          <div class="panel-head"><h3>Type mix, all boxes</h3></div>
+          <p class="sub">Share of every box in each dataset.</p>
+          <div class="legend"><span class="k"><i class="sw bg-t1"></i>Type 1 · blue</span><span class="k"><i class="sw bg-t2"></i>Type 2 · white</span><span class="k"><i class="sw bg-t3"></i>Type 3 · brown</span></div>
+          <div id="ch-mix"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><h3>Tall vs short</h3></div>
+          <p class="sub">Each fixed type comes in exactly two heights. Solid is the tall box, light is the short one.</p>
+          <div id="ch-tall"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="band" id="days">
+    <div class="wrap">
+      <p class="eyebrow"><span>TRAN_DATE · PALLET_ID</span> · TRAN_HOUR</p>
+      <h2 class="title">Days and pallets keep their shape</h2>
+      <p class="dek" id="days-dek"></p>
+      <div class="legend"><span class="k"><i class="sw line bg-real"></i>Real (use_data)</span><span class="k"><i class="sw line bg-gen"></i>Generated</span></div>
+      <div class="grid g2">
+        <div class="panel"><h3>Boxes per day</h3><p class="sub">One dot per CSV file.</p><div class="chart" id="ch-strip"></div></div>
+        <div class="panel"><h3>Boxes by hour of day</h3><p class="sub">Share of the day's boxes stamped in each hour. Night hours carry over from the previous shift.</p><div class="chart" id="ch-hours"></div></div>
+        <div class="panel"><h3>Boxes per pallet</h3><p class="sub">Share of pallets, in bins of 10 boxes.</p><div class="chart" id="ch-ppal"></div></div>
+        <div class="panel"><h3>Box volume per pallet</h3><p class="sub">Sum of the boxes' volumes, m³. Share of pallets.</p><div class="chart" id="ch-pvol"></div></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="band" id="order">
+    <div class="wrap">
+      <p class="eyebrow"><span>Row order</span> · TRAN_HOUR · PALLET_ID</p>
+      <h2 class="title">Boxes arrive in the same order</h2>
+      <p class="dek" id="order-dek"></p>
+      <div class="grid g-wide">
+        <div class="panel">
+          <h3>Where each type sits in its pallet</h3>
+          <p class="sub">0 is the first box placed on a pallet, 1 is the last. Box from 25th to 75th percentile, whiskers 10th to 90th, tick at the median.</p>
+          <div class="legend"><span class="k"><i class="sw bg-real"></i>Real</span><span class="k"><i class="sw bg-gen"></i>Generated</span></div>
+          <div class="chart" id="ch-pos"></div>
+        </div>
+        <div class="panel">
+          <h3>Same size twice in a row</h3>
+          <p class="sub">When two boxes of a type follow each other, how often they have the same size.</p>
+          <div class="legend"><span class="k"><i class="sw bg-real"></i>Real</span><span class="k"><i class="sw bg-gen"></i>Generated</span></div>
+          <div class="chart" id="ch-rep"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="band" id="differs">
+    <div class="wrap">
+      <p class="eyebrow"><span>On purpose</span> · what does not match</p>
+      <h2 class="title">What is different, and why</h2>
+      <p class="dek">Some numbers are meant to differ. These follow from making new data rather than a copy of the old.</p>
+      <div class="diffs" id="diffs"></div>
+    </div>
+  </section>
+
+  <section class="band" id="files">
+    <div class="wrap">
+      <p class="eyebrow"><span>data/box_pallet_data/generated_data/</span>*.csv</p>
+      <h2 class="title">The twenty files</h2>
+      <p class="dek">Same nine columns, same order and number format as the real exports. Box mix bar: <span style="color:var(--t1)">■</span> type 1, <span style="color:var(--t2)">■</span> type 2, <span style="color:var(--t3)">■</span> type 3.</p>
+      <div class="tbl-wrap"><table id="files-tbl"></table></div>
+      <div class="grid g2" style="margin-top:16px" id="raw"></div>
+    </div>
+  </section>
+
+  <section class="band" id="method">
+    <div class="wrap">
+      <p class="eyebrow"><span>scripts/generate_box_data.py</span></p>
+      <h2 class="title">How the days were made</h2>
+      <p class="dek">Each generated day borrows the outline of one real day, a different one for each file, then redraws every detail inside it.</p>
+      <ol class="steps" id="steps"></ol>
+      <h3 style="font:800 26px/1 var(--display);text-transform:uppercase;margin:36px 0 12px">Your rules, as applied</h3>
+      <div class="diffs" id="rule-map"></div>
+      <h3 style="font:800 26px/1 var(--display);text-transform:uppercase;margin:36px 0 12px">Run it again</h3>
+      <div class="cmd"><span class="p">$ </span>python3 scripts/generate_box_data.py --n 20 --seed 2024
+<span class="p">$ </span>python3 scripts/compare_box_data.py</div>
+      <p class="note">The first writes 1.csv to 20.csv and checks every rule on every row; it stops with an error if one breaks. The second rebuilds this report from both folders.</p>
+    </div>
+  </section>
+</main>
+
+<footer><div class="wrap" id="foot"></div></footer>
+
+<script>
+const D = /*__DATA__*/null;
+
+/* ---------------------------------------------------------------- helpers */
+const NS = "http://www.w3.org/2000/svg";
+const $ = (s) => document.querySelector(s);
+function h(tag, attrs, ...kids) {
+  const e = document.createElement(tag);
+  for (const k in attrs || {}) {
+    if (k === "class") e.className = attrs[k];
+    else if (k === "style") e.style.cssText = attrs[k];
+    else e.setAttribute(k, attrs[k]);
+  }
+  for (const c of kids) if (c != null) e.append(c.nodeType ? c : document.createTextNode(String(c)));
+  return e;
+}
+function s(tag, attrs, parent) {
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs || {}) e.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+function txt(parent, x, y, str, cls, anchor) {
+  const t = s("text", { x, y, class: cls || "ax", "text-anchor": anchor || "start" }, parent);
+  t.textContent = str;
+  return t;
+}
+const int = (v) => Math.round(v).toLocaleString("en-US");
+const pct = (v, d = 1) => (v * 100).toFixed(d) + "%";
+const fx = (v, d = 1) => Number(v).toFixed(d);
+const last = (a) => a[a.length - 1];
+function lin(d0, d1, r0, r1) { const k = (r1 - r0) / ((d1 - d0) || 1); return (v) => r0 + (v - d0) * k; }
+function ticks(min, max, n) {
+  const span = max - min || 1, raw = span / n, mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const e = raw / mag, step = (e >= 7.5 ? 10 : e >= 3.5 ? 5 : e >= 1.5 ? 2 : 1) * mag;
+  const out = [];
+  for (let v = Math.ceil(min / step - 1e-9) * step; v <= max + 1e-9; v += step) out.push(+v.toFixed(10));
+  return out;
+}
+const T = { 1: "Type 1 · blue", 2: "Type 2 · white", 3: "Type 3 · brown" };
+const dayName = (d) => new Date(d + "T00:00:00").toLocaleDateString("en-GB", { weekday: "short" });
+const longDate = (d) => new Date(d + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+const ICON_OK = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.5l3 3 6-7"/></svg>';
+const ICON_WARN = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M8 3.5v5.5M8 12.2v.3"/></svg>';
+const ICON_X = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>';
+function chip(kind, label) {
+  const c = h("span", { class: "chip " + kind });
+  c.innerHTML = kind === "good" ? ICON_OK : kind === "warn" ? ICON_WARN : ICON_X;
+  c.append(document.createTextNode(label));
+  return c;
+}
+
+/* tooltip: values lead, labels follow; content set with textContent */
+const tip = h("div", { class: "tip", role: "status" });
+tip.hidden = true;
+document.body.appendChild(tip);
+function showTip(ev, title, rows) {
+  tip.replaceChildren();
+  if (title) tip.append(h("div", { class: "tip-t" }, title));
+  for (const r of rows) {
+    const row = h("div", { class: "tip-r" });
+    if (r.c) { const k = h("i", { class: "tip-k" }); k.style.background = r.c; row.append(k); }
+    row.append(h("b", {}, r.v), h("span", {}, r.l || ""));
+    tip.append(row);
+  }
+  tip.hidden = false;
+  let x, y;
+  if (ev.clientX != null && ev.type !== "focus") { x = ev.clientX; y = ev.clientY; }
+  else { const b = ev.target.getBoundingClientRect(); x = b.left + b.width / 2; y = b.top; }
+  const r = tip.getBoundingClientRect(), pad = 14;
+  let tx = x + pad, ty = y + pad;
+  if (tx + r.width > innerWidth - 8) tx = x - r.width - pad;
+  if (ty + r.height > innerHeight - 8) ty = y - r.height - pad;
+  tip.style.transform = `translate(${Math.max(8, tx)}px, ${Math.max(8, ty)}px)`;
+}
+function hideTip() { tip.hidden = true; }
+function hover(el, fn) {
+  el.addEventListener("pointermove", fn);
+  el.addEventListener("focus", fn);
+  el.addEventListener("pointerleave", hideTip);
+  el.addEventListener("blur", hideTip);
+}
+const C = { real: "var(--real)", gen: "var(--gen)", t1: "var(--t1)", t2: "var(--t2)", t3: "var(--t3)" };
+
+/* charts redraw when their box changes width */
+const charts = [];
+function chart(el, draw) {
+  const c = { el, draw, w: 0 };
+  charts.push(c);
+  c.w = el.clientWidth; draw(el, c.w || 320);
+}
+const ro = new ResizeObserver(() => {
+  for (const c of charts) {
+    const w = c.el.clientWidth;
+    if (w && Math.abs(w - c.w) > 2) { c.w = w; c.draw(c.el, w); }
+  }
+});
+
+/* ---------------------------------------------------------------- hero */
+const R = D.rules, O = D.overview;
+const within = D.score.filter((r) => r.verdict === "within").length;
+$("#mast-date").textContent = "Report · " + longDate(D.generated_on);
+$("#lede").append(
+  "Each file in ", h("code", {}, "generated_data"), " follows the real box stream from ",
+  h("code", {}, "use_data"), ": the same box types, cartons in the same size range, the same order on the pallet and the same working hours. No carton size, container ID or pallet ID was copied."
+);
+const allRows = R.rows[1] + R.rows[2] + R.rows[3];
+const rulesOk = R.t1_exact === 1 && R.t2_exact === 1 && R.t3_in_bounds === 1 && R.t3_vol_in_bounds === 1 && R.t3_copied === 0 && R.ids_copied === 0 && R.pallets_copied === 0;
+[
+  [int(O.boxes.gen), "boxes", `across ${O.files.gen} files and ${O.pallets.gen} pallets`],
+  [int(O.skus.gen), "sizes", `new type 3 carton sizes, ${R.t3_copied} copied from the real data`],
+  [within, "/ " + D.score.length, "measures inside normal day-to-day variation"],
+  [rulesOk ? "100" : pct(Math.min(R.t1_exact, R.t2_exact, R.t3_in_bounds), 0), "%", "of rows pass every size and ID rule"],
+].forEach(([v, small, l]) => {
+  $("#stats").append(h("div", { class: "stat" }, h("div", { class: "v" }, v, h("small", {}, small)), h("div", { class: "l" }, l)));
+});
+
+const PX = 120, PY = 100, BASE = 14;
+const BOX = { 1: [61, 127, 214], 2: [227, 232, 238], 3: [196, 145, 92] };
+const WOOD = [168, 130, 84];
+const rgb = (c, k) => `rgb(${Math.min(255, Math.round(c[0] * k))},${Math.min(255, Math.round(c[1] * k))},${Math.min(255, Math.round(c[2] * k))})`;
+
+function pack(boxes) {
+  const hm = new Float32Array(PX * PY), out = [];
+  let x = 0, y = 0, row = 0;
+  for (const [d, w, ht, t] of boxes) {
+    let bx = Math.max(d, w), by = Math.min(d, w);
+    if (x + bx > PX + 1e-6) { x = 0; y += row; row = 0; }
+    if (y + by > PY + 1e-6) { x = 0; y = 0; row = 0; }
+    let z = 0;
+    const i0 = Math.floor(x), i1 = Math.min(PX, Math.ceil(x + bx)), j0 = Math.floor(y), j1 = Math.min(PY, Math.ceil(y + by));
+    for (let i = i0; i < i1; i++) for (let j = j0; j < j1; j++) z = Math.max(z, hm[i * PY + j]);
+    for (let i = i0; i < i1; i++) for (let j = j0; j < j1; j++) hm[i * PY + j] = z + ht;
+    out.push({ x, y, z, dx: bx, dy: by, dz: ht, t, k: out.length });
+    x += bx; row = Math.max(row, by);
+  }
+  return out;
+}
+// painter's order: a box goes first when it is fully behind another on some axis
+function paintOrder(bs) {
+  const n = bs.length, before = bs.map(() => []), indeg = new Array(n).fill(0);
+  const behind = (a, b) => a.x + a.dx <= b.x + 1e-6 || a.y + a.dy <= b.y + 1e-6 || a.z + a.dz <= b.z + 1e-6;
+  const sx = (b) => [(b.x - b.y - b.dy) * .866, (b.x + b.dx - b.y) * .866];
+  for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
+    const a = bs[i], b = bs[j], ra = sx(a), rb = sx(b);
+    if (ra[1] <= rb[0] || rb[1] <= ra[0]) continue;
+    const ab = behind(a, b), ba = behind(b, a);
+    if (ab && !ba) { before[i].push(j); indeg[j]++; }
+    else if (ba && !ab) { before[j].push(i); indeg[i]++; }
+  }
+  const q = [], out = [];
+  for (let i = 0; i < n; i++) if (!indeg[i]) q.push(i);
+  q.sort((a, b) => (bs[a].x + bs[a].y + bs[a].z) - (bs[b].x + bs[b].y + bs[b].z));
+  while (q.length) {
+    const i = q.shift(); out.push(bs[i]);
+    for (const j of before[i]) if (--indeg[j] === 0) q.push(j);
+  }
+  if (out.length < n) for (const b of bs) if (!out.includes(b)) out.push(b);
+  return out;
+}
+function drawPallet(cv, packed, topZ, upto) {
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const W = cv.clientWidth, H = cv.clientHeight;
+  if (!W || !H) return;
+  cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+  const g = cv.getContext("2d");
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, W, H);
+  const cx = 0.866, cy = 0.5;
+  const minX = -PY * cx, maxX = PX * cx, minY = -topZ, maxY = (PX + PY) * cy + BASE + 8;
+  const k = Math.min(W / (maxX - minX), (H - 30) / (maxY - minY)) * 0.94;
+  const ox = W / 2 - (minX + maxX) / 2 * k, oy = H - 6 - maxY * k;
+  const P = (x, y, z) => [ox + (x - y) * cx * k, oy + ((x + y) * cy - z) * k];
+  const poly = (pts, fill, stroke) => {
+    g.beginPath(); pts.forEach((p, i) => { const q = P(...p); i ? g.lineTo(q[0], q[1]) : g.moveTo(q[0], q[1]); });
+    g.closePath(); g.fillStyle = fill; g.fill();
+    if (stroke) { g.strokeStyle = stroke; g.lineWidth = .7; g.stroke(); }
+  };
+  // floor shadow
+  const c0 = P(PX / 2, PY / 2, -BASE);
+  const sh = g.createRadialGradient(c0[0], c0[1], 4, c0[0], c0[1], (PX + PY) * .55 * k);
+  sh.addColorStop(0, "rgba(0,0,0,.32)"); sh.addColorStop(1, "rgba(0,0,0,0)");
+  g.fillStyle = sh; g.beginPath(); g.ellipse(c0[0], c0[1], (PX + PY) * .55 * k, (PX + PY) * .26 * k, 0, 0, 7); g.fill();
+  // pallet: deck, fork openings, slats
+  const z0 = -BASE, z1 = 0, ed = "rgba(40,25,10,.45)";
+  poly([[0, PY, z0], [PX, PY, z0], [PX, PY, z1], [0, PY, z1]], rgb(WOOD, .82), ed);
+  poly([[PX, 0, z0], [PX, PY, z0], [PX, PY, z1], [PX, 0, z1]], rgb(WOOD, .68), ed);
+  for (const [a, b] of [[14, 50], [70, 106]]) poly([[a, PY, z0 + 2], [b, PY, z0 + 2], [b, PY, z1 - 4], [a, PY, z1 - 4]], "rgba(15,10,5,.75)");
+  for (const [a, b] of [[10, 42], [58, 90]]) poly([[PX, a, z0 + 2], [PX, b, z0 + 2], [PX, b, z1 - 4], [PX, a, z1 - 4]], "rgba(15,10,5,.75)");
+  poly([[0, 0, z1], [PX, 0, z1], [PX, PY, z1], [0, PY, z1]], rgb(WOOD, 1.0), ed);
+  for (let yy = 12; yy < PY; yy += 19) poly([[0, yy, z1], [PX, yy, z1], [PX, yy + 2.2, z1], [0, yy + 2.2, z1]], rgb(WOOD, .7));
+  // boxes
+  const edge = "rgba(10,14,20,.38)";
+  for (const b of packed) {
+    if (b.k >= upto) continue;
+    const c = BOX[b.t], X0 = b.x, X1 = b.x + b.dx, Y0 = b.y, Y1 = b.y + b.dy, Z0 = b.z, Z1 = b.z + b.dz;
+    poly([[X0, Y1, Z0], [X1, Y1, Z0], [X1, Y1, Z1], [X0, Y1, Z1]], rgb(c, .84), edge);
+    poly([[X1, Y0, Z0], [X1, Y1, Z0], [X1, Y1, Z1], [X1, Y0, Z1]], rgb(c, .68), edge);
+    poly([[X0, Y0, Z1], [X1, Y0, Z1], [X1, Y1, Z1], [X0, Y1, Z1]], rgb(c, 1.04), edge);
+    if (b.t === 3) {
+      const m = (Y0 + Y1) / 2; // packing tape along the top, a label on the side
+      poly([[X0, m - 2.2, Z1], [X1, m - 2.2, Z1], [X1, m + 2.2, Z1], [X0, m + 2.2, Z1]], rgb(c, 1.16));
+      if (b.dz > 11 && b.dy > 14) {
+        const ya = Y0 + b.dy * .14, yb = Y0 + b.dy * .46, za = Z1 - b.dz * .62, zb = Z1 - b.dz * .2;
+        poly([[X1, ya, za], [X1, yb, za], [X1, yb, zb], [X1, ya, zb]], "rgba(246,246,240,.92)");
+        for (let q = 1; q <= 3; q++) { const zz = za + (zb - za) * q / 4.2; poly([[X1, ya + 1.5, zz], [X1, yb - 1.5, zz], [X1, yb - 1.5, zz + .7], [X1, ya + 1.5, zz + .7]], "rgba(40,40,40,.55)"); }
+      }
+    } else {
+      const rim = Math.min(3, b.dz * .14); // crate lip
+      poly([[X0, Y1, Z1 - rim], [X1, Y1, Z1 - rim], [X1, Y1, Z1], [X0, Y1, Z1]], rgb(c, .74));
+      poly([[X1, Y0, Z1 - rim], [X1, Y1, Z1 - rim], [X1, Y1, Z1], [X1, Y0, Z1]], rgb(c, .6));
+    }
+  }
+}
+
+const fileDate = {};
+for (const d of D.days.real.concat(D.days.gen)) fileDate[d.file] = d.date;
+const game = { score: 0, n: 0, pair: null, anim: 0 };
+function newPair(animate) {
+  const r = D.hero.real[Math.floor(Math.random() * D.hero.real.length)];
+  const g = D.hero.gen[Math.floor(Math.random() * D.hero.gen.length)];
+  const realLeft = Math.random() < .5;
+  const A = realLeft ? r : g, B = realLeft ? g : r;
+  const pa = pack(A.boxes), pb = pack(B.boxes);
+  const top = Math.max(150, ...pa.map((b) => b.z + b.dz), ...pb.map((b) => b.z + b.dz));
+  game.pair = { realLeft, A, B, pa: paintOrder(pa), pb: paintOrder(pb), top, nA: pa.length, nB: pb.length, guessed: false };
+  for (const [id, p] of [["#cap-a", A], ["#cap-b", B]]) {
+    $(id).replaceChildren(h("span", { class: "hidden-note" }, `${p.n} boxes · ${fx(p.vol, 2)} m³ of boxes · source hidden`));
+  }
+  $("#pick-a").hidden = $("#pick-b").hidden = false;
+  $("#next-pair").hidden = true;
+  $("#verdict-line").textContent = "One pallet is from the real files and one was generated. Pick one.";
+  render(animate);
+}
+function render(animate) {
+  const p = game.pair, cvA = $("#cv-a"), cvB = $("#cv-b");
+  cancelAnimationFrame(game.anim);
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (!animate || reduce) { drawPallet(cvA, p.pa, p.top, 1e9); drawPallet(cvB, p.pb, p.top, 1e9); return; }
+  const t0 = performance.now(), dur = 1100, n = Math.max(p.nA, p.nB);
+  const step = (t) => {
+    const f = Math.min(1, (t - t0) / dur), k = Math.ceil(f * n);
+    drawPallet(cvA, p.pa, p.top, k); drawPallet(cvB, p.pb, p.top, k);
+    if (f < 1) game.anim = requestAnimationFrame(step);
+  };
+  game.anim = requestAnimationFrame(step);
+}
+function describe(p, isReal) {
+  const src = h("span", { class: "src " + (isReal ? "real" : "gen") }, isReal ? "Real" : "Generated");
+  const where = isReal ? `${p.file} · ${longDate(fileDate[p.file])}` : `generated_data/${p.file} · ${longDate(fileDate[p.file])}`;
+  return [src, h("br"), h("b", {}, where), h("br"), `Pallet ${p.id} · ${p.n} boxes · ${fx(p.vol, 2)} m³`];
+}
+function guess(left) {
+  const p = game.pair;
+  if (p.guessed) return;
+  p.guessed = true;
+  const right = left === p.realLeft;
+  game.n++; if (right) game.score++;
+  $("#guess-score").textContent = `Your guesses: ${game.score} of ${game.n}`;
+  $("#cap-a").replaceChildren(...describe(p.A, p.realLeft));
+  $("#cap-b").replaceChildren(...describe(p.B, !p.realLeft));
+  const line = $("#verdict-line");
+  line.replaceChildren(right ? h("b", {}, "Right. ") : h("b", {}, "Not this time. "),
+    `${p.realLeft ? "A" : "B"} is from the real files, ${p.realLeft ? "B" : "A"} was generated.`);
+  $("#pick-a").hidden = $("#pick-b").hidden = true;
+  $("#next-pair").hidden = false;
+  $("#next-pair").focus();
+}
+$("#pick-a").addEventListener("click", () => guess(true));
+$("#pick-b").addEventListener("click", () => guess(false));
+$("#next-pair").addEventListener("click", () => newPair(true));
+newPair(false);
+new ResizeObserver(() => { if (game.pair) render(false); }).observe($("#cv-a"));
+
+/* ---------------------------------------------------------------- rules */
+$("#rules-dek").textContent = `All ${int(allRows)} generated rows were checked after writing. The generator stops with an error if any row breaks a rule.`;
+const F = R.fixed, B = R.bounds, GB = R.gen_bounds;
+const ruleCards = [
+  [R.t1_exact === 1, "Type 1 has one footprint and two heights", `${int(R.rows[1])} of ${int(R.rows[1])} rows`, `${fx(F[1].d)} × ${fx(F[1].w)} cm, height ${fx(F[1].tall)} or ${fx(F[1].short)} cm. No other value appears.`],
+  [R.t2_exact === 1, "Type 2 has one footprint and two heights", `${int(R.rows[2])} of ${int(R.rows[2])} rows`, `${fx(F[2].d)} × ${fx(F[2].w)} cm, height ${fx(F[2].tall)} or ${fx(F[2].short)} cm. No other value appears.`],
+  [R.t3_in_bounds === 1 && R.t3_vol_in_bounds === 1, "Type 3 stays inside the real size range", `${int(R.rows[3])} of ${int(R.rows[3])} rows`, `No carton is longer, wider, taller, shorter or narrower than a real one, and its volume stays within ${fx(B.vlo, 1)}–${fx(B.vhi, 1)} L.`],
+  [R.t3_copied === 0, "No carton size was copied", `${R.t3_copied} of ${R.t3_gen_skus} sizes match a real one`, `Every generated depth × width × height triple is new. The ${R.t3_real_skus} real sizes were used only as starting points.`],
+  [R.ids_copied === 0 && R.pallets_copied === 0, "No ID was copied", `${R.ids_copied} container IDs · ${R.pallets_copied} pallet IDs reused`, `Type 3 labels continue counting from ${int(R.real_id_max[3])}; pallet IDs continue from ${int(R.real_pallet_max)}.`],
+  [R.stamp_ok === 1 && R.sorted, "Same file format as the export", "9 columns · TRAN_HOUR as hour:month:second", "Sizes keep one decimal, rows are sorted on TRAN_HOUR, and the middle field of every stamp is the month, as in the real files."],
+];
+for (const [ok, t, v, p] of ruleCards) {
+  const ic = h("span", { class: "ic" + (ok ? "" : " bad") }); ic.innerHTML = ok ? ICON_OK : ICON_X;
+  $("#rule-cards").append(h("div", { class: "rule" }, ic, h("h3", {}, t), h("div", { class: "val" }, v), h("p", {}, p)));
+}
+$("#bounds-chip").replaceWith(chip(R.t3_in_bounds === 1 && R.t3_vol_in_bounds === 1 ? "good" : "bad", `${pct(R.t3_in_bounds, 0)} inside`));
+
+chart($("#ch-bounds"), (el, W) => {
+  el.replaceChildren();
+  const rows = [["Depth", B.lo[0], B.hi[0], GB.lo[0], GB.hi[0], "cm"], ["Width", B.lo[1], B.hi[1], GB.lo[1], GB.hi[1], "cm"],
+    ["Height", B.lo[2], B.hi[2], GB.lo[2], GB.hi[2], "cm"], ["Volume", B.vlo, B.vhi, GB.vlo, GB.vhi, "L"]];
+  const lw = W < 480 ? 64 : 84, rowH = 50, H = rows.length * rowH + 4;
+  const svg = s("svg", { width: W, height: H, role: "img", "aria-label": "Type 3 size ranges, real and generated" }, el);
+  rows.forEach(([name, lo, hi, glo, ghi, u], i) => {
+    const y0 = i * rowH + 14, max = (u === "L" ? Math.ceil(hi / 10) * 10 : 70);
+    const x = lin(0, max, lw, W - 14);
+    txt(svg, 0, y0 + 9, name, "ax-ink");
+    s("rect", { x: lw, y: y0 + 4, width: W - 14 - lw, height: 2, class: "f-band" }, svg);
+    s("rect", { x: x(lo), y: y0 - 2, width: x(hi) - x(lo), height: 14, rx: 3, class: "f-real", "fill-opacity": .32 }, svg);
+    s("rect", { x: x(glo), y: y0 + 3, width: Math.max(2, x(ghi) - x(glo)), height: 4, rx: 2, class: "f-gen" }, svg);
+    txt(svg, x(lo), y0 + 28, `${fx(lo)}`, "ax", "start");
+    txt(svg, x(hi), y0 + 28, `${fx(hi)} ${u}`, "ax", "end");
+    const hit = s("rect", { x: lw, y: y0 - 6, width: W - 14 - lw, height: 26, class: "hit", tabindex: 0 }, svg);
+    hover(hit, (ev) => showTip(ev, name + " · " + u, [
+      { v: `${fx(lo)}–${fx(hi)}`, l: "real range", c: C.real },
+      { v: `${fx(glo)}–${fx(ghi)}`, l: "generated range", c: C.gen }]));
+  });
+});
+
+/* ---------------------------------------------------------------- scorecard */
+const HOW = { relative: "relative difference", ks: "KS distance (largest gap between the two cumulative curves)", tv: "share of boxes in a different hour", shift: "move in average position, as a share of the pallet" };
+function fmtVal(r, v) {
+  if (r.unit === "%") return pct(v, 1);
+  if (r.unit === "cm") return fx(v, 1) + " cm";
+  if (r.unit === "L") return fx(v, 1) + " L";
+  if (r.unit === "m³") return fx(v, 2) + " m³";
+  if (r.unit === "pos") return fx(v, 2);
+  if (r.unit === "h") {
+    if (/profile/i.test(r.name)) { const m = Math.round(v * 60); return `avg ${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`; }
+    return fx(v, 1) + " h";
+  }
+  return fx(v, 1);
+}
+const fmtGap = (r, v) => r.how === "relative" ? pct(v, 1) : fx(v, 3);
+$("#score-n").textContent = D.score.length;
+$("#score-v").textContent = `${within}/${D.score.length}`;
+$("#score-l").textContent = "measures where the generated data is as close to the real data as real days are to each other";
+const worst = D.score.slice().sort((a, b) => b.score / b.base_p90 - a.score / a.base_p90)[0];
+$("#score-dek").append(
+  `Real days differ from each other, so an exact match is not the goal. For every measure, the band shows how far two random halves of the ${O.files.real} real days land from each other over ${D.baseline_splits} random splits. The dot is the generated data against all real days. A dot inside the band means the difference is no bigger than normal day-to-day variation. Loosest fit: `,
+  h("b", {}, (worst.group === "Brown carton sizes" ? "brown carton " : "") + worst.name.toLowerCase()),
+  `, at ${Math.round(100 * worst.score / worst.base_p90)}% of the band.`
+);
+const head = h("div", { class: "srow head" }, h("div", {}, "Measure"), h("div", { style: "text-align:right" }, "Real"), h("div", { style: "text-align:right" }, "Generated"), h("div", {}, "Gap, against real-vs-real spread"), h("div", {}, "Verdict"));
+$("#score-rows").append(head);
+let grp = null;
+for (const r of D.score) {
+  if (r.group !== grp) { grp = r.group; $("#score-rows").append(h("div", { class: "srow group" }, h("div", {}, grp))); }
+  const gapBox = h("div", { class: "gap chart" });
+  const kind = r.verdict === "within" ? "good" : r.verdict === "near" ? "warn" : "bad";
+  const row = h("div", { class: "srow" }, h("div", { class: "n" }, r.name), h("div", { class: "r" }, fmtVal(r, r.real)), h("div", { class: "g" }, fmtVal(r, r.gen)), gapBox,
+    h("div", {}, chip(kind, r.verdict === "within" ? "Within" : r.verdict === "near" ? "Near" : "Differs")));
+  $("#score-rows").append(row);
+  chart(gapBox, (el, W) => {
+    el.replaceChildren();
+    const svg = s("svg", { width: W, height: 26, role: "img", "aria-label": `${r.name}: gap ${fmtGap(r, r.score)}, real band up to ${fmtGap(r, r.base_p90)}` }, el);
+    const x = lin(0, 2, 2, W - 8), cut = Math.min(2, r.score / r.base_p90);
+    s("rect", { x: x(0), y: 6, width: x(1) - x(0), height: 14, rx: 3, class: "f-band" }, svg);
+    s("line", { x1: x(0), x2: x(2), y1: 13, y2: 13, class: "grid-l" }, svg);
+    s("line", { x1: x(r.base_mean / r.base_p90), x2: x(r.base_mean / r.base_p90), y1: 6, y2: 20, stroke: "var(--muted)", "stroke-width": 2 }, svg);
+    s("circle", { cx: x(cut), cy: 13, r: 5.5, class: "f-gen ring" }, svg);
+    const hit = s("rect", { x: 0, y: 0, width: W, height: 26, class: "hit", tabindex: 0 }, svg);
+    hover(hit, (ev) => showTip(ev, r.name, [
+      { v: fmtGap(r, r.score), l: "generated vs real", c: C.gen },
+      { v: fmtGap(r, r.base_mean), l: "real vs real, typical" },
+      { v: fmtGap(r, r.base_p90), l: "real vs real, 90% within" },
+      { v: "", l: HOW[r.how] }]));
+  });
+}
+
+/* ---------------------------------------------------------------- histograms */
+function histChart(el, W, { edges, real, gen, fmtX, xTitle, height }) {
+  el.replaceChildren();
+  const H = height || 200, m = { l: 40, r: 8, t: 8, b: 34 };
+  const svg = s("svg", { width: W, height: H, role: "img" }, el);
+  const x = lin(edges[0], last(edges), m.l, W - m.r);
+  const ymax = Math.max(...real, ...gen) * 1.1 || 1;
+  const y = lin(0, ymax, H - m.b, m.t);
+  for (const t of ticks(0, ymax, 4)) { s("line", { x1: m.l, x2: W - m.r, y1: y(t), y2: y(t), class: "grid-l" }, svg); txt(svg, m.l - 6, y(t) + 4, pct(t, 0), "ax", "end"); }
+  for (const t of ticks(edges[0], last(edges), W < 420 ? 4 : 6)) txt(svg, x(t), H - m.b + 16, fmtX(t), "ax", "middle");
+  if (xTitle) txt(svg, W - m.r, H - 2, xTitle, "ax", "end");
+  const hl = s("rect", { x: 0, y: m.t, width: 0, height: H - m.b - m.t, class: "f-hl" }, svg);
+  const path = (v) => { let d = `M${x(edges[0])},${y(0)}`; v.forEach((q, i) => { d += `L${x(edges[i])},${y(q)}L${x(edges[i + 1])},${y(q)}`; }); return d + `L${x(last(edges))},${y(0)}`; };
+  s("path", { d: path(real), class: "f-real", "fill-opacity": .12 }, svg);
+  s("path", { d: path(gen), class: "f-gen", "fill-opacity": .1 }, svg);
+  s("path", { d: path(real), class: "s-real" }, svg);
+  s("path", { d: path(gen), class: "s-gen" }, svg);
+  s("line", { x1: m.l, x2: W - m.r, y1: y(0), y2: y(0), class: "base-l" }, svg);
+  edges.slice(0, -1).forEach((e, i) => {
+    const hit = s("rect", { x: x(e), y: m.t, width: x(edges[i + 1]) - x(e), height: H - m.b - m.t, class: "hit", tabindex: -1 }, svg);
+    hover(hit, (ev) => {
+      hl.setAttribute("x", x(e)); hl.setAttribute("width", x(edges[i + 1]) - x(e));
+      showTip(ev, `${fmtX(e)}–${fmtX(edges[i + 1])} ${xTitle || ""}`, [
+        { v: pct(real[i]), l: "real", c: C.real }, { v: pct(gen[i]), l: "generated", c: C.gen }]);
+    });
+    hit.addEventListener("pointerleave", () => hl.setAttribute("width", 0));
+  });
+}
+const SZ = D.sizes;
+$("#sizes-dek").textContent = `Type 3 cartons in the generated files come from ${R.t3_gen_skus} sizes, none of them equal to one of the ${R.t3_real_skus} real ones. Each new size started from a real carton and moved a few percent on each side, so the spread of depths, widths, heights and volumes stays close to the real one.`;
+[["depth", "Depth", "cm"], ["width", "Width", "cm"], ["height", "Height", "cm"], ["volume", "Volume", "L"]].forEach(([k, name, u]) => {
+  const z = SZ[k], sc = D.score.find((r) => r.name === name && r.group === "Brown carton sizes");
+  const inside = sc && sc.verdict === "within";
+  const panel = h("div", { class: "panel" },
+    h("div", { class: "panel-head" }, h("h3", {}, `${name}, ${u}`), chip(inside ? "good" : "warn", `KS ${fx(z.ks, 3)} · real halves ${fx(sc.base_mean, 3)}`)),
+    h("p", { class: "sub" }, `Mean ${fx(z.real.mean)} real vs ${fx(z.gen.mean)} generated · spread (sd) ${fx(z.real.sd)} vs ${fx(z.gen.sd)} · range ${fx(z.gen.min)}–${fx(z.gen.max)} inside ${fx(z.real.min)}–${fx(z.real.max)}`));
+  const box = h("div", { class: "chart" });
+  panel.append(box);
+  $("#size-hists").append(panel);
+  chart(box, (el, W) => histChart(el, W, { edges: z.hist.edges, real: z.hist.real, gen: z.hist.gen, fmtX: (v) => String(+v.toFixed(1)), xTitle: u, height: 180 }));
+});
+
+/* footprint scatter */
+$("#sku-chip").replaceWith(chip("good", `${R.t3_copied} sizes copied`));
+chart($("#ch-scatter"), (el, W) => {
+  el.replaceChildren();
+  const H = Math.round(Math.min(380, Math.max(260, W * .62))), m = { l: 40, r: 10, t: 10, b: 34 };
+  const svg = s("svg", { width: W, height: H, role: "img", "aria-label": "Carton footprints, depth by width" }, el);
+  const x = lin(0, 70, m.l, W - m.r), y = lin(0, 46, H - m.b, m.t);
+  for (const t of ticks(0, 46, 4)) { s("line", { x1: m.l, x2: W - m.r, y1: y(t), y2: y(t), class: "grid-l" }, svg); txt(svg, m.l - 6, y(t) + 4, t, "ax", "end"); }
+  for (const t of ticks(0, 70, W < 420 ? 4 : 7)) txt(svg, x(t), H - m.b + 16, t, "ax", "middle");
+  txt(svg, W - m.r, H - 2, "depth, cm →", "ax", "end");
+  txt(svg, m.l + 6, m.t + 10, "↑ width, cm", "ax");
+  s("rect", { x: x(B.lo[0]), y: y(B.hi[1]), width: x(B.hi[0]) - x(B.lo[0]), height: y(B.lo[1]) - y(B.hi[1]), class: "bound", rx: 2 }, svg);
+  txt(svg, x(B.hi[0]) - 4, y(B.hi[1]) + 14, "real range", "ax", "end");
+  const rad = (c) => Math.min(13, 2.4 + Math.sqrt(c) * 1.05);
+  const pts = [];
+  for (const [d, w, hh, c] of D.skus.real) { const p = { x: x(d), y: y(w), d, w, hh, c, src: "real" }; pts.push(p); s("circle", { cx: p.x, cy: p.y, r: rad(c), class: "f-real ring", "fill-opacity": .42 }, svg); }
+  for (const [d, w, hh, c] of D.skus.gen) { const p = { x: x(d), y: y(w), d, w, hh, c, src: "gen" }; pts.push(p); s("circle", { cx: p.x, cy: p.y, r: rad(c), class: "f-gen ring", "fill-opacity": .9 }, svg); }
+  const mark = s("circle", { r: 0, fill: "none", stroke: "var(--ink)", "stroke-width": 1.5 }, svg);
+  const hit = s("rect", { x: m.l, y: m.t, width: W - m.l - m.r, height: H - m.t - m.b, class: "hit" }, svg);
+  hit.addEventListener("pointermove", (ev) => {
+    const b = svg.getBoundingClientRect(), px = ev.clientX - b.left, py = ev.clientY - b.top;
+    let best = null, bd = 24 * 24;
+    for (const p of pts) { const dd = (p.x - px) ** 2 + (p.y - py) ** 2; if (dd < bd) { bd = dd; best = p; } }
+    if (!best) { hideTip(); mark.setAttribute("r", 0); return; }
+    mark.setAttribute("cx", best.x); mark.setAttribute("cy", best.y); mark.setAttribute("r", rad(best.c) + 3);
+    showTip(ev, best.src === "real" ? "Real carton size" : "Generated carton size", [
+      { v: `${fx(best.d)} × ${fx(best.w)} × ${fx(best.hh)} cm`, l: "", c: best.src === "real" ? C.real : C.gen },
+      { v: int(best.c), l: best.c === 1 ? "box shipped" : "boxes shipped" }]);
+  });
+  hit.addEventListener("pointerleave", () => { hideTip(); mark.setAttribute("r", 0); });
+});
+
+/* top-N coverage */
+chart($("#ch-rank"), (el, W) => {
+  el.replaceChildren();
+  const H = 250, m = { l: 40, r: 44, t: 10, b: 34 }, n = Math.min(D.rank.real.length, D.rank.gen.length);
+  const svg = s("svg", { width: W, height: H, role: "img", "aria-label": "Cumulative share by top carton sizes" }, el);
+  const x = lin(1, n, m.l, W - m.r), y = lin(0, 1, H - m.b, m.t);
+  for (const t of [0, .25, .5, .75, 1]) { s("line", { x1: m.l, x2: W - m.r, y1: y(t), y2: y(t), class: "grid-l" }, svg); txt(svg, m.l - 6, y(t) + 4, pct(t, 0), "ax", "end"); }
+  for (const t of [1, 10, 20, 30, 40].filter((v) => v <= n)) txt(svg, x(t), H - m.b + 16, t, "ax", "middle");
+  txt(svg, W - m.r, H - 2, "top N sizes", "ax", "end");
+  for (const [k, cls] of [["real", "s-real"], ["gen", "s-gen"]]) {
+    const v = D.rank[k].slice(0, n);
+    s("path", { d: v.map((q, i) => `${i ? "L" : "M"}${x(i + 1)},${y(q)}`).join(""), class: cls }, svg);
+    s("circle", { cx: x(n), cy: y(v[n - 1]), r: 4, class: (k === "real" ? "f-real" : "f-gen") + " ring" }, svg);
+  }
+  const yr = y(D.rank.real[n - 1]), yg = y(D.rank.gen[n - 1]), apart = Math.abs(yr - yg) > 14;
+  txt(svg, x(n) + 8, (apart ? yr : Math.min(yr, yg) - 3) + 4, pct(D.rank.real[n - 1], 0), "lbl-2");
+  txt(svg, x(n) + 8, (apart ? yg : Math.max(yr, yg) + 9) + 4, pct(D.rank.gen[n - 1], 0), "lbl-2");
+  const xl = s("line", { x1: 0, x2: 0, y1: m.t, y2: H - m.b, class: "xhair", opacity: 0 }, svg);
+  const hit = s("rect", { x: m.l, y: m.t, width: W - m.l - m.r, height: H - m.t - m.b, class: "hit" }, svg);
+  hit.addEventListener("pointermove", (ev) => {
+    const b = svg.getBoundingClientRect(), px = ev.clientX - b.left;
+    const i = Math.max(1, Math.min(n, Math.round(1 + (px - m.l) / (W - m.r - m.l) * (n - 1))));
+    xl.setAttribute("x1", x(i)); xl.setAttribute("x2", x(i)); xl.setAttribute("opacity", 1);
+    showTip(ev, `Top ${i} size${i > 1 ? "s" : ""}`, [{ v: pct(D.rank.real[i - 1]), l: "of real cartons", c: C.real }, { v: pct(D.rank.gen[i - 1]), l: "of generated cartons", c: C.gen }]);
+  });
+  hit.addEventListener("pointerleave", () => { hideTip(); xl.setAttribute("opacity", 0); });
+});
+
+/* ---------------------------------------------------------------- fixed types */
+const TY = D.types, tr = TY.real[1] + TY.real[2] + TY.real[3], tg = TY.gen[1] + TY.gen[2] + TY.gen[3];
+$("#fixed-dek").textContent = `Type 1 is always ${fx(F[1].d)} × ${fx(F[1].w)} cm and type 2 always ${fx(F[2].d)} × ${fx(F[2].w)} cm, in the real files and the generated ones. Only the height varies, between the two real heights, in about the same split.`;
+function stackRow(label, swClass, parts) {
+  const st = h("div", { class: "stack" });
+  for (const p of parts) {
+    const seg = h("div", { class: "seg " + p.cls + (p.soft ? " soft" : ""), style: `flex:${p.v} 1 0;${p.style || ""}`, tabindex: 0 });
+    if (p.v >= .09) seg.textContent = pct(p.v, 0);
+    hover(seg, (ev) => showTip(ev, label, [{ v: pct(p.v), l: p.name + (p.n != null ? ` · ${int(p.n)} boxes` : ""), c: p.c }]));
+    st.append(seg);
+  }
+  const who = h("div", { class: "who" });
+  if (swClass) who.append(h("i", { class: "sw " + swClass }));
+  who.append(label);
+  return h("div", { class: "stack-row" }, who, st);
+}
+for (const [k, label, tot] of [["real", "Real", tr], ["gen", "Generated", tg]]) {
+  $("#ch-mix").append(stackRow(label, null, [1, 2, 3].map((t) => ({ v: TY[k][t] / tot, n: TY[k][t], cls: "bg-t" + t, name: T[t], c: C["t" + t] }))));
+}
+for (const t of [1, 2]) {
+  const f = F[t];
+  $("#ch-tall").append(h("div", { class: "pair-title" }, h("i", { class: "sw bg-t" + t }), `${T[t]} · ${fx(f.d)} × ${fx(f.w)} cm`));
+  for (const [k, label] of [["real", "Real"], ["gen", "Generated"]]) {
+    const sh = D.tall[k][t].share;
+    $("#ch-tall").append(stackRow(label, null, [
+      { v: sh, cls: "bg-t" + t, name: `${fx(f.tall)} cm tall`, c: C["t" + t] },
+      { v: 1 - sh, cls: "", soft: true, style: `background:color-mix(in srgb, var(--t${t}) 32%, transparent)`, name: `${fx(f.short)} cm short`, c: C["t" + t] }]));
+  }
+}
+
+/* ---------------------------------------------------------------- days and pallets */
+const mean = (a) => a.reduce((x, y) => x + y, 0) / a.length;
+const dr = D.days.real, dg = D.days.gen;
+$("#days-dek").textContent = `A real day on PL33PR runs ${Math.round(Math.min(...dr.map((d) => d.boxes)))} to ${Math.round(Math.max(...dr.map((d) => d.boxes)))} boxes on 1 to ${Math.max(...dr.map((d) => d.pallets))} pallets. The generated days sit in the same range: ${Math.min(...dg.map((d) => d.boxes))} to ${Math.max(...dg.map((d) => d.boxes))} boxes, ${fx(mean(dg.map((d) => d.boxes)), 0)} on average against ${fx(mean(dr.map((d) => d.boxes)), 0)} real, and the same morning start with work running into the night.`;
+chart($("#ch-strip"), (el, W) => {
+  el.replaceChildren();
+  const H = 200, m = { l: 84, r: 12, t: 10, b: 34 }, max = 340;
+  const svg = s("svg", { width: W, height: H, role: "img", "aria-label": "Boxes per day, one dot per file" }, el);
+  const x = lin(0, max, m.l, W - m.r);
+  for (const t of ticks(0, max, W < 420 ? 4 : 7)) { s("line", { x1: x(t), x2: x(t), y1: m.t, y2: H - m.b, class: "grid-l" }, svg); txt(svg, x(t), H - m.b + 16, t, "ax", "middle"); }
+  txt(svg, W - m.r, H - 2, "boxes per day", "ax", "end");
+  const lanes = [["real", "Real", dr, 50, "f-real"], ["gen", "Generated", dg, 124, "f-gen"]];
+  for (const [k, label, arr, cy, cls] of lanes) {
+    txt(svg, 0, cy + 4, `${label} (${arr.length})`, "ax-ink");
+    const placed = [], r = 5.5;
+    for (const d of arr.slice().sort((a, b) => a.boxes - b.boxes)) {
+      const px = x(d.boxes);
+      let off = 0;
+      for (let tries = 0; tries < 7; tries++) {
+        off = (tries % 2 ? 1 : -1) * Math.ceil(tries / 2) * (r * 2 + 1);
+        if (!placed.some((p) => Math.hypot(p[0] - px, p[1] - (cy + off)) < r * 2 + .5)) break;
+      }
+      placed.push([px, cy + off]);
+      const c = s("circle", { cx: px, cy: cy + off, r, class: cls + " ring", tabindex: 0 }, svg);
+      hover(c, (ev) => showTip(ev, `${d.file} · ${longDate(d.date)}`, [{ v: int(d.boxes), l: "boxes", c: C[k] }, { v: d.pallets, l: d.pallets === 1 ? "pallet" : "pallets" }, { v: `${String(d.first).padStart(2, "0")}–${String(d.last).padStart(2, "0")}h`, l: "first to last hour" }]));
+    }
+    const avg = mean(arr.map((d) => d.boxes));
+    s("line", { x1: x(avg), x2: x(avg), y1: cy - 26, y2: cy + 26, stroke: "var(--ink-2)", "stroke-width": 1.5 }, svg);
+    txt(svg, x(avg) + 4, cy - 20, `avg ${fx(avg, 0)}`, "lbl-2");
+  }
+});
+chart($("#ch-hours"), (el, W) => {
+  el.replaceChildren();
+  const H = 190, m = { l: 40, r: 10, t: 10, b: 34 };
+  const svg = s("svg", { width: W, height: H, role: "img", "aria-label": "Share of boxes by hour of day" }, el);
+  const x = lin(0, 23, m.l, W - m.r), ymax = Math.max(...D.hours.real, ...D.hours.gen) * 1.15, y = lin(0, ymax, H - m.b, m.t);
+  for (const t of ticks(0, ymax, 4)) { s("line", { x1: m.l, x2: W - m.r, y1: y(t), y2: y(t), class: "grid-l" }, svg); txt(svg, m.l - 6, y(t) + 4, pct(t, 0), "ax", "end"); }
+  for (const t of [0, 4, 8, 12, 16, 20, 23]) txt(svg, x(t), H - m.b + 16, String(t).padStart(2, "0"), "ax", "middle");
+  txt(svg, W - m.r, H - 2, "hour (TRAN_HOUR)", "ax", "end");
+  for (const [k, sc, fc] of [["real", "s-real", "f-real"], ["gen", "s-gen", "f-gen"]]) {
+    const v = D.hours[k], line = v.map((q, i) => `${i ? "L" : "M"}${x(i)},${y(q)}`).join("");
+    s("path", { d: line + `L${x(23)},${y(0)}L${x(0)},${y(0)}Z`, class: fc, "fill-opacity": .1 }, svg);
+    s("path", { d: line, class: sc }, svg);
+  }
+  s("line", { x1: m.l, x2: W - m.r, y1: y(0), y2: y(0), class: "base-l" }, svg);
+  const xl = s("line", { y1: m.t, y2: H - m.b, class: "xhair", opacity: 0 }, svg);
+  const dots = ["real", "gen"].map((k) => s("circle", { r: 4, class: (k === "real" ? "f-real" : "f-gen") + " ring", opacity: 0 }, svg));
+  const hit = s("rect", { x: m.l, y: m.t, width: W - m.l - m.r, height: H - m.t - m.b, class: "hit" }, svg);
+  hit.addEventListener("pointermove", (ev) => {
+    const b = svg.getBoundingClientRect(), i = Math.max(0, Math.min(23, Math.round((ev.clientX - b.left - m.l) / (W - m.l - m.r) * 23)));
+    xl.setAttribute("x1", x(i)); xl.setAttribute("x2", x(i)); xl.setAttribute("opacity", 1);
+    ["real", "gen"].forEach((k, j) => { dots[j].setAttribute("cx", x(i)); dots[j].setAttribute("cy", y(D.hours[k][i])); dots[j].setAttribute("opacity", 1); });
+    showTip(ev, `${String(i).padStart(2, "0")}:00–${String(i).padStart(2, "0")}:59`, [{ v: pct(D.hours.real[i]), l: "of real boxes", c: C.real }, { v: pct(D.hours.gen[i]), l: "of generated boxes", c: C.gen }]);
+  });
+  hit.addEventListener("pointerleave", () => { hideTip(); xl.setAttribute("opacity", 0); dots.forEach((d) => d.setAttribute("opacity", 0)); });
+});
+function binShares(vals, edges) {
+  const out = new Array(edges.length - 1).fill(0);
+  for (const v of vals) { let i = edges.findIndex((e, j) => j < edges.length - 1 && v >= e && v < edges[j + 1]); if (i < 0) i = out.length - 1; out[i]++; }
+  return out.map((c) => c / vals.length);
+}
+const pe = Array.from({ length: 11 }, (_, i) => i * 10);
+chart($("#ch-ppal"), (el, W) => histChart(el, W, { edges: pe, real: binShares(D.pallets.real.map((p) => p.n), pe), gen: binShares(D.pallets.gen.map((p) => p.n), pe), fmtX: (v) => String(v), xTitle: "boxes", height: 190 }));
+const ve = Array.from({ length: 12 }, (_, i) => i * .25);
+chart($("#ch-pvol"), (el, W) => histChart(el, W, { edges: ve, real: binShares(D.pallets.real.map((p) => p.vol), ve), gen: binShares(D.pallets.gen.map((p) => p.vol), ve), fmtX: (v) => fx(v, v % 1 ? 2 : 0).replace(/\.?0+$/, "") || "0", xTitle: "m³", height: 190 }));
+
+/* ---------------------------------------------------------------- order */
+$("#order-dek").textContent = `On a real pallet the blue type 1 boxes come first, the white type 2 boxes follow, and the brown cartons fill the rest, mostly near the top. Generated pallets keep that order. Same-size runs come out at the real rates too: brown cartons repeat the size before them ${pct(D.repeat.gen[3], 0)} of the time, against ${pct(D.repeat.real[3], 0)} in the real files.`;
+chart($("#ch-pos"), (el, W) => {
+  el.replaceChildren();
+  const rowH = 30, groupH = 96, m = { l: W < 480 ? 92 : 120, r: 14, t: 6, b: 34 }, H = 3 * groupH + m.b;
+  const svg = s("svg", { width: W, height: H, role: "img", "aria-label": "Position of each type inside its pallet" }, el);
+  const x = lin(0, 1, m.l, W - m.r);
+  for (const t of [0, .25, .5, .75, 1]) { s("line", { x1: x(t), x2: x(t), y1: m.t, y2: H - m.b, class: "grid-l" }, svg); txt(svg, x(t), H - m.b + 16, t === 0 ? "first" : t === 1 ? "last" : t, "ax", "middle"); }
+  txt(svg, W - m.r, H - 2, "position in pallet →", "ax", "end");
+  [1, 2, 3].forEach((t, gi) => {
+    const g0 = m.t + gi * groupH;
+    s("rect", { x: 0, y: g0 + 14, width: 10, height: 10, rx: 2, class: "f-t" + t }, svg);
+    txt(svg, 16, g0 + 23, T[t].split(" · ")[0], "ax-ink");
+    txt(svg, 16, g0 + 39, T[t].split(" · ")[1], "ax");
+    [["real", "f-real", "Real"], ["gen", "f-gen", "Generated"]].forEach(([k, cls, label], ri) => {
+      const q = D.pos[t][k], cy = g0 + 22 + ri * rowH;
+      s("line", { x1: x(q[0]), x2: x(q[4]), y1: cy, y2: cy, stroke: k === "real" ? "var(--real)" : "var(--gen)", "stroke-width": 2 }, svg);
+      s("rect", { x: x(q[1]), y: cy - 8, width: x(q[3]) - x(q[1]), height: 16, rx: 4, class: cls, "fill-opacity": .85 }, svg);
+      s("line", { x1: x(q[2]), x2: x(q[2]), y1: cy - 8, y2: cy + 8, stroke: "var(--surface)", "stroke-width": 2.5 }, svg);
+      const hit = s("rect", { x: m.l, y: cy - 13, width: W - m.l - m.r, height: 26, class: "hit", tabindex: 0 }, svg);
+      hover(hit, (ev) => showTip(ev, `${T[t]} · ${label}`, [{ v: fx(q[2], 2), l: "median position", c: k === "real" ? C.real : C.gen }, { v: `${fx(q[1], 2)}–${fx(q[3], 2)}`, l: "middle half" }, { v: `${fx(q[0], 2)}–${fx(q[4], 2)}`, l: "10th to 90th percentile" }]));
+    });
+  });
+});
+chart($("#ch-rep"), (el, W) => {
+  el.replaceChildren();
+  const groupH = 78, m = { l: 74, r: 52, t: 6, b: 30 }, H = 3 * groupH + m.b;
+  const svg = s("svg", { width: W, height: H, role: "img", "aria-label": "Same size twice in a row, by type" }, el);
+  const x = lin(0, 1, m.l, W - m.r);
+  for (const t of [0, .25, .5, .75, 1]) { s("line", { x1: x(t), x2: x(t), y1: m.t, y2: H - m.b, class: "grid-l" }, svg); txt(svg, x(t), H - m.b + 16, pct(t, 0), "ax", "middle"); }
+  [1, 2, 3].forEach((t, gi) => {
+    const g0 = m.t + gi * groupH;
+    s("rect", { x: 0, y: g0 + 12, width: 10, height: 10, rx: 2, class: "f-t" + t }, svg);
+    txt(svg, 16, g0 + 21, T[t].split(" · ")[0], "ax-ink");
+    [["real", "f-real", "Real"], ["gen", "f-gen", "Generated"]].forEach(([k, cls, label], ri) => {
+      const v = D.repeat[k][t], y0 = g0 + 8 + ri * 26;
+      const w = Math.max(2, x(v) - x(0));
+      s("path", { d: `M${x(0)},${y0}h${w - 4}a4,4 0 0 1 4,4v10a4,4 0 0 1 -4,4h${-(w - 4)}Z`, class: cls }, svg);
+      txt(svg, x(v) + 6, y0 + 13, pct(v, 0), "lbl");
+      const hit = s("rect", { x: m.l, y: y0 - 3, width: W - m.l, height: 24, class: "hit", tabindex: 0 }, svg);
+      hover(hit, (ev) => showTip(ev, `${T[t]} · ${label}`, [{ v: pct(v), l: "same size as the box before", c: k === "real" ? C.real : C.gen }]));
+    });
+  });
+});
+
+/* ---------------------------------------------------------------- differences */
+const diffRows = [
+  ["Measure", "Real", "Generated", "Why"],
+  ["Files (days)", `${O.files.real}`, `${O.files.gen}`, "You asked for 20 files. Each borrows the outline of a different real day."],
+  ["Boxes", int(O.boxes.real), int(O.boxes.gen), "Fewer days, so fewer boxes. Per day the averages match (see Days)."],
+  ["Dates", `${longDate(O.dates.real[0])} – ${longDate(O.dates.real[1])}`, `${longDate(O.dates.gen[0])} – ${longDate(O.dates.gen[1])}`, "New days continue after the last real one, Sunday to Thursday like the real files, with gaps drawn from the real gaps."],
+  ["Type 3 sizes in use", `${O.skus.real}`, `${O.skus.gen}`, "Fewer days reach fewer sizes. Per day, the number of sizes for each brown box matches the real rate."],
+  ["Type 3 container IDs", `up to ${int(R.real_id_max[3])}`, `${int(R.id_range[3][0])} – ${int(R.id_range[3][1])}`, "Real labels count up by about 6,400 a day. Generated labels continue the count, so none can clash."],
+  ["Pallet IDs", `up to ${int(R.real_pallet_max)}`, `${int(R.pallet_range[0])} – ${int(R.pallet_range[1])}`, "New pallets continue the real numbering. A pallet sometimes runs over into the next day, as in the real files."],
+];
+diffRows.forEach((r, i) => {
+  $("#diffs").append(h("div", { class: "diff" + (i ? "" : " head") }, h("div", {}, r[0]), h("div", { class: i ? "num w" : "" }, r[1]), h("div", { class: i ? "num" : "" }, r[2]), h("div", { class: "why " + (i ? "w" : "") }, r[3])));
+});
+
+/* ---------------------------------------------------------------- files table */
+const tbl = $("#files-tbl");
+tbl.append(h("thead", {}, h("tr", {}, ...["File", "Date", "Day", "Boxes", "Pallets", "Box mix", "Type 3 sizes", "Hours", "Volume"].map((t, i) => h("th", { class: [3, 4, 6, 8].includes(i) ? "r" : "" }, t)))));
+const tb = h("tbody");
+for (const d of dg) {
+  const mini = h("div", { class: "mini", title: `type 1: ${d.types[0]}, type 2: ${d.types[1]}, type 3: ${d.types[2]}` });
+  d.types.forEach((n, i) => { const seg = h("i", { class: "bg-t" + (i + 1) }); seg.style.flex = `${n} 1 0`; mini.append(seg); });
+  tb.append(h("tr", {},
+    h("td", { class: "fname" }, d.file), h("td", {}, longDate(d.date)), h("td", {}, dayName(d.date)),
+    h("td", { class: "r" }, int(d.boxes)), h("td", { class: "r" }, d.pallets), h("td", {}, mini),
+    h("td", { class: "r" }, d.skus), h("td", {}, `${String(d.first).padStart(2, "0")}:00 – ${String(d.last).padStart(2, "0")}:59`),
+    h("td", { class: "r" }, fx(d.vol, 2) + " m³")));
+}
+tbl.append(tb);
+for (const [k, label] of [["real", "Real · use_data/"], ["gen", "Generated · generated_data/"]]) {
+  const smp = D.sample[k], pre = h("pre");
+  smp.lines.forEach((ln, i) => {
+    if (i === 0) { pre.append(h("span", { class: "hd" }, ln), "\n"); return; }
+    const parts = ln.split(","), hp = parts[1].split(":");
+    pre.append(parts[0] + "," + hp[0] + ":", h("span", { class: "mo" }, hp[1]), ":" + hp[2] + "," + parts.slice(2).join(","), "\n");
+  });
+  $("#raw").append(h("div", { class: "raw" }, h("div", { class: "raw-h" }, h("span", {}, label + smp.file), h("span", { style: "color:var(--accent)" }, "month in TRAN_HOUR")), pre));
+}
+
+/* ---------------------------------------------------------------- method */
+const PR = D.params || {};
+const steps = [
+  ["Read the real days", `All ${O.files.real} files in use_data: ${int(O.boxes.real)} boxes on ${O.pallets.real} pallets.`],
+  ["Make new carton sizes", `For each of the ${R.t3_real_skus} real type 3 sizes, a sibling moved about ${Math.round((PR.SKU_SD || .06) * 100)}% per side, rounded like its parent (to 0.5 or 0.1 cm), plus a tail of ${Math.round((PR.NOVEL_FRAC || .15) * 100)}% wider variations. A size is drawn again if it lands outside the real range or on an existing size.`],
+  ["Borrow a day's outline", "Each file takes one real day's pallets, their box counts and type mix, and its hour profile, and jitters all of them, so every number changes but the shape stays."],
+  ["Order the boxes", "Inside each pallet, boxes are ordered the way real pallets are: type 1 early, type 3 late, using position curves fitted to the real pallets."],
+  ["Pick heights and sizes", `Type 1 and 2 heights follow the day's tall/short split. Type 3 sizes come from the day's favourite cartons and repeat the size before them ${Math.round((PR.REPEAT_P || .31) * 100)}% of the time, so runs come out at the real rate.`],
+  ["Hand over pallets", "Pallets follow each other, and around each change the end of one and the start of the next share the line for about as long as on the real day."],
+  ["Stamp and number", "Times are written as hour:month:second like the export and rows sorted on them. Container and pallet IDs continue from the real ones, in each type's own ID format."],
+  ["Check every row", "Before the script finishes it rereads all 20 files and asserts the size, range, copy and ID rules on every row."],
+];
+for (const [b, t] of steps) $("#steps").append(h("li", {}, h("b", {}, b), t));
+const ruleMap = [
+  ["You asked", "", "", "How it was applied"],
+  ["Type 1 and 2: one x size, one y size, only two z sizes", "", "", `Type 1 is exactly ${fx(F[1].d)} × ${fx(F[1].w)} cm with height ${fx(F[1].tall)} or ${fx(F[1].short)}; type 2 is exactly ${fx(F[2].d)} × ${fx(F[2].w)} cm with height ${fx(F[2].tall)} or ${fx(F[2].short)}. These are the only values in the real files, and the only ones used.`],
+  ["No box bigger or smaller than the current data", "", "", `Applied to type 3, the mixed cartons. Every side stays inside the real min–max (depth ${fx(B.lo[0])}–${fx(B.hi[0])}, width ${fx(B.lo[1])}–${fx(B.hi[1])}, height ${fx(B.lo[2])}–${fx(B.hi[2])} cm) and so does the volume. Types 1 and 2 meet it by construction.`],
+  ["Don't copy the values", "", "", "No generated type 3 size equals a real one, and no container ID or pallet ID is reused."],
+  ["Same styling and box distribution", "", "", "Same nine columns in the same order, one decimal on sizes, location PL33PR, the hour:month:second stamp, rows sorted on it. The score table above measures the distribution."],
+  ["Files named 1.csv, 2.csv …", "", "", "data/box_pallet_data/generated_data/1.csv to 20.csv, next to use_data."],
+];
+ruleMap.forEach((r, i) => {
+  const row = h("div", { class: "diff" + (i ? "" : " head"), style: "grid-template-columns:minmax(180px,1fr) minmax(0,2fr)" }, h("div", { style: i ? "font-weight:600" : "" }, r[0]), h("div", { class: i ? "w" : "" }, r[3]));
+  $("#rule-map").append(row);
+});
+$("#foot").append(h("span", {}, `Report built ${longDate(D.generated_on)}`), h("span", {}, "scripts/compare_box_data.py"), h("span", {}, "real: use_data · generated: generated_data"));
+
+for (const c of charts) ro.observe(c.el);
+</script>

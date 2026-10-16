@@ -17,9 +17,10 @@ yourself.
 
 ## 0a. Box types and the stacking rule
 
-Every box carries a `type_id` and may only be stacked on boxes of its own type;
-the floor takes any type. The type is also the SKU — `types:` in
-[`config.yaml`](config.yaml) gives one item-size class per type, so the stream
+Every box carries a `type_id` and may only be stacked on boxes of its own type,
+apart from the exceptions of the mixed rules below; the floor takes any type.
+The type is also the SKU — `types:` in [`config.yaml`](config.yaml) gives one
+item-size class per type, so the stream
 draws a type and then its sides from that type's bounds.
 
 The rule bites hardest on a FIFO conveyor: with `--n_pick 1` there is nothing
@@ -40,8 +41,83 @@ To turn the whole thing off:
 ```bash
 --n_types 1                  # with `types: null` in the config: the pre-type simulator
 --type_constraint 0          # keeps type_id in the state, lets anything stack on anything
+--type_rule touch            # strictly own type only (the shipped default)
 --type_rule column           # nor may a box be anywhere over a foreign type, however deep
+--type_rule mixed_touch      # the cell's blue / white / brown rules, below, read as touch
+--type_rule mixed_column     # the same rules, read as column
 ```
+
+### The mixed rules (`type_rule: mixed_touch` / `mixed_column`)
+
+The cell's own rules for its three cartons: blue (type 0), white (1) and
+brown (2). Each goes on the floor and on its own type, and across types:
+
+| box → on | normally | else, soft mix off | else, soft mix on |
+|---|---|---|---|
+| **blue → blue** | all of its base on blue | fallback | fallback |
+| **blue → white** | (a) | fallback | last resort |
+| **blue → brown** | (a) | fallback | last resort |
+| **white → blue** | (a) or (d) | fallback | last resort |
+| **white → brown** | (a) | fallback | last resort |
+| **brown → blue** | (a), (c) or (d); soft mix on: (a) or (d) | fallback | last resort |
+| **brown → white** | never | never | never |
+
+- **(a)** Its top ends within `mixed_top_gap_cm` (5 cm) of the pallet height.
+- **(c)** Its footprint is at least `mixed_area_frac` (80%) of the small blue
+  box's.
+- **(d)** No small blue box (`mixed_small_blue_cm`, 50 × 30 × 18 cm) could
+  still go on that blue. Either there's too little height left under the
+  lid, or the arm can't put one there, or another box already covers it. A
+  small blue box "could go" when the normal rules, the candidate filter and
+  the arm all allow it.
+- **Fallback** applies to one box at a time: it opens when that box has no
+  placement under the normal rules, in any orientation, the arm included.
+  Other boxes in the station don't matter. Blue on blue then needs only
+  `min_support`.
+- **Last resort** applies to the whole station: it opens when no box within
+  reach (`n_pick`) has any place by the rules before it. While any box
+  within reach can go, it waits.
+- **Soft mix** (`soft_mix: 1`, `--soft_mix 1`, or the checkbox in the game)
+  swaps every fallback onto another type for the last resort, and gives
+  brown on blue a last resort too, while dropping (c). Blue on blue keeps
+  its own fallback. Off by default; only the mixed rules read it. The pairs
+  are `TOP_PAIRS` and `SOFT_PAIRS` in [ar2l/env.py](ar2l/env.py).
+
+Brown never goes on white, with or without soft mix.
+
+- **Outline step** (`outline_resort: 1`, `--outline_resort 1`, or the
+  "outline points" checkbox in the game) is one more step after all of the
+  above, for when they leave nothing. It runs the same rules again (normal,
+  then the box's own fallback, then soft mix's last resort) over a wider set
+  of positions: the `ems` candidates plus every position that puts a corner
+  of the box on an outline. The outlines are the edges of every packed box
+  and the pallet's own edges, at every cell along them. A box's top outline
+  (standing on it, flush with an edge) and its bottom outline (standing
+  beside it, flush with a side) are the same lines seen from above.
+  `outline_when` (`--outline_when`) says when the step opens: `station`
+  (the default) waits until no box within reach has a place by the steps
+  before, as the last resort does; `box` opens it for each box that has
+  none, even while another box in the station can still go.
+  `outline_area` (`--outline_area`, "outline step looks at" in the game)
+  says where it looks: `outline` (the default) is the outline positions
+  above; `all` is every cell of the grid, as `ems: 0` offers them, so the
+  step misses nothing the rules would allow. Off by default; only the mixed
+  rules read it, and it adds nothing under `ems: 0`, where every position
+  is a candidate already.
+
+The two variants differ only in what a box counts as being "on":
+
+- **`mixed_touch`**: only the cells it rests on, as under `touch`. A box may
+  hang over any type it doesn't touch.
+- **`mixed_column`**: every box anywhere under its footprint, at any depth
+  and across any gap, as under `column`. Hanging over a lower box counts, and
+  so does a box buried deeper in the stack. For (d), blue that another box
+  already covers can't take a small blue box, so only the blue on top of its
+  stack can block.
+
+The numbers are real cm, read onto the grid with the arm filter's cell size
+(4 cm with the shipped config: a 1-cell gap, and a 13 × 8 × 4-cell small blue
+box after `eval.box_pad_m` and `eval.box_round`).
 
 A policy trained with types must be *evaluated* with them: the node projections
 are 16 columns wider, and `ar2l.evaluate` takes `--n_types` and
@@ -84,7 +160,7 @@ they can be changed there without editing the config. A run does not record
 the types, sides or allowances, only `stack_cap`, so editing them is not
 flagged as drift from the opponent's training.
 
-On the 59 real pallets of `data/orders_all.csv`, DBL on a FIFO conveyor (arm
+On the 59 real pallets of `data/train_data/orders_all.csv`, DBL on a FIFO conveyor (arm
 filter off) starts 240 boxes past these limits with the type rule off and 50
 with it on; with the limit both are 0, for 47.1% → 43.8% and 24.3% → 23.7%
 utilisation. The policy network is unchanged, so an existing checkpoint loads
@@ -115,14 +191,14 @@ file order. Pallets of different lengths share one array, padded with zero
 rows the env reads as "end of this pallet".
 
 ```bash
-python3 -m ar2l.evaluate --data data/orders_all.csv --pallet_cm 120 80 180 --heuristic dbl --beta 0 \
+python3 -m ar2l.evaluate --data data/train_data/orders_all.csv --pallet_cm 120 80 180 --heuristic dbl --beta 0 \
         --per_pallet results/orders_dbl.csv
-python3 -m ar2l.evaluate --data data/orders_all.csv --pallet_cm 120 80 180 \
+python3 -m ar2l.evaluate --data data/train_data/orders_all.csv --pallet_cm 120 80 180 \
         --ckpt runs/sel_types_k5/best.pt --attacker runs/sel_types_k5/best.pt \
         --permuter mixer --nb 10 --n_pick 5 --beta 100 --per_pallet results/orders_sel.csv
-python3 -m ar2l.viz.replay3d --data data/orders_all.csv --pallet_cm 120 80 180 --seq 0 \
+python3 -m ar2l.viz.replay3d --data data/train_data/orders_all.csv --pallet_cm 120 80 180 --seq 0 \
         --policy run:sel_types_k5 --attacker mix:sel_types_k5 --gif
-python3 -m ar2l.orders data/orders_all.csv data/orders_all.npy --pallet_cm 120 80 180   # convert once, if wanted
+python3 -m ar2l.orders data/train_data/orders_all.csv data/train_data/orders_all.npy --pallet_cm 120 80 180   # convert once, if wanted
 ```
 
 `--box_scale N` (or `eval.box_scale`) divides every box side — x, y and z
@@ -160,7 +236,7 @@ before, a path — an orders `.csv` or an instance `.npy` — makes every episod
 one of its pallets, drawn at random.
 
 ```bash
-python3 -m ar2l.train --name sel_orders --data data/orders_all.csv \
+python3 -m ar2l.train --name sel_orders --data data/train_data/orders_all.csv \
         --pallet_cm 120 80 180 --cell_cm 4 --algo select --nb 10 --n_pick 5 \
         --iters 10000 --order_random 0.2
 ```
@@ -201,7 +277,7 @@ the default and have since been deleted; retrain under the flag to reproduce the
 **`--algo select --n_pick 5` at `--width 128`, trained on the orders file.**
 The cooperative selector picks which of the 5 reachable boxes goes next, *for*
 the packer, and the packer is trained on the stream it produces. It is the best
-run on the current problem — the real orders of `data/orders_all.csv` on the
+run on the current problem — the real orders of `data/train_data/orders_all.csv` on the
 30 × 25 × 40-cell pallet (1 cm cells, boxes divided by 4), 3 box types with
 the stacking rule, `ems: 3` candidates and the UR20 arm filter on — all of
 which are the `config.yaml` defaults now, so the command needs few flags.
@@ -227,19 +303,19 @@ Three commands: train, score the held-out pallets, look at one.
 ```bash
 # 1. train — select, width 128, on the orders file (reproduces arm_pack_124)
 python3 -m ar2l.train --name best_orders --algo select --nb 10 --n_pick 5 \
-    --data data/orders_all.csv --pallet_cm 30 25 40 --cell_cm 1 --box_scale 4 \
+    --data data/train_data/orders_all.csv --pallet_cm 30 25 40 --cell_cm 1 --box_scale 4 \
     --width 128 --heads 1 --layers 1 --ems 3 --min_support 0.3 \
     --iters 10000 --eval_every 250 --save_every 250 --resume
 
 # 2. score it: the selector (the `mixer` net of the same checkpoint) picks at beta 100
 python3 -m ar2l.evaluate --ckpt runs/best_orders/best.pt \
     --attacker runs/best_orders/best.pt --permuter mixer \
-    --data data/orders_all.csv --pallet_cm 30 25 40 --cell_cm 1 --box_scale 4 \
+    --data data/train_data/orders_all.csv --pallet_cm 30 25 40 --cell_cm 1 --box_scale 4 \
     --nb 10 --n_pick 5 --min_support 0.3 --beta 0 100 \
     --per_pallet results/best_orders.csv
 
 # 3. watch one pallet packed
-python3 -m ar2l.viz.replay3d --data data/orders_all.csv --pallet_cm 30 25 40 \
+python3 -m ar2l.viz.replay3d --data data/train_data/orders_all.csv --pallet_cm 30 25 40 \
     --seq 0 --policy run:best_orders --attacker mix:best_orders --gif
 ```
 
@@ -331,6 +407,25 @@ Both servers bind `127.0.0.1` by default; pass `--host 0.0.0.0` to reach them
 from another machine. The file viewers take `--root` (where `runs/`, `data/`
 and `results/` live) and `--fps` for the GIFs.
 
+The game's **Log match** tab (`ar2l/viz/logmatch.py`) packs a conveyor log of
+the real cell (`data/log data/*.csv`: one row per box the camera saw at each
+pick `step`, with `type` 1/2/3, `size_L/W/H_cm`, `mid_y_m` and `picked`). A box
+seen at several steps is one box (same type, same sides within the tab's
+tolerance, 1.5 cm by default, not moved back along the belt). The agent packs
+one box per step from the boxes it has seen and not packed, with the first
+N_B in view and the first k in reach, and never sees a box from a later step.
+When nothing in reach fits, it opens a new pallet. Each closed pallet opens in
+the Play tab's result view, with the box the real robot took marked at each
+step. A log that also has the robot's pack positions (`not_packed_reason`,
+`box_x/y/z_cm`, `orientation_deg`: 0/180 puts L along the pallet's y, ±90 along
+x) gets the real robot's pallets beside the agent's, pallet against pallet
+(agent pallet 1 vs real pallet 1, 2 vs 2, ...), box n against box n on one
+slider, the robot's station showing only that step's boxes. The pallet table
+puts each real pallet's figures under the agent's, its fill counting every
+box at the agent's padded size. A failed pick adds nothing. A new `pallet_id` on a packed
+box finishes the real pallet and starts the next; a log without `pallet_id`
+starts one where a box would overlap one already there.
+
 ## Checks
 
 ```bash
@@ -398,7 +493,7 @@ python3 -m ar2l.train \
   --name best_orders --algo select --nb 10 --n_pick 5 \
   --config config.yaml \
   --alpha 1.0 --rho 0.1 --dist_coef 1.0 --cvar_q 0.5 \
-  --data data/orders_all.csv --holdout 0.2 --order_random 0.0 \
+  --data data/train_data/orders_all.csv --holdout 0.2 --order_random 0.0 \
   --pallet_cm 30 25 40 --cell_cm 1.0 --box_scale 4 --box_round nearest \
   --iters 8000 --n_env 64 --T 30 \
   --bin 30x24x40 --n_items 120 --size_lo 4 --size_hi 15x10x10 --max_l 256 --max_c 128 \
@@ -579,7 +674,7 @@ the rest.
 | `--freeze_pack` | off | `attack` | hold the packer fixed and play it greedily; this is what makes the attacker train against the packer it will be tested against |
 | `--heur_pack` | — | `attack` | attack a heuristic (`dbl`, `bmf`, `lsah`, `onlinebph`, `hmm`, `macs`) instead of a network |
 | `--ent_final` | — | `attack` | anneal the attacker's entropy bonus linearly from `--ent_coef` to this value (the grid uses `0.001`) |
-| `--data` | `data/orders_all.csv` | any | where episodes come from: an orders `.csv` or an instance `.npy`; empty/`null` in the config is the random generator |
+| `--data` | `data/train_data/orders_real_gen.csv` | any | where episodes come from: an orders `.csv` or an instance `.npy`; empty/`null` in the config is the random generator |
 | `--holdout` | `0.2` | any, with `--data` | share of pallets kept out of training for the held-out evals that pick `best.pt` |
 | `--order_random` | `0.0` | any, with `--data` | randomise each drawn pallet's box order, 0..1 |
 | `--pallet_cm` / `--cell_cm` / `--box_pad_m` / `--box_scale` / `--box_round` | `30 25 40` / `1.0` / `0` / `4` / `nearest` | any, with an orders `.csv` | how the CSV is gridded; `--pallet_cm` is also the bin trained on |
@@ -601,7 +696,11 @@ comparable to another trained with the same ones.
 | `--stability` | `com` | `com` = centre of mass over the support (the identified rule), `cdrl` = the 60%-area/4-corner rule as the paper's citations write it |
 | `--n_types` | `3` | box types. Must match the `types:` size classes in the config; `1` with `types: null` is the pre-type simulator |
 | `--type_constraint` | `1` | `0` keeps `type_id` in the state but lets any box be stacked on any other |
-| `--type_rule` | `touch` | `touch`: a box may not rest on a foreign type; `column`: nor be anywhere over one, at any depth |
+| `--type_rule` | `touch` | `touch`: a box may not rest on a foreign type; `column`: nor be anywhere over one, at any depth; `mixed_touch` / `mixed_column`: the cell's blue / white / brown rules on either reading (section 0a) |
+| `--soft_mix` | `0` | `1` under the mixed rules: a box's own fallback onto another type becomes the station's last resort, brown on blue gets one too, and (c) is dropped (section 0a) |
+| `--outline_resort` | `0` | `1` under the mixed rules: when every other step leaves nothing, the same rules again over every point on a box's or the pallet's outline (section 0a) |
+| `--outline_when` | `station` | when the outline step opens: `station`, once no box within reach has a place; `box`, for each box that has none |
+| `--outline_area` | `outline` | where the outline step looks: `outline`, the outline points; `all`, every cell of the grid |
 | `--stack_cap` | `1` | `0` lifts the stack-height limit over small boxes of `env.stack_cap_types` (section 0a) |
 | `--min_support` | `env.min_support`, `0.80` | fraction of the item's base that must rest on the layer below for a placement to be offered. `0` is the bare centre-of-mass rule every published number was measured under. Ignored by `--stability cdrl` |
 
@@ -664,7 +763,9 @@ Defaults from the `eval:` section, plus `env:` for `--rot` / `--min_support`.
 | `--per_pallet` | — | write one CSV row per pallet and beta: `pallet_id,beta,boxes,placed,util_pct` |
 | `--n_types` | `3` | box types the dataset carries; **match the policy's** |
 | `--type_constraint` | `1` | `0` scores the policy with the stacking rule lifted |
-| `--type_rule` | `touch` | `column` scores it with no box allowed anywhere over a foreign type |
+| `--type_rule` | `touch` | `column` scores it with no box allowed anywhere over a foreign type, `mixed_touch` / `mixed_column` under the cell's blue / white / brown rules; **match the policy's** |
+| `--soft_mix` | `0` | `1` scores it with the mixed rules' soft mix: mixes only as the station's last resort; **match the policy's** |
+| `--outline_resort` / `--outline_when` / `--outline_area` | `0` / `station` / `outline` | score it with the mixed rules' outline step after every other; **match the policy's** |
 | `--seed` | `0` | which instances the β subsets pick |
 | `--out` | — | write the metrics to this JSON path |
 | `--device` | `cuda` | |

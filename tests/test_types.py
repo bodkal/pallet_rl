@@ -30,6 +30,9 @@ def typed(n_env=8, **kw):
     kw.setdefault("n_items", 120)
     kw.setdefault("types", CLASSES)
     kw.setdefault("n_types", 3)
+    # this file is about the own-type rule, whatever the config says; the
+    # mixed rules' exceptions are tested in test_mixed.py
+    kw.setdefault("type_rule", "touch")
     return BPPBatch(n_env, **kw)
 
 
@@ -172,7 +175,8 @@ def test_an_overhang_over_a_foreign_type_is_legal():
     and the third hangs over the foreign one without touching it.
     """
     env = BPPBatch(1, S=(6, 6, 6), nb=1, rot=1, ems=False, seed=0,
-                   n_types=3, types=CLASSES, min_support=0.6)
+                   n_types=3, types=CLASSES, min_support=0.6,
+                   type_rule="touch")
     def offer(t_far):
         env.reset(np.array([[[3, 1, 1, 0]] * 4], np.int16))
         env.hmap[0, 0:2, 0] = 2          # a type-0 shelf, two cells wide
@@ -291,7 +295,8 @@ def test_a_reach_of_one_ends_the_episode_on_a_blocked_box():
     else -- which is what `type_blocked` reports.
     """
     env = BPPBatch(1, S=(4, 4, 6), nb=1, n_pick=1, rot=1, ems=False, seed=0,
-                   n_types=3, types=CLASSES, min_support=0.0)
+                   n_types=3, types=CLASSES, min_support=0.0,
+                   type_rule="touch")
     env.reset(np.array([[[2, 2, 1, 1]] * 6], np.int16))
     env.hmap[0] = 1
     env.tmap[0] = 0
@@ -305,7 +310,8 @@ def test_a_reach_of_one_ends_the_episode_on_a_blocked_box():
 def test_a_wider_reach_hides_the_blocked_boxes_from_the_permuter():
     """`b_pick` is what the permuter may hand over, so a dead box leaves it."""
     env = BPPBatch(1, S=(4, 4, 6), nb=4, n_pick=3, rot=1, ems=False, seed=0,
-                   n_types=3, types=CLASSES, min_support=0.0)
+                   n_types=3, types=CLASSES, min_support=0.0,
+                   type_rule="touch")
     # slots 0 and 2 are foreign types on a type-0 floor; slot 1 is type 0
     env.reset(np.array([[[2, 2, 1, 1], [2, 2, 1, 0], [2, 2, 1, 2],
                          [2, 2, 1, 0]]], np.int16))
@@ -320,7 +326,8 @@ def test_a_wider_reach_hides_the_blocked_boxes_from_the_permuter():
 
 def test_the_episode_ends_when_the_whole_station_is_blocked():
     env = BPPBatch(1, S=(4, 4, 6), nb=3, n_pick=3, rot=1, ems=False, seed=0,
-                   n_types=3, types=CLASSES, min_support=0.0)
+                   n_types=3, types=CLASSES, min_support=0.0,
+                   type_rule="touch")
     env.reset(np.array([[[2, 2, 1, 1], [2, 2, 1, 2], [2, 2, 1, 1]]], np.int16))
     env.hmap[0] = 1
     env.tmap[0] = 0
@@ -330,12 +337,58 @@ def test_the_episode_ends_when_the_whole_station_is_blocked():
     assert bool(env.done[0])
 
 
-def test_the_front_slot_of_b_pick_is_exactly_what_step_will_accept():
-    """The invariant behind "the station empties when the episode ends".
+def blocked_front(**kw):
+    """A type-0 floor, and a type-0 box to place; behind it a type-1 box with
+    nothing of its own type to stand on, then another type-0 box."""
+    env = BPPBatch(1, S=(4, 4, 6), nb=3, n_pick=3, n_items=3, rot=1,
+                   ems=False, seed=0, n_types=3, types=CLASSES,
+                   min_support=0.0, type_rule="touch", **kw)
+    env.reset(np.array([[[2, 2, 1, 0], [2, 2, 1, 1], [2, 2, 1, 0]]], np.int16))
+    env.hmap[0] = 1
+    env.tmap[0] = 0
+    env._invalidate()
+    return env
 
-    `step` terminates on the *head* box having no placement, and `b_pick`'s
-    first slot is the same question asked of the same box, so the two have to
-    agree at every step or a bin could die with its station still full.
+
+def test_a_blocked_front_box_does_not_end_the_episode():
+    """A dead front box with a live one behind it is a live bin: `step` ends
+    the episode only once `b_pick` is empty."""
+    rng = np.random.default_rng(0)
+    env = blocked_front()
+    env.step(random_action(env, rng))
+    assert not env.n_feasible()[0], "the front box should be blocked"
+    assert not env.done[0], "a box within reach could still go, yet it ended"
+    assert env.obs_cb()["b_pick"][0].tolist() == [False, True, False]
+    env.permute(np.array([1]))
+    env.step(random_action(env, rng))
+    assert int(env.n_packed[0]) == 2
+    assert env.done[0], "only the blocked box is left, so the bin is finished"
+
+
+def test_without_the_station_filter_a_blocked_front_box_ends_it():
+    """A caller that never permutes turns the filter off: a FIFO conveyor,
+    whose episode ends on the front box."""
+    env = blocked_front(pick_feasible=False)
+    env.step(random_action(env, np.random.default_rng(0)))
+    assert env.done[0]
+
+
+def test_a_live_bin_always_has_a_box_to_pick():
+    """`b_pick` is empty exactly in the bins that are finished."""
+    rng = np.random.default_rng(3)
+    env = typed(8, nb=5, n_pick=4, seed=7)
+    while not env.done.all():
+        pick = env.obs_cb()["b_pick"]
+        assert np.array_equal(pick.any(1), ~env.done)
+        env.permute(np.where(pick.any(1), pick.argmax(1), 0))
+        env.step(random_action(env, rng))
+
+
+def test_the_front_slot_of_b_pick_is_exactly_what_step_will_accept():
+    """`b_pick`'s first slot asks of the head box what `n_feasible` asks --
+    whether it has a placement -- and `step` places only the head, so the two
+    have to agree at every step, or the permuter could hand over a box the
+    packer has nowhere to put.
     """
     rng = np.random.default_rng(6)
     env = typed(8, nb=5, n_pick=4, seed=13)

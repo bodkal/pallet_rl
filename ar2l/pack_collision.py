@@ -992,6 +992,86 @@ class ArmPackChecker:
             return True, []
         return any_capsule_hits_pyramid(caps, self.pyramid, self.pad), caps
 
+    #: placements whose geometry one checker remembers before it starts over;
+    #: an entry is 18 floats plus its key, so this is ~100 MB at the most
+    GEO_MEMO_MAX = 400_000
+
+    def _geometry_b(self, sizes, poses, B):
+        """(ok (N,), seg (N, 3, 2, 3)): IK reachability and, per link, the
+        capsule's two end points in cells (NaN where unreachable).  The
+        arithmetic `collides_batch` always ran; it reads no height map."""
+        n = len(sizes)
+        tool = poses + np.stack([sizes[:, 0] // 2, sizes[:, 1] // 2,
+                                 sizes[:, 2] + self.tool_length_int], 1)
+        s = np.array([self.cell_frame.scale_x, self.cell_frame.scale_y,
+                      self.cell_frame.scale_z], np.float32)
+        t = (tool.astype(np.float32) / s).astype(float)
+        box_from_tool = np.zeros((n, 4, 4))
+        box_from_tool[:, :3, :3] = _TOOL_DOWN
+        box_from_tool[:, :3, 3] = t
+        box_from_tool[:, 3, 3] = 1.0
+        q, ok = lazy_ik_batch(B @ box_from_tool, self.ik_solution_number)
+        seg = np.full((n, 3, 2, 3), np.nan)
+        idx = np.flatnonzero(ok)
+        if len(idx):
+            jt = fk_batch(q[idx])
+            box_from_world = np.linalg.inv(B)
+            cf, p = self.cell_frame, self.arm_params
+            links = [
+                _capsules_b(jt[0] @ self.upper_arm_off_a, jt[1] @ self.upper_arm_off_b,
+                            p.upper_arm, box_from_world, cf),
+                _capsules_b(jt[1], jt[2], p.forearm, box_from_world, cf),
+                _capsules_b(jt[3], jt[4], p.wrist, box_from_world, cf),
+            ]
+            for li, (a, b, _, _) in enumerate(links):
+                seg[idx, li, 0], seg[idx, li, 1] = a, b
+        return ok, seg
+
+    def _geometry(self, sizes, poses, base_from_box):
+        """`_geometry_b`, remembered per (base, size, pose).
+
+        The IK, the FK and the capsules depend on where the box goes and where
+        the base stands, never on the pack, yet a training run asks for the
+        same few thousand poses again on every step; only the column test
+        against the height map has to be redone.  The cached rows are the very
+        floats `_geometry_b` returned, so the answers are unchanged.
+        """
+        B = np.asarray(base_from_box, float)
+        if (sizes.min() < 0 or poses.min() < 0 or sizes.max() >= 1024
+                or poses.max() >= 1024):
+            return self._geometry_b(sizes, poses, B)     # outside the key
+        memo = self.__dict__.setdefault("_geo_memo", {})
+        if sum(len(m[0]) for m in memo.values()) > self.GEO_MEMO_MAX:
+            memo.clear()
+        index, oks, segs, used = memo.setdefault(
+            B.tobytes(), ({}, np.zeros(4096, bool),
+                          np.zeros((4096, 3, 2, 3)), 0))
+        key = (((((sizes[:, 0] << 10) | sizes[:, 1]) << 10 | sizes[:, 2]) << 10
+                | poses[:, 0]) << 10 | poses[:, 1]) << 10 | poses[:, 2]
+        keys = key.tolist()
+        row = np.fromiter((index.get(k, -1) for k in keys), np.int64, len(keys))
+        miss = np.flatnonzero(row < 0)
+        if len(miss):
+            new, first = np.unique(key[miss], return_index=True)
+            ok, seg = self._geometry_b(sizes[miss[first]], poses[miss[first]], B)
+            end = used + len(new)
+            if end > len(oks):
+                cap = max(end, 2 * len(oks))
+                oks = np.concatenate([oks[:used], np.zeros(cap - used, bool)])
+                segs = np.concatenate([segs[:used],
+                                       np.zeros((cap - used, 3, 2, 3))])
+            oks[used:end], segs[used:end] = ok, seg
+            for j, k in enumerate(new.tolist()):
+                index[k] = used + j
+            memo[B.tobytes()] = (index, oks, segs, end)
+            row = np.fromiter((index[k] for k in keys), np.int64, len(keys))
+        return oks[row], segs[row]
+
+    def _radii(self):
+        p = self.arm_params
+        return [(lp.effective_radius(), lp.effective_radius_end())
+                for lp in (p.upper_arm, p.forearm, p.wrist)]
+
     def collides_batch(self, sizes, poses, base_from_box, hms, which=None):
         """`is_arm_collid_with_pack(...)[0]` for N placements at once.
 
@@ -1010,34 +1090,35 @@ class ArmPackChecker:
         which = np.zeros(n, int) if which is None else np.asarray(which, int)
         if n == 0:
             return np.zeros(0, bool)
-        tool = poses + np.stack([sizes[:, 0] // 2, sizes[:, 1] // 2,
-                                 sizes[:, 2] + self.tool_length_int], 1)
-        s = np.array([self.cell_frame.scale_x, self.cell_frame.scale_y,
-                      self.cell_frame.scale_z], np.float32)
-        t = (tool.astype(np.float32) / s).astype(float)
-        box_from_tool = np.zeros((n, 4, 4))
-        box_from_tool[:, :3, :3] = _TOOL_DOWN
-        box_from_tool[:, :3, 3] = t
-        box_from_tool[:, 3, 3] = 1.0
-        B = np.asarray(base_from_box, float)
-        q, ok = lazy_ik_batch(B @ box_from_tool, self.ik_solution_number)
-
+        ok, seg = self._geometry(sizes, poses, base_from_box)
         out = ~ok                     # unreachable counts as a collision
         idx = np.flatnonzero(ok)
         if not len(idx):
             return out
-        jt = fk_batch(q[idx])
-        box_from_world = np.linalg.inv(B)
-        cf, p = self.cell_frame, self.arm_params
-        caps = [
-            _capsules_b(jt[0] @ self.upper_arm_off_a, jt[1] @ self.upper_arm_off_b,
-                        p.upper_arm, box_from_world, cf),
-            _capsules_b(jt[1], jt[2], p.forearm, box_from_world, cf),
-            _capsules_b(jt[3], jt[4], p.wrist, box_from_world, cf),
-        ]
+        caps = [(seg[idx, li, 0], seg[idx, li, 1], ra, rb)
+                for li, (ra, rb) in enumerate(self._radii())]
         out[idx] = capsules_hit_packs_b(caps, hms, which[idx], self.pad,
-                                        cf.height_scale())
+                                        self.cell_frame.height_scale())
         return out
+
+    def columns_read(self, sizes, poses, base_from_box):
+        """(N, 4) inclusive x0, x1, y0, y1: the columns `collides_batch` can
+        read for each placement -- its capsules' AABB inflated by radius and
+        pad, as `capsules_hit_packs_b` tests it, widened by a cell.  A height
+        change outside it cannot change that placement's answer.  Unreachable
+        placements read no column and come back as an empty box."""
+        sizes = np.asarray(sizes, int).reshape(-1, 3)
+        poses = np.asarray(poses, int).reshape(-1, 3)
+        ok, seg = self._geometry(sizes, poses, base_from_box)
+        rm = np.array([max(ra, rb) for ra, rb in self._radii()]) + self.pad
+        with np.errstate(invalid="ignore"):
+            lo = (seg.min(2)[..., :2] - rm[None, :, None]).min(1)
+            hi = (seg.max(2)[..., :2] + rm[None, :, None]).max(1)
+        # column c is read when its centre c + 0.5 lies in [lo, hi]
+        out = np.stack([np.floor(lo[:, 0] - 0.5) - 1, np.ceil(hi[:, 0] - 0.5) + 1,
+                        np.floor(lo[:, 1] - 0.5) - 1, np.ceil(hi[:, 1] - 0.5) + 1], 1)
+        out[~ok] = (1, 0, 1, 0)
+        return out.astype(np.int64)
 
 
 # =============================================================================

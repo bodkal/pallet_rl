@@ -289,6 +289,22 @@ def test_permute_moves_the_chosen_item_to_the_front():
         assert [tuple(v) for v in new[b, 1:]] == rest, "order of the others changed"
 
 
+@pytest.mark.parametrize("idx", [1, 2])
+def test_permute_past_the_end_of_the_sequence_keeps_every_box(idx):
+    """A window wider than what is left of the sequence: the slots past its
+    end alias its last box, and taking that box (or any other) must not lose
+    one box and copy another."""
+    env = plain(1, S=10, nb=5, n_items=3, size_hi=4, seed=0)
+    seq = np.zeros((1, 3, 4), np.int16)
+    seq[0, :, 0] = [1, 2, 3]                 # a serial number per item
+    seq[0, :, 1:3] = 2
+    env.reset(seq)
+    env.permute(np.array([idx]))
+    got = env.seq[0, :, 0].tolist()
+    assert got[0] == idx + 1
+    assert sorted(got) == [1, 2, 3], got
+
+
 def test_n_pick_splits_the_window_into_reach_and_preview():
     """`b_mask` is what is seen, `b_pick` is what can be taken."""
     env = plain(4, S=10, nb=11, n_pick=5, size_hi=4, seed=5)

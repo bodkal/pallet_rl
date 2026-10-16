@@ -108,7 +108,8 @@ def instrument():
     B, A = E.BPPBatch, PC.ArmPackChecker
     # the environment
     for name in ("reset_done", "obs", "obs_cb", "step", "permute", "window",
-                 "_positions", "_placeable", "_feas_one", "_arm_clear",
+                 "_positions", "_placeable", "_head_placeable", "_feas_one",
+                 "_arm_any", "_arm_clear",
                  "_ems_corners", "_corner_mask", "_type_ok", "_type_under",
                  "_sweeps", "_support_ratio", "_trim_c", "utilization"):
         if hasattr(B, name):

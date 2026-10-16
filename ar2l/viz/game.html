@@ -6,9 +6,8 @@
 :root{--bg:#0f1115;--panel:#171a21;--line:#262b36;--fg:#e6e9ef;--dim:#8b93a7;
       --c0:#4cc9f0;--c1:#f7b32b;--c2:#57cc99;--c3:#ef476f;--c4:#b892ff;--c5:#ff9770;
       --arm:#9aa3b5;}
-/* light is the OS default unless the header toggle pins one: <html data-theme> */
+/* dark is the default; the header toggle pins light: <html data-theme=light> */
 :root{color-scheme:dark}
-@media(prefers-color-scheme:light){:root:not([data-theme=dark]){--bg:#f6f7f9;--panel:#fff;--line:#e2e5ea;--fg:#1a1d23;--dim:#6b7280;--arm:#7d8699;color-scheme:light}}
 :root[data-theme=light]{--bg:#f6f7f9;--panel:#fff;--line:#e2e5ea;--fg:#1a1d23;--dim:#6b7280;--arm:#7d8699;color-scheme:light}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--fg);font:13px/1.45 ui-sans-serif,-apple-system,Segoe UI,Roboto,sans-serif}
@@ -87,6 +86,9 @@ kbd{border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;paddi
 .tri{display:grid;grid-template-columns:repeat(3,1fr);gap:5px}
 .pf.off input,.pf.off select{border-color:var(--c1);color:var(--c1)}
 .pf input:disabled,.pf select:disabled{opacity:.6}
+.pf.flag{flex-direction:row;align-items:center;gap:8px;padding-top:16px;cursor:pointer}
+.pf.flag input{width:15px;height:15px;accent-color:var(--c0);margin:0;flex:none}
+.pf.flag input:disabled+span{opacity:.6}
 .pgsrc{margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--line)}
 #perr{color:var(--c3);white-space:pre-line}
 #pwarn{color:var(--c1)}
@@ -139,6 +141,18 @@ details.par>summary::marker{color:var(--dim)}
 .rwin .rwt .num{color:var(--dim);font-size:10px}
 .rwin .rwt.sel .num{color:var(--c0);font-weight:640}
 .rwin .rwsep{align-self:stretch;border-left:1px dashed var(--line);margin:0 2px}
+/* a box within reach is clicked to show where it could go; the one shown is ringed */
+.rwin .rwt.pk{cursor:pointer}
+.rwin .rwt.pk:hover{border-color:var(--fg)}
+.rwin .rwt.look{outline:2px solid var(--c1);outline-offset:1px}
+.rpts .bad{color:var(--c3);font-size:10.5px;margin-top:4px}
+/* a log match's station: the box the real robot took at that step, and the
+   boxes first seen there */
+.rwin .rwt .tags{display:flex;gap:3px;min-height:13px}
+.rwin .rwt .tag{font-size:9px;line-height:13px;padding:0 4px;border-radius:5px;font-weight:640;letter-spacing:.3px}
+.rwin .rwt .tag.rb{background:var(--c1);color:#111}
+.rwin .rwt .tag.nw{box-shadow:0 0 0 1px var(--c2) inset;color:var(--c2)}
+.rwin .rwt .tag.fl{background:var(--c3);color:#fff}
 #msg{margin-top:9px;min-height:20px;color:var(--dim)}
 
 /* result */
@@ -187,6 +201,14 @@ input[type=range]{width:100%;accent-color:var(--c0)}
 .ddi.grp::after{content:'\25B8';margin-left:auto;color:var(--dim)}
 .ddi.grp .n{color:var(--dim);font-size:11px}
 .ddsep{height:1px;background:var(--line);margin:4px 2px}
+/* the folder picker: the path stays typeable, the menu walks the server's folders */
+.dirp{display:flex;gap:4px;position:relative}
+.dirp>input{flex:1;min-width:0}
+.dirp>button{flex:none;padding:6px 9px;font-size:10px;color:var(--dim)}
+.dirp>.ddm{width:100%;max-width:none}
+.ddhd{padding:5px 10px 6px;font:11px ui-monospace,monospace;color:var(--dim);word-break:break-all}
+.ddi .n{margin-left:auto;color:var(--dim);font-size:11px;font-variant-numeric:tabular-nums}
+.ddi.has .n{color:var(--c2)}
 /* recalculation: a field held at the game's value, and one moved off it */
 .pf.lock>span{opacity:.6}
 .pf.lock input,.pf.lock select{opacity:.5;cursor:not-allowed}
@@ -235,7 +257,21 @@ nav.tabs .dot{display:inline-block;width:7px;height:7px;border-radius:50%;backgr
 #xpardet{margin-top:14px}
 #xperr{color:var(--c3);white-space:pre-line}
 #xpwarn{color:var(--c1)}
-#xmsg{color:var(--c3);white-space:pre-line}
+#xmsg,#xnerr{color:var(--c3);white-space:pre-line}
+/* the log match */
+#logm{max-width:1180px;margin:22px auto}
+#logm .card+.card{margin-top:12px}
+#lpardet{margin-top:14px}
+#lperr,#lmsg{color:var(--c3);white-space:pre-line}
+#lpwarn{color:var(--c1)}
+#ltab tr.cur td{color:var(--dim)}
+#ltab .lreal{color:var(--c1);margin-top:2px}
+.lref{color:var(--dim);font-weight:400}
+.lgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-top:14px}
+.lgrid.two{grid-template-columns:repeat(2,minmax(0,1fr))}
+@media(max-width:900px){.lgrid,.lgrid.two{grid-template-columns:1fr}}
+.lgrid .stat span:first-child{color:var(--dim)}
+.lgrid .stat b{text-align:right}
 .xsum{display:flex;gap:22px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px}
 .xsum .big{font-size:34px}
 .xsum .k{color:var(--dim);font-size:10px;text-transform:uppercase;letter-spacing:.5px}
@@ -314,6 +350,10 @@ button.del:hover:not(:disabled){border-color:var(--c3);color:var(--c3)}
 .ctab td.res{color:var(--dim);text-align:left}
 .cdot{display:inline-block;width:12px;height:12px;border-radius:50%}
 .cdot.lose{width:6px;height:6px;background:var(--line)}
+.cnote{margin-top:14px;font-size:12px}
+.ctab .cm{display:inline-flex;align-items:center;gap:6px;text-align:right}
+.ctab .cm i{display:flex;justify-content:center;width:12px;flex:none}
+.ctab tr.avg td{border-top:2px solid var(--line);font-weight:600}
 details.cf{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 16px;margin-top:10px}
 details.cf>summary{cursor:pointer;display:flex;gap:10px;align-items:center;flex-wrap:wrap;list-style:none}
 details.cf>summary::-webkit-details-marker{display:none}
@@ -347,7 +387,6 @@ details.cf>summary b{font-size:14px}
 #ttip b{font-family:ui-monospace,monospace;font-weight:600}
 #ttip .d{color:var(--dim);margin-top:4px;font-size:11px}
 :root{--tr:#279cc4;--ho:#c2850a}
-@media(prefers-color-scheme:light){:root:not([data-theme=dark]){--tr:#0b8fb8;--ho:#c47d00}}
 :root[data-theme=light]{--tr:#0b8fb8;--ho:#c47d00}
 .tjob{border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin-top:10px;
   background:linear-gradient(180deg,color-mix(in srgb,var(--fg) 2.5%,transparent),transparent 120px);
@@ -404,6 +443,7 @@ details.cf>summary b{font-size:14px}
 .tchart .lgd{display:flex;gap:16px;font-size:11px;color:var(--dim);margin-bottom:4px}
 .tchart .lgd i{display:inline-block;width:14px;height:2px;vertical-align:3px;margin-right:6px;border-radius:1px}
 .tchart .lgd i.dot{width:8px;height:8px;border-radius:50%;vertical-align:0}
+.tchart .lgd i.dash{background:repeating-linear-gradient(90deg,var(--dim) 0 5px,transparent 5px 9px)}
 .tchart svg{display:block;width:100%;height:190px;overflow:visible}
 .tchart svg text{font:10px ui-sans-serif,-apple-system,Segoe UI,Roboto,sans-serif;fill:var(--dim)}
 .tchart svg text.lab{fill:var(--fg);font-weight:600}
@@ -412,6 +452,19 @@ details.cf>summary b{font-size:14px}
   box-shadow:0 6px 18px rgba(0,0,0,.3);font-variant-numeric:tabular-nums;display:none}
 .tchart .tt .sw{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:6px}
 .tfoot{margin-top:10px}
+/* who is winning: the runs ranked by their latest held-out eval */
+.tlead{display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:11.5px}
+.tlead+.tlead{margin-top:6px}
+#tlead{margin-bottom:2px}
+.tlead .k{color:var(--dim);font-size:10px;text-transform:uppercase;letter-spacing:.55px;margin-right:2px}
+.tlead button{display:inline-flex;gap:6px;align-items:baseline;padding:3px 10px;border-radius:10px;font-size:11.5px;
+  font-variant-numeric:tabular-nums;background:none;color:var(--dim)}
+.tlead button b{color:var(--fg);font-weight:600}
+.tlead button.lead{color:var(--ho);border-color:color-mix(in srgb,var(--ho) 55%,var(--line));
+  background:color-mix(in srgb,var(--ho) 10%,transparent)}
+.tlead button.none{opacity:.55;border-style:dashed}
+.tlead button .its{opacity:.8;padding-left:6px;border-left:1px solid var(--line)}
+.chip.rk.lead{color:var(--ho);border-color:color-mix(in srgb,var(--ho) 55%,transparent);font-weight:600}
 .tjob pre{font:11px/1.4 ui-monospace,monospace;color:var(--dim);max-height:260px;overflow:auto;
   background:var(--bg);border-radius:8px;padding:8px;margin:6px 0 0;white-space:pre-wrap}
 /* machine load, on top of the New training tab */
@@ -451,16 +504,16 @@ details.cf>summary b{font-size:14px}
 @keyframes xpop{from{transform:scale(.4);opacity:0}to{transform:scale(1);opacity:1}}
 @keyframes xin{from{transform:translateY(6px);opacity:0}}
 @keyframes xbeat{50%{opacity:.35;transform:scale(.75)}}
-@media(prefers-reduced-motion:reduce){#exp *,#exp *::after,nav.tabs *{animation:none!important;transition:none!important}}
+@media(prefers-reduced-motion:reduce){#exp *,#exp *::after,#logm *,#logm *::after,nav.tabs *{animation:none!important;transition:none!important}}
 </style>
 
 <header>
   <h1>AR2L &mdash; play the packer</h1>
-  <nav class="tabs" id="tabs"><button data-tab="game" class="on">Play</button><button data-tab="exp">Big experiment<span class="dot" id="xdot" hidden></span></button><button data-tab="cmp">Compare</button><button data-tab="trn">New training<span class="dot" id="tdot" hidden></span></button><button data-tab="dash">Training</button><span class="ink"></span></nav>
+  <nav class="tabs" id="tabs"><button data-tab="game" class="on">Play</button><button data-tab="exp">Big experiment<span class="dot" id="xdot" hidden></span></button><button data-tab="logm">Log match<span class="dot" id="ldot" hidden></span></button><button data-tab="cmp">Compare</button><button data-tab="trn">New training<span class="dot" id="tdot" hidden></span></button><button data-tab="dash">Training</button><span class="ink"></span></nav>
   <span class="sub">Koby : {{VERSION}}</span>
   <span class="spacer"></span>
   <span class="sub" id="who"></span>
-  <button id="theme" title="colour theme: follow the system, light or dark"></button>
+  <button id="theme" title="colour theme: dark or light"></button>
 </header>
 
 <main>
@@ -488,8 +541,8 @@ details.cf>summary b{font-size:14px}
           <div class="pf"><span>boxes from</span><select id="src">
             <option value="random">the random generator</option>
             <option value="orders">an orders file &mdash; real pallets</option></select></div>
-          <div class="pf pf3 osrc"><span>data file (.csv or .npy, from the project folder)</span>
-            <input id="data" type="text" spellcheck="false" placeholder="data/orders_all.csv"></div>
+          <div class="pf pf3 osrc"><span>data file (.csv or .npy &mdash; type a path or browse)</span>
+            <div class="dirp"><input id="data" type="text" spellcheck="false" placeholder="data/train_data/orders_all.csv"></div></div>
           <div class="pf pf3 osrc"><span>pallet</span><select id="palpick">
             <option value="-1">a random pallet (dealt by the seed)</option></select></div>
           <div class="pf osrc"><span>order randomness &mdash; 0 file, 1 random</span>
@@ -545,7 +598,17 @@ details.cf>summary b{font-size:14px}
             <input id="msup" type="number" min="0" max="1" step="0.05"></div>
           <div class="pf"><span>box-type rule</span><select id="trule">
             <option value="touch">touch &mdash; not resting on another type</option>
-            <option value="column">column &mdash; not over another type anywhere below</option></select></div>
+            <option value="column">column &mdash; not over another type anywhere below</option>
+            <option value="mixed_touch">mixed touch &mdash; the cell's blue / white / brown rules, on what it rests on</option>
+            <option value="mixed_column">mixed column &mdash; the same rules, on anything below</option></select></div>
+          <label class="pf flag" title="mixed rules only: a box's own fallback onto another type becomes a last resort for the whole station -- only when no box within reach has any other place -- and brown on blue loses (c) but gains that last resort. Blue on blue keeps its fallback; brown never goes on white."><input id="softmix" type="checkbox"><span>soft mix &mdash; mixes only as a last resort for the station</span></label>
+          <label class="pf flag" title="mixed rules only: when every other step leaves nothing -- the normal rules, a box's own fallback, soft mix's last resort -- the same rules again over every point on an outline: the edges of every packed box (on it flush with an edge, or beside it flush with a side) and the pallet's edges. Nothing to add when the action space is every loading position already."><input id="olresort" type="checkbox"><span>outline points &mdash; a last resort after soft mix</span></label>
+          <div class="pf"><span>outline step opens</span><select id="olwhen">
+            <option value="station">station &mdash; when no box within reach has a place</option>
+            <option value="box">box &mdash; for each box that has no place</option></select></div>
+          <div class="pf" title="where the outline step runs the rules again: the outline points on top of the action space's own, or every cell of the grid, as the 'every loading position' action space offers them"><span>outline step looks at</span><select id="olarea">
+            <option value="outline">outline &mdash; the edges of every box and of the pallet</option>
+            <option value="all">all &mdash; every cell of the grid</option></select></div>
           <div class="pf"><span>robot-arm filter</span><select id="armcol">
             <option value="0">off &mdash; every placement the rules allow</option>
             <option value="1">on &mdash; drop placements the arm collides on</option></select></div>
@@ -694,15 +757,27 @@ details.cf>summary b{font-size:14px}
       box could go &mdash; the packer's candidate list for it, one point per
       placement corner</span>
     </label>
+    <label class="row" style="cursor:pointer;margin-top:4px;padding-left:22px">
+      <input type="checkbox" id="showbad" checked> <span>also show the points
+      its action space offered that the rules turn down, in red</span>
+    </label>
+    <label class="row" style="margin-top:4px;padding-left:22px">
+      <span>orientations shown</span> <select class="ptsrot" title="which of the candidate points to draw: both orientations, or only one of them">
+          <option value="all">all</option><option value="0">only 0&deg; &mdash; as it came</option>
+          <option value="1">only 90&deg; &mdash; turned</option></select>
+    </label>
     <div class="lg ptslg">
       <span><svg width="12" height="12" viewBox="0 0 12 12"><circle cx="6" cy="6" r="4" fill="var(--c0)" stroke="#000"/></svg>orientation 1, as it came</span>
       <span><svg width="12" height="12" viewBox="0 0 12 12"><path d="M6 1L11 6L6 11L1 6Z" fill="none" stroke="var(--c4)" stroke-width="2"/></svg>orientation 2, turned 90&deg;</span>
       <span><svg width="12" height="12" viewBox="0 0 12 12"><circle cx="6" cy="6" r="4.5" fill="none" stroke="var(--fg)" stroke-width="1.5"/></svg>the one actually taken</span>
+      <span class="badlg"><svg width="12" height="12" viewBox="0 0 12 12"><circle cx="6" cy="6" r="3.5" fill="var(--c3)" stroke="#000"/></svg><svg width="12" height="12" viewBox="0 0 12 12"><path d="M6 1L11 6L6 11L1 6Z" fill="none" stroke="var(--c3)" stroke-width="2"/></svg>turned down by the rules</span>
     </div>
     <div class="sub" style="margin-top:6px;opacity:.8">Drag either bin to rotate both together
       &mdash; same angle, fair comparison. Scroll to zoom, shift-drag (or right-drag) to pan.
       Double-click resets.
-      The slider sits right above the bins; <kbd>&larr;</kbd>/<kbd>&rarr;</kbd> step it.</div>
+      The slider sits right above the bins; <kbd>&larr;</kbd>/<kbd>&rarr;</kbd> step it.
+      Under each bin, click a box within reach to see where <b>it</b> could
+      have gone instead; the box that was packed is shown until you do.</div>
   </div>
 
   <div class="scrubbar">
@@ -772,7 +847,17 @@ details.cf>summary b{font-size:14px}
           <input id="rcmsup" type="number" min="0" max="1" step="0.05"></div>
         <div class="pf"><span>box-type rule</span><select id="rctrule">
           <option value="touch">touch &mdash; not resting on another type</option>
-          <option value="column">column &mdash; not over another type anywhere below</option></select></div>
+          <option value="column">column &mdash; not over another type anywhere below</option>
+          <option value="mixed_touch">mixed touch &mdash; the cell's blue / white / brown rules, on what it rests on</option>
+          <option value="mixed_column">mixed column &mdash; the same rules, on anything below</option></select></div>
+        <label class="pf flag" title="mixed rules only: a box's own fallback onto another type becomes a last resort for the whole station -- only when no box within reach has any other place -- and brown on blue loses (c) but gains that last resort. Blue on blue keeps its fallback; brown never goes on white."><input id="rcsoftmix" type="checkbox"><span>soft mix &mdash; mixes only as a last resort for the station</span></label>
+        <label class="pf flag" title="mixed rules only: when every other step leaves nothing -- the normal rules, a box's own fallback, soft mix's last resort -- the same rules again over every point on an outline: the edges of every packed box (on it flush with an edge, or beside it flush with a side) and the pallet's edges. Nothing to add when the action space is every loading position already."><input id="rcolresort" type="checkbox"><span>outline points &mdash; a last resort after soft mix</span></label>
+        <div class="pf"><span>outline step opens</span><select id="rcolwhen">
+          <option value="station">station &mdash; when no box within reach has a place</option>
+          <option value="box">box &mdash; for each box that has no place</option></select></div>
+        <div class="pf" title="where the outline step runs the rules again: the outline points on top of the action space's own, or every cell of the grid, as the 'every loading position' action space offers them"><span>outline step looks at</span><select id="rcolarea">
+          <option value="outline">outline &mdash; the edges of every box and of the pallet</option>
+          <option value="all">all &mdash; every cell of the grid</option></select></div>
         <div class="pf"><span>robot-arm filter</span><select id="rcarmcol">
           <option value="0">off &mdash; every placement the rules allow</option>
           <option value="1">on &mdash; drop placements the arm collides on</option></select></div>
@@ -858,13 +943,14 @@ details.cf>summary b{font-size:14px}
     <h2>Big experiment &mdash; every file of a folder, onto as many pallets as it takes</h2>
     <div class="xg">
       <div class="pf"><span>data folder (every .csv in it)</span>
-        <input id="xdir" type="text" spellcheck="false" value="data/box_pallet_data/use_data"></div>
+        <div class="dirp"><input id="xdir" type="text" spellcheck="false" value="data/box_pallet_data/use_data"></div></div>
       <div class="pf"><span>results folder</span>
         <input id="xout" type="text" spellcheck="false" value="results/big_experiment"></div>
       <div class="pf wide"><span>packer</span><select id="xopp"></select></div>
       <div class="pf wide"><span>experiment name &mdash; the compare plot's legend (required)</span>
         <input id="xname" type="text" spellcheck="false" placeholder="required"></div>
     </div>
+    <div id="xnerr" class="opt"></div>
     <details class="par" id="xpardet" open>
       <summary>Experiment parameters <span id="xpsrc" style="text-transform:none;letter-spacing:0"></span></summary>
       <div class="pg pgsrc">
@@ -916,7 +1002,17 @@ details.cf>summary b{font-size:14px}
           <option value="0">off &mdash; any type on any</option></select></div>
         <div class="pf"><span>box-type rule</span><select id="xtrule">
           <option value="touch">touch &mdash; not resting on another type</option>
-          <option value="column">column &mdash; not over another type anywhere below</option></select></div>
+          <option value="column">column &mdash; not over another type anywhere below</option>
+          <option value="mixed_touch">mixed touch &mdash; the cell's blue / white / brown rules, on what it rests on</option>
+          <option value="mixed_column">mixed column &mdash; the same rules, on anything below</option></select></div>
+        <label class="pf flag" title="mixed rules only: a box's own fallback onto another type becomes a last resort for the whole station -- only when no box within reach has any other place -- and brown on blue loses (c) but gains that last resort. Blue on blue keeps its fallback; brown never goes on white."><input id="xsoftmix" type="checkbox"><span>soft mix &mdash; mixes only as a last resort for the station</span></label>
+        <label class="pf flag" title="mixed rules only: when every other step leaves nothing -- the normal rules, a box's own fallback, soft mix's last resort -- the same rules again over every point on an outline: the edges of every packed box (on it flush with an edge, or beside it flush with a side) and the pallet's edges. Nothing to add when the action space is every loading position already."><input id="xolresort" type="checkbox"><span>outline points &mdash; a last resort after soft mix</span></label>
+        <div class="pf"><span>outline step opens</span><select id="xolwhen">
+          <option value="station">station &mdash; when no box within reach has a place</option>
+          <option value="box">box &mdash; for each box that has no place</option></select></div>
+        <div class="pf" title="where the outline step runs the rules again: the outline points on top of the action space's own, or every cell of the grid, as the 'every loading position' action space offers them"><span>outline step looks at</span><select id="xolarea">
+          <option value="outline">outline &mdash; the edges of every box and of the pallet</option>
+          <option value="all">all &mdash; every cell of the grid</option></select></div>
         <div class="pf"><span>robot-arm filter</span><select id="xarmcol">
           <option value="0">off &mdash; every placement the rules allow</option>
           <option value="1">on &mdash; drop placements the arm collides on</option></select></div>
@@ -965,6 +1061,197 @@ details.cf>summary b{font-size:14px}
   <div id="xfiles"></div>
 </section>
 
+<section id="logm" hidden>
+  <div class="card">
+    <h2>Log match &mdash; the cell's conveyor log, packed by an agent one pick at a time</h2>
+    <div class="xg">
+      <div class="pf wide"><span>conveyor log (.csv &mdash; type a path or browse)</span>
+        <div class="dirp"><input id="lfile" type="text" spellcheck="false" value="data/log data/conveyor_boxes_PL11PR_steps_1-133_with_maxnum.csv"></div></div>
+      <div class="pf"><span>packer</span><select id="lopp"></select></div>
+      <div class="pf" title="two rows of two log steps are the same box when they have the same type and the same three sides, in any order, within this many cm, and the box has not moved back along the belt"><span>same box in two steps: sides within, cm</span>
+        <input id="ltol" type="number" min="0" max="20" step="0.1" value="1.5"></div>
+    </div>
+    <div id="linfo" class="opt"></div>
+    <details class="par" id="lpardet" open>
+      <summary>Parameters <span id="lpsrc" style="text-transform:none;letter-spacing:0"></span></summary>
+      <div class="pg pgsrc">
+        <div class="pf pf3"><span>pallet L &times; W &times; H cm &mdash; empty: the run's own bin</span>
+          <div class="tri"><input id="lpcm0" type="number" min="0" step="any">
+            <input id="lpcm1" type="number" min="0" step="any">
+            <input id="lpcm2" type="number" min="0" step="any"></div></div>
+        <div class="pf" hidden><span>cell size, cm</span>
+          <input id="lcellcm" type="number" min="0.001" step="any"></div>
+        <div class="pf"><span>box padding, m &mdash; added to x and y before the scale</span>
+          <input id="lbpad" type="number" min="0" max="1" step="0.005"></div>
+        <div class="pf"><span>box scale &mdash; divide every side</span>
+          <input id="lbscale" type="number" min="0" step="any"></div>
+        <div class="pf"><span>box rounding to cells</span><select id="lbround">
+          <option value="up">up &mdash; never smaller</option>
+          <option value="down">down &mdash; never bigger</option>
+          <option value="nearest">nearest &mdash; 1.5 &rarr; 1</option></select></div>
+      </div>
+      <div class="pg">
+        <div class="pf pf3" hidden><span>bin &mdash; x &times; y &times; z cells</span>
+          <div class="tri"><input id="lbin0" type="number" min="1" step="1">
+            <input id="lbin1" type="number" min="1" step="1">
+            <input id="lbin2" type="number" min="1" step="1"></div></div>
+        <div class="pf"><span>window N<sub>B</sub> &mdash; boxes it can see</span>
+          <input id="lnb" type="number" min="1" step="1"></div>
+        <div class="pf"><span>reach k &mdash; boxes it may pick</span>
+          <input id="lnpick" type="number" min="1" step="1"></div>
+        <div class="pf"><span>candidate cap N<sub>L</sub></span>
+          <input id="lmaxl" type="number" min="1" step="1"></div>
+        <div class="pf"><span>orientations</span><select id="lprot">
+          <option value="1">1 &mdash; as it arrives</option>
+          <option value="2">2 &mdash; also yawed 90&deg;</option></select></div>
+        <div class="pf"><span>the packer's action space</span><select id="lems">
+          <option value="1">EMS corners</option>
+          <option value="2">corner cells</option>
+          <option value="3">EMS corners + corner cells</option>
+          <option value="0">every loading position</option></select></div>
+        <div class="pf"><span>stability rule</span><select id="lstab">
+          <option value="com">com &mdash; area + centre of mass</option>
+          <option value="cdrl">cdrl &mdash; Zhao et al.</option></select></div>
+        <div class="pf"><span>support floor (com only)</span>
+          <input id="lmsup" type="number" min="0" max="1" step="0.05"></div>
+        <div class="pf"><span>stacking rule</span><select id="ltcon">
+          <option value="1">on &mdash; a box only on its own type</option>
+          <option value="0">off &mdash; any type on any</option></select></div>
+        <div class="pf"><span>box-type rule</span><select id="ltrule">
+          <option value="touch">touch &mdash; not resting on another type</option>
+          <option value="column">column &mdash; not over another type anywhere below</option>
+          <option value="mixed_touch">mixed touch &mdash; the cell's blue / white / brown rules, on what it rests on</option>
+          <option value="mixed_column">mixed column &mdash; the same rules, on anything below</option></select></div>
+        <label class="pf flag" title="mixed rules only: a box's own fallback onto another type becomes a last resort for the whole station -- only when no box within reach has any other place -- and brown on blue loses (c) but gains that last resort. Blue on blue keeps its fallback; brown never goes on white."><input id="lsoftmix" type="checkbox"><span>soft mix &mdash; mixes only as a last resort for the station</span></label>
+        <label class="pf flag" title="mixed rules only: when every other step leaves nothing -- the normal rules, a box's own fallback, soft mix's last resort -- the same rules again over every point on an outline: the edges of every packed box (on it flush with an edge, or beside it flush with a side) and the pallet's edges. Nothing to add when the action space is every loading position already."><input id="lolresort" type="checkbox"><span>outline points &mdash; a last resort after soft mix</span></label>
+        <div class="pf"><span>outline step opens</span><select id="lolwhen">
+          <option value="station">station &mdash; when no box within reach has a place</option>
+          <option value="box">box &mdash; for each box that has no place</option></select></div>
+        <div class="pf" title="where the outline step runs the rules again: the outline points on top of the action space's own, or every cell of the grid, as the 'every loading position' action space offers them"><span>outline step looks at</span><select id="lolarea">
+          <option value="outline">outline &mdash; the edges of every box and of the pallet</option>
+          <option value="all">all &mdash; every cell of the grid</option></select></div>
+        <div class="pf"><span>robot-arm filter</span><select id="larmcol">
+          <option value="0">off &mdash; every placement the rules allow</option>
+          <option value="1">on &mdash; drop placements the arm collides on</option></select></div>
+        <div class="pf"><span>arm base x moves (-1..1, tried in order)</span>
+          <input id="larmmoves" type="text" placeholder="0, -0.5, 0.5, -1, 1"></div>
+        <div class="pf"><span>stack-height limit over small boxes</span><select id="lstackcap">
+          <option value="1">on &mdash; short stacks on small boxes</option>
+          <option value="0">off &mdash; any height on any box</option></select></div>
+        <div class="pf"><span>limited box types (0 blue, 1 white, 2 brown)</span>
+          <input id="lstacktypes" type="text" placeholder="2"></div>
+        <div class="pf"><span>short side, cm: full limit / no limit</span>
+          <input id="lstackside" type="text" placeholder="12, 30"></div>
+        <div class="pf"><span>box may start above it, cm: at small / at large end</span>
+          <input id="lstackallow" type="text" placeholder="8, 140"></div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button id="lpreset" type="button">Reset to the packer's own values</button>
+        <button id="lfromplay" type="button">Copy from the Play tab</button>
+      </div>
+      <div id="lperr" class="opt"></div>
+      <div id="lpwarn" class="opt"></div>
+    </details>
+    <div class="opt">Each log step is one pick. A box is read as <code>size_L_cm</code> &times;
+      <code>size_W_cm</code> &times; <code>size_H_cm</code>, <code>type</code> 1/2/3 = blue/white/brown.
+      A box seen at several steps is one box: the same type, the same sides within the tolerance above,
+      not moved back along the belt; the box the robot picked is gone unless it turns up again in front
+      of one that stayed (a failed pick). At every step the agent packs one box, from the boxes of that
+      step and the earlier ones it has not packed &mdash; in the order they came, the first
+      N<sub>B</sub> in view and the first k within reach, never a box of a later step. When no box in
+      reach has a place the pallet is closed and a new one opened with the same boxes waiting; after
+      the last step the leftovers are packed until none is left.</div>
+    <div class="row" style="margin-top:12px">
+      <button class="go" id="lrun">Run the log &rarr;</button>
+      <button id="lstop" disabled>Stop</button>
+      <span class="sub" id="lstate"></span>
+    </div>
+    <div id="lmsg" class="opt"></div>
+  </div>
+
+  <div class="card" id="lsumcard" hidden>
+    <div class="xsum">
+      <div><div class="big" id="lpct">0%</div><div class="k">of the log's steps</div></div>
+      <div><div class="v" id="lbn">0 / 0</div><div class="k">boxes packed</div></div>
+      <div><div class="v" id="lpn">0</div><div class="k">pallets</div></div>
+      <div><div class="v" id="lutil">&mdash;</div><div class="k">mean fill</div></div>
+      <div title="the steps where the box the robot took was within the agent's reach, and how often the agent took that box too"><div class="v" id="lmatch">&mdash;</div><div class="k">same box as the robot</div></div>
+      <div><div class="v" id="ltime">0 s</div><div class="k">elapsed</div></div>
+    </div>
+    <div class="xall" id="lall"><i></i></div>
+    <div class="xout" id="ldest"></div>
+    <table class="rc" id="ltab"></table>
+  </div>
+
+  <div id="lres" hidden>
+    <div class="card" style="margin:14px 0">
+      <div class="row" style="justify-content:space-between;align-items:flex-start">
+        <div>
+          <h2>Result <span class="sub" id="lressub" style="text-transform:none;letter-spacing:0"></span></h2>
+          <div class="verdict" id="lverdict">&mdash;</div>
+          <div class="sub" id="lvsub"></div>
+        </div>
+        <div class="row" style="flex:none">
+          <button id="lprev" type="button" title="the pallet before">&#9664; pallet</button>
+          <button id="lnext" type="button" title="the pallet after">pallet &#9654;</button>
+        </div>
+      </div>
+      <label class="row" style="cursor:pointer;margin-top:10px">
+        <input type="checkbox" id="lshowarm" checked> <span>show the robot arm placing
+        each box &mdash; checked against the pallet as it stood just before</span>
+      </label>
+      <div class="lg armlg-l" hidden>
+        <span><i style="background:var(--arm)"></i>robot arm, clear</span>
+        <span><i style="background:var(--c3)"></i>arm link hitting the pack</span>
+      </div>
+      <label class="row" style="cursor:pointer;margin-top:8px">
+        <input type="checkbox" id="lshowpts" checked> <span>show where the <b>next</b>
+        box could go &mdash; the packer's candidate list for it, one point per placement corner</span>
+      </label>
+      <label class="row" style="cursor:pointer;margin-top:4px;padding-left:22px">
+        <input type="checkbox" id="lshowbad" checked> <span>also show the points
+        its action space offered that the rules turn down, in red</span>
+      </label>
+      <label class="row" style="margin-top:4px;padding-left:22px">
+        <span>orientations shown</span> <select class="ptsrot" title="which of the candidate points to draw: both orientations, or only one of them">
+          <option value="all">all</option><option value="0">only 0&deg; &mdash; as it came</option>
+          <option value="1">only 90&deg; &mdash; turned</option></select>
+      </label>
+      <div class="sub" style="margin-top:6px;opacity:.8">Drag the pallet to rotate, scroll to zoom,
+        shift-drag to pan, double-click to reset. <kbd>&larr;</kbd>/<kbd>&rarr;</kbd> step the slider.
+        Under the pallet, click a box within reach to see where <b>it</b> could have gone instead.</div>
+    </div>
+    <div class="scrubbar">
+      <div class="row">
+        <button type="button" data-step="-1" data-for="lscrub" title="previous box">&#9664;</button>
+        <input type="range" id="lscrub" min="0" max="1" value="1">
+        <button type="button" data-step="1" data-for="lscrub" title="next box">&#9654;</button>
+      </div>
+      <div class="sub" id="lscrublab" style="font-variant-numeric:tabular-nums"></div>
+      <div class="sub" id="lscrubarm" style="min-height:18px"></div>
+    </div>
+    <div class="duel" id="lduel" style="margin-top:10px">
+      <div class="side" id="side-r">
+        <h2 style="font-size:11px;color:var(--dim);letter-spacing:.6px;text-transform:uppercase;margin:0 0 8px">Real robot &mdash; from the log <span id="lrsub" style="text-transform:none;letter-spacing:0"></span></h2>
+        <div class="isocv"><canvas id="iso-r"></canvas></div>
+        <div class="rwin" id="win-r"></div>
+      </div>
+      <div class="side">
+        <h2 style="font-size:11px;color:var(--dim);letter-spacing:.6px;text-transform:uppercase;margin:0 0 8px"><span id="llab">Agent</span></h2>
+        <div class="isorow"><div class="rpts" id="pts-l"></div>
+          <div class="isocv"><canvas id="iso-l"></canvas></div></div>
+        <div class="rwin" id="win-l"></div>
+      </div>
+    </div>
+    <div class="sub" id="lrnote" style="margin-top:8px"></div>
+    <div class="lgrid">
+      <div class="side" id="lrstat"></div>
+      <div class="side" id="lstat"></div>
+      <div class="side" id="lstep"></div>
+    </div>
+  </div>
+</section>
+
 <section id="cmp" hidden>
   <div class="card">
     <h2>Compare &mdash; the big experiment's reports</h2>
@@ -985,6 +1272,9 @@ details.cf>summary b{font-size:14px}
   <div class="card" id="cwincard" hidden>
     <h2>Winners &mdash; fewest pallets, then fewest boxes on the last; a tie counts for each</h2>
     <div class="cwins" id="cwins"></div>
+    <div class="sub cnote">In each cell: mean boxes per pallet &middot; mean volume per pallet, over pallets
+      0&hellip;n-2 (the last one left out; a run of one pallet shows that pallet).
+      A name run more than once in a file gets a line per run.</div>
     <div class="ctab" id="ctab"></div>
   </div>
   <div class="row" id="cfold" style="margin-top:16px" hidden>
@@ -1002,6 +1292,7 @@ details.cf>summary b{font-size:14px}
   </div>
   <div class="card" id="tjobcard" hidden>
     <h2>Runs started from this server &mdash; full loss curves in the Training tab</h2>
+    <div id="tlead" hidden></div>
     <div id="tjobs"></div>
   </div>
   <div class="card">
@@ -1063,7 +1354,8 @@ const PF = {
   size_hi: ['#hi0', '#hi1', '#hi2'],
   nb: '#nb', n_pick: '#npick', n_items: '#nitems', max_l: '#maxl',
   rot: '#prot', ems: '#ems', stability: '#stab', min_support: '#msup',
-  type_rule: '#trule', arm_collision: '#armcol', base_x_moves: '#armmoves',
+  type_rule: '#trule', soft_mix: '#softmix',
+  outline_resort: '#olresort', outline_when: '#olwhen', outline_area: '#olarea', arm_collision: '#armcol', base_x_moves: '#armmoves',
   stack_cap: '#stackcap', stack_cap_types: '#stacktypes',
   stack_cap_side_cm: '#stackside', stack_cap_allow_cm: '#stackallow',
   source: '#src', data: '#data', pallet: '#palpick', order_random: '#ordrnd',
@@ -1075,8 +1367,10 @@ const PF = {
 const EMSTEXT = {1: 'the corners of the empty maximal spaces',
   2: 'the corner cells of the height map',
   3: 'the empty-maximal-space corners and the corner cells'};
-const PSTR = new Set(['stability', 'type_rule', 'source', 'data', 'box_round']);
+const PSTR = new Set(['stability', 'type_rule', 'outline_when', 'outline_area', 'source', 'data', 'box_round']);
 const PFLOAT = new Set(['min_support', 'order_random', 'cell_cm', 'box_pad_m', 'box_scale']);
+/* a checkbox, sent as 1 or 0 */
+const PFLAG = new Set(['soft_mix', 'outline_resort']);
 /* a list of numbers typed as "0, -0.5, 0.5"; the server checks the values */
 const PNUMS = new Set(['base_x_moves', 'stack_cap_types', 'stack_cap_side_cm',
   'stack_cap_allow_cm']);
@@ -1090,7 +1384,8 @@ const PLABEL = {source: 'box source', data: 'data file', pallet: 'pallet',
   nb: 'window N_B', n_pick: 'reach k', n_items: 'items in the sequence',
   max_l: 'candidate cap', rot: 'orientations', ems: 'action space',
   stability: 'stability rule', min_support: 'support floor',
-  type_rule: 'box-type rule', arm_collision: 'robot-arm filter', base_x_moves: 'arm base x moves',
+  type_rule: 'box-type rule', soft_mix: 'soft mix',
+  outline_resort: 'outline step', outline_when: 'outline step opens', outline_area: 'outline step looks at', arm_collision: 'robot-arm filter', base_x_moves: 'arm base x moves',
   stack_cap: 'stack-height limit', stack_cap_types: 'limited box types',
   stack_cap_side_cm: 'stack-limit sides (cm)', stack_cap_allow_cm: 'stack-limit allowances (cm)'};
 
@@ -1105,6 +1400,7 @@ function readParams(pf = PF){
     else if (PSTR.has(k)) o[k] = $(sel).value;
     else if (PNUMS.has(k)) o[k] = readList($(sel).value);
     else if (PFLOAT.has(k)) o[k] = parseFloat($(sel).value);
+    else if (PFLAG.has(k)) o[k] = $(sel).checked ? 1 : 0;
     else o[k] = parseInt($(sel).value, 10);
   }
   return o;
@@ -1117,9 +1413,22 @@ function writeParams(p, pf = PF){
     else if (Array.isArray(sel))
       sel.forEach((t, i) => $(t).value = p[k] == null ? '' : p[k][i]);
     else if (PNUMS.has(k)) $(sel).value = showList(p[k]);
+    else if (PFLAG.has(k)) $(sel).checked = !!p[k];
     else $(sel).value = p[k];
   }
+  syncSoft(pf);
   if (pf === PF){ syncPick(); syncSource(); }
+}
+
+/* soft mix and the outline step mean something only under the mixed rules,
+   and when the outline step opens and where it looks only with it on */
+function syncSoft(pf = PF){
+  if (!pf.type_rule) return;
+  const mixed = $(pf.type_rule).value.startsWith('mixed');
+  if (pf.soft_mix) $(pf.soft_mix).disabled = !mixed;
+  if (pf.outline_resort) $(pf.outline_resort).disabled = !mixed;
+  for (const k of ['outline_when', 'outline_area'])
+    if (pf[k]) $(pf[k]).disabled = !mixed || !$(pf.outline_resort).checked;
 }
 
 /* the pallet picker keeps a value it has no option for yet, so a preset or a
@@ -1394,10 +1703,28 @@ function drawIso(cv, boxes, L, W, H, opts){
   // ---- where the next box could go: one mark per candidate corner ----
   // orientation 1 a filled dot, orientation 2 a hollow diamond a size larger,
   // so a corner open to both shows both.  `pointsTaken` is the index the
-  // next step actually chose, ringed.
+  // next step actually chose, ringed.  `bad` are the corners the rules turned
+  // down, the same shapes in red and a size smaller, drawn first so the
+  // packer's own sit on top of them.  `onlyRot` (0 or 1) draws one
+  // orientation's marks alone; indices into `points` stay as they were.
+  const shown = r => opts.onlyRot == null || (r ? 1 : 0) === opts.onlyRot;
+  if(opts.bad && opts.bad.length){
+    const R = Math.max(2, Math.min(4.5, s*0.17));
+    for(const [x,y,z,r] of opts.bad){
+      if(!shown(r)) continue;
+      const [px,py] = P(x,y,z);
+      g.beginPath();
+      if(r){ const d = R*1.45;
+             g.moveTo(px,py-d); g.lineTo(px+d,py); g.lineTo(px,py+d); g.lineTo(px-d,py); g.closePath();
+             g.strokeStyle = css('--c3'); g.lineWidth = 1.5; g.stroke(); }
+      else { g.arc(px,py,R,0,7); g.fillStyle = css('--c3'); g.fill();
+             g.strokeStyle = '#000'; g.lineWidth = .8; g.stroke(); }
+    }
+  }
   if(opts.points && opts.points.length){
     const R = Math.max(2.5, Math.min(6, s*0.22));
     for(const [k, [x,y,z,r]] of opts.points.entries()){
+      if(!shown(r)) continue;
       const [px,py] = P(x,y,z);
       g.beginPath();
       if(r){ const d = R*1.45;
@@ -1484,6 +1811,7 @@ function drawIso(cv, boxes, L, W, H, opts){
 /* drag any bin to spin them all; double-click puts the camera back */
 let DRAG = null;
 function redrawIsos(){
+  if(!$('#logm').hidden && LRES) lDraw(parseInt($('#lscrub').value,10));
   if(!$('#play').hidden && B) drawPlay3d();
   if(!$('#result').hidden && RES) drawReplay(parseInt($('#scrub').value,10));
   if(!$('#result').hidden && RES && RCSEL) drawRcReplay(parseInt($('#rcscrub').value,10));
@@ -1583,19 +1911,23 @@ async function fetchArm(){
    without the arm and redrawn when its answer lands. */
 const ARMC = new Map();
 let ARMRID = 0;
-function stepArm(key, placed, n, bin, redraw, moves){
-  if (!$('#showarm').checked || !G || n < 1 || placed.length < n) return null;
+/* `via` is a log match's pallet asking instead of a game: {show: its
+   checkbox, post(placed, bin, moves)} */
+function stepArm(key, placed, n, bin, redraw, moves, via){
+  if (!$(via ? via.show : '#showarm').checked || (!via && !G) || n < 1
+      || placed.length < n) return null;
   if (ARMC.has(key)) return ARMC.get(key);
   ARMC.set(key, null);
-  api('/api/arm_replay', {gid: G.gid, placed: placed.slice(0, n), bin, moves})
+  (via ? via.post(placed.slice(0, n), bin, moves)
+       : api('/api/arm_replay', {gid: G.gid, placed: placed.slice(0, n), bin, moves}))
     .then(r => { ARMC.set(key, r.error ? null : r); redraw(); })
     .catch(() => ARMC.delete(key));
   return null;
 }
 
-function armReplayText(sel, n, sides){
-  const on = $('#showarm').checked;
-  document.querySelectorAll('.armlg-r').forEach(el => el.hidden = !on);
+function armReplayText(sel, n, sides, show = '#showarm', lg = '.armlg-r'){
+  const on = $(show).checked;
+  document.querySelectorAll(lg).forEach(el => el.hidden = !on);
   if (!on || n < 1){ $(sel).innerHTML = ''; return; }
   $(sel).innerHTML = 'arm placing box ' + n + ': ' + sides.map(([who, placed, a]) => {
     const say = placed.length < n ? '<span style="color:var(--dim)">—</span>'
@@ -1774,6 +2106,50 @@ const TFILL = t => t < 0 ? cvar('--panel') : boxColor(t, 0);
 // a swatch rather than coloured text: "white" cannot be written in white
 const TSW   = t => `<span class="tsw" style="background:${TFILL(t)}"></span>`;
 const typed = () => B && B.n_types > 1;
+// whether the board is under one of the cell's blue / white / brown rules
+const isMixed = () => B && (B.type_rule === 'mixed_touch'
+                            || B.type_rule === 'mixed_column');
+// why the mixed rules turn box type `t` down -- blue (0), white (1), brown
+// (2) -- with the numbers the board quotes.  Under mixed touch `u`, the type
+// it would rest on, names the pair; under mixed column the box it may not be
+// over can be anywhere below, so the note gives its type's whole rule.
+function mixedWhy(t, u){
+  const M = B.mixed || {}, soft = !!M.soft;
+  const name = k => `${TNAME(k)} (${PTNAME[k] || 'other'})`;
+  const lid = `its top ends within ${M.top_gap_cm} cm (${M.top_gap}
+               cell${M.top_gap === 1 ? '' : 's'}) of the lid`;
+  const big = `it covers at least ${M.area_pct}% of a small blue box's footprint`;
+  const open = `no small blue box (${(M.small_blue || []).join('×')}) can go on
+                that blue any more, for want of height or of the arm`;
+  const late = soft ? 'when no box within reach has any other place (soft mix)'
+                    : 'when it has no other place at all';
+  // what each pair asks; null is never
+  const when = {
+    '0,0': 'with all of its base on blue, or with less when it has no other place at all',
+    '0,1': `when ${lid}, or ${late}`,
+    '0,2': `when ${lid}, or ${late}`,
+    '1,0': `when ${lid} or ${open}, or ${late}`,
+    '1,2': `when ${lid}, or ${late}`,
+    '2,0': soft ? `when ${lid} or ${open}, or ${late}`
+                : `when ${lid}, when ${big}, or when ${open}, or ${late}`,
+    '2,1': null,
+  };
+  const rule = B.type_rule === 'mixed_column' ? 'mixed column rule' : 'mixed touch rule';
+  if (B.type_rule === 'mixed_column'){
+    const parts = [0, 1, 2].filter(k => k !== t || t === 0).map(k => {
+      const w = when[`${t},${k}`];
+      return w === null ? `never over ${PTNAME[k]}` : `over ${PTNAME[k]} only ${w}`;
+    });
+    return `anywhere under its footprint counts, and a ${name(t)} box goes
+            ${parts.join('; ')} (${rule})`;
+  }
+  const w = when[`${t},${u}`];
+  if (w === undefined)
+    return `it would come to rest on ${TNAME(u)}, and a ${TNAME(t)} box may only
+            be stacked on its own type`;
+  return w === null ? `a ${name(t)} box never goes on ${PTNAME[u]} (${rule})`
+                    : `a ${name(t)} box goes on ${PTNAME[u]} only ${w} (${rule})`;
+}
 // how many of each type a list of placed types holds, indexed by type
 function typeCounts(types){
   const n = Array(B.n_types).fill(0);
@@ -1816,9 +2192,17 @@ function kpis(){
                               : 'next item',
                  B.done ? '—' : B.item.join('×')]];
   if (typed() && !B.done)
-    rows.push([B.type_constraint ? (B.type_rule === 'column' ? 'may be only over'
-                                                             : 'may stack only on')
-                                 : 'box type',
+    rows.push([!B.type_constraint ? 'box type'
+               : B.type_rule === 'column' ? 'may be only over'
+               : isMixed() ? (B.outline ? (B.mixed && B.mixed.outline_when === 'box'
+                                           ? 'no place by the rules: ' : 'nothing within reach can go: ')
+                                          + (B.mixed && B.mixed.outline_area === 'all'
+                                             ? 'every cell for' : 'outline points for')
+                              : B.last_resort ? 'nothing within reach can go: soft mix for'
+                              : B.fallback ? 'no normal place: fallback rules for'
+                              : B.type_rule === 'mixed_column' ? 'mixed column rules for'
+                              : 'mixed touch rules for')
+               : 'may stack only on',
                `${TSW(B.item_type)}${TNAME(B.item_type)}`]);
   $('#kpis').innerHTML = rows.map(([k, v]) =>
     `<div class="kpi"><div class="v">${v}</div><div class="k">${k}</div></div>`).join('');
@@ -1955,6 +2339,7 @@ function onMove(ev){
             : wrongType && column ? `there is a box of another type somewhere under
                            its footprint, and a ${TNAME(B.item_type)} box may only be
                            over its own type (column rule)`
+            : wrongType && isMixed() ? mixedWhy(B.item_type, u)
             : wrongType ? `it would come to rest on ${TNAME(u)}, and a
                            ${TNAME(B.item_type)} box may only be stacked on its own type`
             : 'not enough support underneath — less than 80% of the base would rest on what is below it';
@@ -2050,11 +2435,11 @@ async function finish(){
             placed_types: B.placed_types, skipped: SKIP,
             cands: r.human_cands || [], taken: r.human_taken || [],
             windows: r.human_windows || [],
-            cand_probs: r.human_cand_probs || [],
+            cand_probs: r.human_cand_probs || [], _pk: 'h',
             seconds: (Date.now() - T0) / 1000, reason: REASON || 'ran out of room'},
-    agent: r,
+    agent: Object.assign(r, {_pk: 'a'}),
   };
-  ARMC.clear();
+  ARMC.clear(); PTSC.clear(); BOXSEL.clear();
   renderResult();
 }
 
@@ -2121,7 +2506,7 @@ function renderResult(){
              seconds: a.seconds, changed: [], drift: [],
              placed: a.placed, placed_types: a.placed_types, params: p,
              cands: a.cands, taken: a.taken, windows: a.windows,
-             cand_probs: a.cand_probs}];
+             cand_probs: a.cand_probs, _pk: 'a'}];
   RCSEL = 0;
   $('#rc3d').hidden = true;
   writeRecalc(p);
@@ -2138,36 +2523,89 @@ function renderResult(){
   }).catch(() => {});
 }
 
-/* After n boxes, the placements the packer had for box n+1: `cands[n]` was
-   recorded just before that box went in, and `taken[n]` is the one it went
-   to (-1 when you put it somewhere off the packer's list). */
-function nextPoints(side, n){
-  if (!$('#showpts').checked || !side.cands || !side.cands[n]) return {};
-  const top = topPoints(side.cands[n], side.cand_probs && side.cand_probs[n], NTOP);
-  return {points: side.cands[n], pointsTaken: side.taken ? side.taken[n] : -1,
-          pointRanks: new Map(top.map((t, k) => [t.i, k + 1]))};
+/* After n boxes, the placements the packer had for box n+1.  The box is the
+   one that went in unless a box within reach was clicked under the bin
+   (`BOXSEL`, by panel, for that step only).  For the box that went in,
+   `cands[n]` was recorded just before it did and `taken[n]` is the one it
+   went to (-1 when you put it somewhere off the packer's list); for any
+   other, and for the points the rules turned down, the server puts the bin
+   back as it stood and asks (`/api/points`, cached in `PTSC`). */
+const PTSC = new Map();
+const BOXSEL = new Map();
+/* the result screen's two checkboxes; a log match's pallet brings its own
+   (`side._show`), and its own way to ask the server (`side._ask`) */
+const SHOWPTS = {pts: '#showpts', bad: '#showbad'};
+/* which orientation's points every 3D bin draws: 'all', '0' or '1', set by
+   any of the `.ptsrot` menus, which all follow each other */
+let PTSROT = 'all';
+const rotShown = r => PTSROT === 'all' || (r ? 1 : 0) === +PTSROT;
+function viewPoints(pid, side, n, redraw){
+  const ws = side.windows || [], last = ws[ws.length - 1];
+  const step = ws[n] ? n : last && last.pick < 0 ? ws.length - 1 : -1;
+  const win = ws[step];
+  const show = side._show || SHOWPTS;
+  if (!$(show.pts).checked || !win || !win.w.length) return null;
+  const sel = BOXSEL.get(pid);
+  const i = sel && sel.side === side && sel.n === n ? sel.i : Math.max(0, win.pick);
+  const own = i === win.pick && side.cands && side.cands[n];
+  const v = {i, n, own: i === win.pick, left: win.pick < 0,
+             pts: own ? side.cands[n] : null,
+             probs: own && side.cand_probs ? side.cand_probs[n] : null,
+             taken: own && side.taken ? side.taken[n] : -1, bad: null};
+  if (own && !$(show.bad).checked) return v;
+  const key = `${side._pk}:${step}:${i}`;
+  if (!PTSC.has(key)){
+    PTSC.set(key, null);
+    (side._ask ? side._ask(step, i)
+               : api('/api/points', {gid: G.gid, side: side._pk, n: step, i}))
+      .then(r => { PTSC.set(key, r); redraw(); })
+      .catch(() => PTSC.delete(key));
+  }
+  const r = PTSC.get(key);
+  if (!r){ v.wait = true; return v; }
+  if (r.error){ v.error = r.error; return v; }
+  if (!own){ v.pts = r.cands; v.probs = r.probs; }
+  if ($(show.bad).checked) v.bad = r.bad;
+  v.capped = r.capped;
+  return v;
+}
+
+/* those points as `drawIso` takes them */
+function isoPoints(v){
+  if (!v || !v.pts) return {};
+  const top = topPoints(v.pts, v.probs, NTOP);
+  return {points: v.pts, pointsTaken: v.taken, bad: v.bad,
+          pointRanks: new Map(top.map((t, k) => [t.i, k + 1])),
+          onlyRot: PTSROT === 'all' ? null : +PTSROT};
 }
 
 /* The agent's probability for each of those points, best first, as a list
-   whose numbers match the ones drawn next to the points in the bin. */
-function drawPoints(el, side, n){
-  const pts = side.cands && side.cands[n], pr = side.cand_probs && side.cand_probs[n];
-  const top = $('#showpts').checked ? topPoints(pts, pr, NTOP) : [];
-  const taken = side.taken ? side.taken[n] : -1;
-  el.innerHTML = top.length
-    ? `<div class="rwh">box ${n + 1} &middot; top ${top.length}</div><ol class="plist short">`
-      + top.map((t, k) => `<li class="${t.i === taken ? 'tk' : ''}"
-          title="(${t.x}, ${t.y}) z ${t.z}${t.r ? ', turned' : ''}${t.i === taken ? ', taken' : ''}"
+   whose numbers match the ones drawn next to the points in the bin, and how
+   many the rules turned down. */
+function drawPoints(el, v){
+  if (!v){ el.innerHTML = ''; return; }
+  const top = topPoints(v.pts, v.probs, NTOP);
+  const box = v.left ? `#${v.i + 1}, left over` : v.own ? `box ${v.n + 1}`
+            : `box ${v.n + 1}, #${v.i + 1} instead`;
+  el.innerHTML = (top.length
+    ? `<div class="rwh">${box} &middot; top ${top.length}</div><ol class="plist short">`
+      + top.map((t, k) => !rotShown(t.r) ? '' : `<li class="${t.i === v.taken ? 'tk' : ''}"
+          title="(${t.x}, ${t.y}) z ${t.z}${t.r ? ', turned' : ''}${t.i === v.taken ? ', taken' : ''}"
           ><span class="rk">${k + 1}</span><span>${t.x},${t.y},${t.z}${t.r ? '↻' : ''}</span
           ><b>${PCT(t.p)}</b></li>`).join('') + '</ol>'
-    : '';
+    : v.pts ? `<div class="rwh">${box} &middot; ${v.pts.length
+        ? v.pts.length + ' points' : 'no place it may go'}</div>` : '')
+    + (v.wait ? '<div class="rwh">asking&hellip;</div>' : '')
+    + (v.error ? `<div class="bad">${v.error}</div>` : '')
+    + (v.bad ? `<div class="bad">${v.bad.length} turned down</div>` : '')
+    + (v.capped ? `<div class="rwh">${v.capped} more cut by N<sub>L</sub></div>` : '');
 }
 
 /* The conveyor as it stood when box n+1 was chosen: every box in view, the
    first k within reach (numbered, solid) and the rest preview (dashed), with
    the one that went in marked.  Box colours match the 3D blocks: the picked
    box gets the colour it has once it is in the bin. */
-function drawWindow(el, side, n, k){
+function drawWindow(el, side, n, k, v){
   // a side that stopped before step n keeps showing what it was left with
   const ws = side.windows || [], last = ws[ws.length - 1];
   const win = ws[n] || (last && last.pick < 0 && n >= ws.length ? last : null);
@@ -2179,23 +2617,46 @@ function drawWindow(el, side, n, k){
   const reach = Math.min(k, win.w.length);
   const big = Math.max(1, ...win.w.map(w => Math.max(w[0], w[1])));
   const u = Math.max(1, Math.min(8, Math.floor(46 / big)));
-  el.innerHTML = (win.pick < 0
+  // a log match's station says which log step it stood at, and the pallet
+  // it is drawn for is typed whatever the Play tab's board is
+  const lg = win.step !== undefined, ty = side._typed !== undefined ? side._typed : typed();
+  const tags = i => !lg ? '' : `<span class="tags">${win.real === i
+      ? '<span class="tag rb" title="the box the real robot took at this log step">robot</span>' : ''}${
+      (win.new || []).includes(i) ? '<span class="tag nw" title="first seen at this log step">new</span>' : ''}${
+      win.failed && win.tried === i ? '<span class="tag fl" title="the robot tried this box and the pick failed">failed</span>' : ''}</span>`;
+  el.innerHTML = (lg ? lWinHead(win, reach)
+    : win.pick < 0
       ? `<div class="rwh">conveyor left at the end &mdash; <b>${win.w.length}</b> in view,
          none of the <b>${reach}</b> in reach could be placed`
       : `<div class="rwh">conveyor before box ${n + 1} &mdash; sees
       <b>${win.w.length}</b>, can pick from <b>${reach}</b>, packed
-      #${win.pick + 1}`) + `${win.probs ? ' &middot; % = the picker\'s probability' : ''}</div><div class="rws">`
+      #${win.pick + 1}`) + `${win.probs ? ' &middot; % = the picker\'s probability' : ''}`
+    + `${v ? ' &middot; click one in reach for its points' : ''}</div><div class="rws">`
     + win.w.map((w, i) => {
-        const cls = 'rwt' + (i >= reach ? ' peek' : '') + (i === win.pick ? ' sel' : '');
+        const cls = 'rwt' + (i >= reach ? ' peek' : v ? ' pk' : '') + (i === win.pick ? ' sel' : '')
+          + (v && i === v.i ? ' look' : '');
         return (i === reach && reach < win.w.length ? '<span class="rwsep"></span>' : '')
-          + `<div class="${cls}"><span class="num">${i < reach ? i + 1 : '&middot;'}${
-               i === win.pick ? ' packed' : ''}</span>${i < reach ? ppBadge(win.probs, i) : ''}<canvas data-i="${i}"></canvas>
-             <span>${w.join('×')}${typed() ? ' ' + 'ABCDEFGHIJKLMNOP'[win.t[i]] : ''}</span></div>`;
+          + `<div class="${cls}" data-i="${i}"${v && i < reach ? ' title="show where this box could go"' : ''}><span class="num">${i < reach ? i + 1 : '&middot;'}${
+               i === win.pick ? ' packed' : ''}</span>${tags(i)}${i < reach ? ppBadge(win.probs, i) : ''}<canvas data-i="${i}"></canvas>
+             <span>${w.join('×')}${ty ? ' ' + 'ABCDEFGHIJKLMNOP'[win.t[i]] : ''}</span></div>`;
       }).join('') + '</div>';
   el.querySelectorAll('canvas').forEach(cv => {
     const i = +cv.dataset.i;
     drawFootprint(cv, win.w[i], u, i === win.pick ? n : n + 1 + i,
-                  i >= reach, typed() ? win.t[i] : -1);
+                  i >= reach, ty ? win.t[i] : -1);
+  });
+  el._pick = {side, n, reach};
+}
+/* a click on a box within reach shows its points at this step; another
+   click on it, or on the box that went in, goes back to that one */
+function boxClicks(pid, el, redraw){
+  el.addEventListener('click', e => {
+    const t = e.target.closest('.rwt.pk'), at = el._pick;
+    if (!t || !at || !$((at.side._show || SHOWPTS).pts).checked) return;
+    const i = +t.dataset.i, cur = BOXSEL.get(pid);
+    if (cur && cur.side === at.side && cur.n === at.n && cur.i === i) BOXSEL.delete(pid);
+    else BOXSEL.set(pid, {side: at.side, n: at.n, i});
+    redraw();
   });
 }
 
@@ -2204,18 +2665,20 @@ function drawReplay(n){
   const again = () => drawReplay(parseInt($('#scrub').value, 10));
   const ah = stepArm('h:' + n, RES.human.placed, n, [LX, LY, LZ], again),
         aa = stepArm('a:' + n, RES.agent.placed, n, [LX, LY, LZ], again);
+  const vh = RES.human.skipped ? null : viewPoints('h', RES.human, n, again),
+        va = viewPoints('a', RES.agent, n, again);
   drawIso($('#iso-h'), h, LX, LY, LZ,
           {highlight: h.length - 1, height: 290, arm: ah,
            types: typed() ? RES.human.placed_types : null,
-           ...nextPoints(RES.human, n)});
+           ...isoPoints(vh)});
   drawIso($('#iso-a'), a, LX, LY, LZ,
           {highlight: a.length - 1, height: 290, arm: aa,
            types: typed() ? RES.agent.placed_types : null,
-           ...nextPoints(RES.agent, n)});
-  drawWindow($('#win-h'), RES.human, n, G.params.n_pick);
-  drawWindow($('#win-a'), RES.agent, n, G.params.n_pick);
-  drawPoints($('#pts-h'), RES.human, n);
-  drawPoints($('#pts-a'), RES.agent, n);
+           ...isoPoints(va)});
+  drawWindow($('#win-h'), RES.human, n, G.params.n_pick, vh);
+  drawWindow($('#win-a'), RES.agent, n, G.params.n_pick, va);
+  drawPoints($('#pts-h'), vh);
+  drawPoints($('#pts-a'), va);
   armReplayText('#scrubarm', n,
                 RES.human.skipped ? [['agent', RES.agent.placed, aa]]
                                   : [['you', RES.human.placed, ah], ['agent', RES.agent.placed, aa]]);
@@ -2236,7 +2699,8 @@ const RPF = {
   bin: ['#rcbin0', '#rcbin1', '#rcbin2'],
   nb: '#rcnb', n_pick: '#rcnpick', max_l: '#rcmaxl',
   rot: '#rcrot', ems: '#rcems', stability: '#rcstab', min_support: '#rcmsup',
-  type_rule: '#rctrule', arm_collision: '#rcarmcol', base_x_moves: '#rcarmmoves',
+  type_rule: '#rctrule', soft_mix: '#rcsoftmix',
+  outline_resort: '#rcolresort', outline_when: '#rcolwhen', outline_area: '#rcolarea', arm_collision: '#rcarmcol', base_x_moves: '#rcarmmoves',
   stack_cap: '#rcstackcap', stack_cap_types: '#rcstacktypes',
   stack_cap_side_cm: '#rcstackside', stack_cap_allow_cm: '#rcstackallow',
   box_pad_m: '#rcbpad',
@@ -2251,6 +2715,7 @@ function readRecalc(){
     else if (PSTR.has(k)) o[k] = $(sel).value;
     else if (PNUMS.has(k)) o[k] = readList($(sel).value);
     else if (PFLOAT.has(k)) o[k] = parseFloat($(sel).value);
+    else if (PFLAG.has(k)) o[k] = $(sel).checked ? 1 : 0;
     else o[k] = parseInt($(sel).value, 10);
   }
   return o;
@@ -2268,8 +2733,10 @@ function writeRecalc(p){
   for (const [k, sel] of Object.entries(RPF)){
     if (Array.isArray(sel)) sel.forEach((t, i) => $(t).value = p[k][i]);
     else if (PNUMS.has(k)) $(sel).value = showList(p[k]);
+    else if (PFLAG.has(k)) $(sel).checked = !!p[k];
     else $(sel).value = p[k];
   }
+  syncSoft(RPF);
   $('#rclo').value = p.size_lo.join('\u00d7');
   $('#rchi').value = p.size_hi.join('\u00d7');
   $('#rcitems').value = p.n_items;
@@ -2286,6 +2753,7 @@ function markRecalc(){
     const off = Array.isArray(sel)
       ? sel.some((t, i) => parseInt($(t).value, 10) !== was[k][i])
       : PNUMS.has(k) ? String(readList($(sel).value)) !== String(was[k])
+      : PFLAG.has(k) ? $(sel).checked !== !!was[k]
       : String($(sel).value) !== String(was[k]);
     (Array.isArray(sel) ? sel : [sel]).forEach(t =>
       $(t).closest('.pf').classList.toggle('moved', off));
@@ -2391,12 +2859,14 @@ function drawRcReplay(n){
     const arm = stepArm(`rc${r._aid}:${n}`, r.placed, n, [bx, by, bz],
                         () => drawRcReplay(parseInt($('#rcscrub').value, 10)),
                         r.params.base_x_moves);
+    const v = viewPoints('rc' + k, r, n,
+                         () => drawRcReplay(parseInt($('#rcscrub').value, 10)));
     drawIso($('#iso-rc' + k), pl, bx, by, bz,
             {highlight: pl.length - 1, height: 290, arm,
              types: typed() ? r.placed_types : null,
-             ...nextPoints(r, n)});
-    drawWindow($('#win-rc' + k), r, n, r.params.n_pick);
-    drawPoints($('#pts-rc' + k), r, n);
+             ...isoPoints(v)});
+    drawWindow($('#win-rc' + k), r, n, r.params.n_pick, v);
+    drawPoints($('#pts-rc' + k), v);
     $('#rcs' + k).textContent = `${(r.util * 100).toFixed(1)}% filled · `
       + `${r.items} boxes · ${bx}\u00d7${by}\u00d7${bz} bin`;
   });
@@ -2431,6 +2901,7 @@ async function recalcRun(){
                                || ['no reply from the server']).join('\n');
     return;
   }
+  r._pk = r.rid;
   RCROWS.push(r);
   showRecalc(RCROWS.length - 1);
 }
@@ -2489,7 +2960,23 @@ function armToggle(on){
 }
 $('#showarm').onchange = e => armToggle(e.target.checked);
 $('#showarm-r').onchange = e => armToggle(e.target.checked);
-$('#showpts').onchange = () => redrawIsos();
+$('#showpts').onchange = e => {
+  $('#showbad').disabled = !e.target.checked;
+  redrawIsos();
+};
+$('#showbad').onchange = e => {
+  document.querySelectorAll('.badlg').forEach(el => el.hidden = !e.target.checked);
+  redrawIsos();
+};
+document.querySelectorAll('.ptsrot').forEach(s => s.onchange = e => {
+  PTSROT = e.target.value;
+  document.querySelectorAll('.ptsrot').forEach(o => o.value = PTSROT);
+  redrawIsos();
+});
+boxClicks('h', $('#win-h'), () => drawReplay(parseInt($('#scrub').value, 10)));
+boxClicks('a', $('#win-a'), () => drawReplay(parseInt($('#scrub').value, 10)));
+for (const k of [0, 1])
+  boxClicks('rc' + k, $('#win-rc' + k), () => drawRcReplay(parseInt($('#rcscrub').value, 10)));
 $('#zoom').oninput = e => setZoom(parseInt(e.target.value, 10));
 $('#zoomfit').onclick = () => setZoom(null);
 try {
@@ -2507,13 +2994,15 @@ const stepScrub = (id, d) => {
 document.querySelectorAll('.scrubbar button[data-step]').forEach(b =>
   b.onclick = () => stepScrub(b.dataset.for, +b.dataset.step));
 addEventListener('keydown', e => {
-  if ($('#result').hidden || !RES) return;
+  // the Play tab's result, or a log match's pallet, whichever is on show
+  const log = !$('#logm').hidden && LRES;
+  if (!log && ($('#result').hidden || !RES || $('#tabgame').hidden)) return;
   const t = e.target;
   if (t && t.matches && t.matches('input:not([type=range]),select,textarea')) return;
   if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
   // a focused slider already moves itself on the arrow keys
   if (t && t.matches && t.matches('input[type=range]')) return;
-  stepScrub('scrub', e.key === 'ArrowLeft' ? -1 : 1); e.preventDefault();
+  stepScrub(log ? 'lscrub' : 'scrub', e.key === 'ArrowLeft' ? -1 : 1); e.preventDefault();
 });
 /* the bar sticks just under the header, whatever height the header wraps to */
 const setHdr = () => document.documentElement.style.setProperty(
@@ -2524,6 +3013,7 @@ $('#rcdet').addEventListener('toggle', () => {
   if ($('#rcdet').open && RCSEL) drawRcReplay(parseInt($('#rcscrub').value, 10));
 });
 addEventListener('resize', () => {
+  if (LRES && !$('#logm').hidden) lDraw(parseInt($('#lscrub').value, 10));
   if (B && !$('#play').hidden) render();
   if (RES && !$('#result').hidden) drawReplay(parseInt($('#scrub').value, 10));
   if (RES && !$('#result').hidden && RCSEL) drawRcReplay(parseInt($('#rcscrub').value, 10));
@@ -2535,7 +3025,7 @@ $('#resign').onclick = () => {
 };
 $('#tosetup').onclick = () => { $('#play').hidden = true; $('#setup').hidden = false; };
 $('#back2').onclick = () => { $('#result').hidden = true; $('#setup').hidden = false; };
-['#iso3d', '#iso-h', '#iso-a', '#iso-rc0', '#iso-rc1'].forEach(bindRotate);
+['#iso3d', '#iso-h', '#iso-a', '#iso-rc0', '#iso-rc1', '#iso-l', '#iso-r'].forEach(bindRotate);
 
 /* every field re-validates on the server, which also reports which of them
    have drifted away from the run being raced */
@@ -2630,7 +3120,73 @@ function ddEnhance(sel){
     .observe(sel, {childList: true, subtree: true});
   label();
 }
-['#opp', '#rcopp', '#xopp'].forEach(s => ddEnhance($(s)));
+['#opp', '#rcopp', '#xopp', '#lopp'].forEach(s => ddEnhance($(s)));
+/* a folder field the menu beside it browses: the folders are the server's,
+   since that is where the experiment reads them.  Opening a folder makes it
+   the field's value, each counts its .csv files, and Escape puts back the
+   path the menu opened on.  With `files` it picks a data file instead: the
+   folders are only walked through, and clicking a .csv or .npy takes it. */
+const fmtSize = b => b < 1024 ? b + ' B' : b < 1048576 ? (b / 1024).toFixed(0) + ' KB'
+  : (b / 1048576).toFixed(1) + ' MB';
+function dirPick(inp, files = false){
+  const wrap = inp.parentNode;
+  const btn = document.createElement('button'); btn.type = 'button';
+  btn.title = files ? 'browse data files' : 'browse folders'; btn.innerHTML = '&#9662;';
+  wrap.appendChild(btn);
+  let menu = null, was = '', seq = 0;
+  const close = () => { if (menu){ menu.remove(); menu = null; } };
+  const set = v => { inp.value = v; inp.dispatchEvent(new Event('input', {bubbles: true})); };
+  const div = (cls, txt) => Object.assign(document.createElement('div'), {className: cls, textContent: txt});
+  const item = (txt, n, go, cls = '') => {
+    const d = div('ddi' + (typeof n === 'number' && n ? ' has' : '') + cls, '');
+    d.appendChild(Object.assign(document.createElement('span'), {textContent: txt}));
+    if (n != null) d.appendChild(Object.assign(document.createElement('span'), {className: 'n',
+      textContent: typeof n === 'number' ? `${n} csv` : n}));
+    d.onclick = e => { e.stopPropagation(); go(); };
+    return d;
+  };
+  // a file field keeps its value while the menu walks: only a file sets it
+  const walk = files ? dir => show(dir) : dir => { set(dir); show(dir); };
+  const show = async dir => {
+    const s = ++seq;
+    // a server started before /api/dirs existed answers with its HTML 404 page
+    const r = await fetch('/api/dirs?dir=' + encodeURIComponent(dir) + (files ? '&files=1' : ''))
+      .then(x => x.status === 404
+        ? {error: 'the server predates this folder picker: restart it (python -m ar2l.viz.game)'}
+        : x.json()).catch(e => ({error: String(e)}));
+    if (!menu || s !== seq) return;
+    menu.replaceChildren();
+    if (r.error){ menu.appendChild(div('ddhd', r.error)); return; }
+    menu.appendChild(div('ddhd', r.dir));
+    if (!files) menu.appendChild(item('✓ use this folder', r.csv, () => { set(r.dir); close(); }));
+    if (r.parent !== null) menu.appendChild(item('↑ ..', null, () => walk(r.parent)));
+    menu.appendChild(div('ddsep', ''));
+    for (const d of r.dirs) menu.appendChild(item(d.name + '/', d.csv, () => walk(d.path)));
+    if (files){
+      if (r.dirs.length && r.files.length) menu.appendChild(div('ddsep', ''));
+      const cur = inp.value.trim();
+      for (const f of r.files)
+        menu.appendChild(item(f.name, fmtSize(f.size), () => { set(f.path); close(); },
+                              f.path === cur ? ' on' : ''));
+      if (!r.dirs.length && !r.files.length) menu.appendChild(div('ddhd', 'no folders or data files inside'));
+    } else if (!r.dirs.length) menu.appendChild(div('ddhd', 'no folders inside'));
+  };
+  btn.onclick = e => {
+    e.stopPropagation();
+    if (menu){ close(); return; }
+    document.dispatchEvent(new Event('ddclose'));
+    menu = div('ddm', ''); menu.appendChild(div('ddhd', 'reading…'));
+    wrap.appendChild(menu);
+    was = inp.value; show(inp.value.trim() || (files ? 'data' : ''));
+  };
+  document.addEventListener('click', e => { if (!wrap.contains(e.target)) close(); });
+  document.addEventListener('ddclose', close);
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && menu){ if (inp.value !== was) set(was); close(); } });
+}
+dirPick($('#xdir'));
+dirPick($('#data'), true);
+dirPick($('#lfile'), true);
 
 (async () => {
   const m = await (await fetch('/api/setup')).json();
@@ -2679,6 +3235,7 @@ const XCOL = ['--c0', '--c4', '--c2', '--c1', '--c5'];
 let XJOB = null, XPOLL = null, XROWS = {}, XRUN = false, XBAD = false;
 function showTab(t){
   $('#tabgame').hidden = t !== 'game'; $('#exp').hidden = t !== 'exp'; $('#cmp').hidden = t !== 'cmp';
+  $('#logm').hidden = t !== 'logm';
   $('#dash').hidden = t !== 'dash'; $('#trn').hidden = t !== 'trn';
   if (t === 'trn'){ if (!TFORM) tLoad(); tPoll(); sPoll(); }
   if (t === 'dash' && !$('#dashf').src) $('#dashf').src = '/dashboard/';
@@ -2692,6 +3249,13 @@ function showTab(t){
     }
     if (!XFILLED){ XFILLED = true; xPreset(); }
     if (!XJOB) xPoll();
+  } else if (t === 'logm'){
+    if (!$('#lopp').options.length && $('#opp').options.length){
+      $('#lopp').innerHTML = $('#opp').innerHTML; $('#lopp').value = $('#opp').value;
+    }
+    if (!LFILLED){ LFILLED = true; lPreset(); }
+    if (!LJOB) lPoll();
+    dispatchEvent(new Event('resize'));
   } else dispatchEvent(new Event('resize'));
 }
 function moveInk(){
@@ -2705,23 +3269,31 @@ const XPF = {
   bin: ['#xbin0', '#xbin1', '#xbin2'],
   nb: '#xnb', n_pick: '#xnpick', max_l: '#xmaxl',
   rot: '#xprot', ems: '#xems', stability: '#xstab', min_support: '#xmsup',
-  type_constraint: '#xtcon', type_rule: '#xtrule', arm_collision: '#xarmcol', base_x_moves: '#xarmmoves',
+  type_constraint: '#xtcon', type_rule: '#xtrule', soft_mix: '#xsoftmix',
+  outline_resort: '#xolresort', outline_when: '#xolwhen', outline_area: '#xolarea', arm_collision: '#xarmcol', base_x_moves: '#xarmmoves',
   stack_cap: '#xstackcap', stack_cap_types: '#xstacktypes',
   stack_cap_side_cm: '#xstackside', stack_cap_allow_cm: '#xstackallow',
   pallet_cm: ['#xpcm0', '#xpcm1', '#xpcm2'], cell_cm: '#xcellcm',
   box_pad_m: '#xbpad', box_scale: '#xbscale', box_round: '#xbround', order_random: '#xordrnd',
 };
 PLABEL.type_constraint = 'stacking rule';
+for (const pf of [PF, RPF, XPF])
+  for (const k of ['type_rule', 'outline_resort'])
+    $(pf[k]).addEventListener('input', () => syncSoft(pf));
 let XCHECK = null, XFILLED = false;
 /* a run with no name cannot be told apart in Compare, nor deleted by name */
 const xNoName = () => !$('#xname').value.replace(/,/g, ' ').trim();
 function xCheck(){
   clearTimeout(XCHECK);
   XCHECK = setTimeout(async () => {
-    const r = await api('/api/exp/check', {params: readParams(XPF), spec: $('#xopp').value});
-    const err = r.errors || [];
+    const r = await api('/api/exp/check', {params: readParams(XPF), spec: $('#xopp').value,
+                                           name: $('#xname').value.trim(), out: $('#xout').value.trim()});
+    const err = r.errors || [], taken = r.taken || [];
     $('#xperr').textContent = err.join('\n');
-    XBAD = !!err.length;
+    /* a second run under a used name would merge with the first in Compare */
+    $('#xnerr').textContent = taken.length
+      ? `"${$('#xname').value.trim()}" is already in this results folder (${taken.length} report${taken.length > 1 ? 's' : ''}) — pick another name, or delete it in Compare first` : '';
+    XBAD = !!err.length || !!taken.length;
     if (!XRUN) $('#xrun').disabled = XBAD || xNoName();
     const off = new Set((r.mismatch || []).map(m => m.key));
     for (const [k, sel] of Object.entries(XPF))
@@ -2757,7 +3329,7 @@ function xRow(f, i){
 }
 function xDraw(s){
   if (s.id !== XJOB){ XJOB = s.id; XROWS = {}; $('#xfiles').innerHTML = ''; }
-  if (XRUN && s.state !== 'running'){ CMP = null; if (!$('#cmp').hidden) cLoad(); }
+  if (XRUN && s.state !== 'running'){ CMP = null; if (!$('#cmp').hidden) cLoad(); xCheck(); }
   const run = XRUN = s.state === 'running';
   $('#xsumcard').hidden = false;
   $('#xrun').disabled = run || XBAD || xNoName(); $('#xstop').disabled = !run;
@@ -2839,11 +3411,329 @@ $('#xrun').onclick = async () => {
   XJOB = r.job; xPoll();
 };
 for (const sel of Object.values(XPF).flat()) $(sel).addEventListener('input', xCheck);
-$('#xname').addEventListener('input', () => { if (!XRUN) $('#xrun').disabled = XBAD || xNoName(); });
+$('#xname').addEventListener('input', () => { if (!XRUN) $('#xrun').disabled = XBAD || xNoName(); xCheck(); });
+$('#xout').addEventListener('input', xCheck);
 $('#xopp').onchange = xPreset;
 $('#xpreset').onclick = xPreset;
 $('#xfromplay').onclick = () => { writeParams(readParams(), XPF); xCheck(); };
 $('#xstop').onclick = async () => { await api('/api/exp/stop', {job: XJOB}); xPoll(); };
+/* ================= log match =================
+   The cell's conveyor log, packed by the chosen agent a pick per step
+   (`ar2l.viz.logmatch`), under the big experiment's form.  The run goes on
+   on the server; every pallet it closes opens in a result view drawn by the
+   Play tab's own replay functions, the station at each step marked with the
+   box the real robot took there and the boxes first seen there. */
+const LPF = {
+  bin: ['#lbin0', '#lbin1', '#lbin2'],
+  nb: '#lnb', n_pick: '#lnpick', max_l: '#lmaxl',
+  rot: '#lprot', ems: '#lems', stability: '#lstab', min_support: '#lmsup',
+  type_constraint: '#ltcon', type_rule: '#ltrule', soft_mix: '#lsoftmix',
+  outline_resort: '#lolresort', outline_when: '#lolwhen', outline_area: '#lolarea', arm_collision: '#larmcol', base_x_moves: '#larmmoves',
+  stack_cap: '#lstackcap', stack_cap_types: '#lstacktypes',
+  stack_cap_side_cm: '#lstackside', stack_cap_allow_cm: '#lstackallow',
+  pallet_cm: ['#lpcm0', '#lpcm1', '#lpcm2'], cell_cm: '#lcellcm',
+  box_pad_m: '#lbpad', box_scale: '#lbscale', box_round: '#lbround',
+};
+for (const k of ['type_rule', 'outline_resort'])
+  $(LPF[k]).addEventListener('input', () => syncSoft(LPF));
+let LJOB = null, LPOLL = null, LRUN = false, LBAD = false, LFILLED = false, LCHECK = null;
+let LSTAT = null, LRES = null;          // the last status, and the pallet on show
+const LSHOW = {pts: '#lshowpts', bad: '#lshowbad'};
+const lTime = t => t ? String(t).slice(11, 19) : '';
+const lPct = u => (u * 100).toFixed(1) + '%';
+const lNow = () => parseInt($('#lscrub').value, 10);
+/* the match counts steps from 1; the log's own number follows as a reference */
+const lRef = log => log != null ? ` <span class="lref">(log ${log})</span>` : '';
+const lSpan = (st, lg) => st ? `${st[0]}&ndash;${st[1]}${lg ? ` <span class="lref">(log ${lg[0]}&ndash;${lg[1]})</span>` : ''}` : '&mdash;';
+
+function lCheck(){
+  clearTimeout(LCHECK);
+  LCHECK = setTimeout(async () => {
+    const r = await api('/api/log/check', {params: readParams(LPF), spec: $('#lopp').value,
+                                           path: $('#lfile').value.trim(),
+                                           tol_cm: $('#ltol').value});
+    const err = r.errors || [], g = r.log || {};
+    $('#lperr').textContent = err.join('\n');
+    $('#linfo').innerHTML = g.error ? `<span style="color:var(--c3)">${cEsc(g.error)}</span>`
+      : `${g.steps} steps${g.logs ? ` (log ${g.logs[0]}&ndash;${g.logs[1]})` : ''} &middot; ${g.rows} rows &rarr; <b>${g.boxes}</b> boxes (`
+        + g.types.map((c, t) => `${c} ${PTNAME[t] || 'type ' + (t + 1)}`).join(', ')
+        + `) &middot; the robot picked ${g.picks}`
+        + (g.real ? ` and packed ${g.real.packed} onto ${g.real.pallets} real pallet${g.real.pallets === 1 ? '' : 's'}`
+                    + (g.real.failed ? `, ${g.real.failed} pick${g.real.failed === 1 ? '' : 's'} failed` : '')
+                  : ' &middot; no pack positions in this log')
+        + ` &middot; ${cEsc(g.first)} to ${cEsc(g.last)}`;
+    LBAD = !!err.length || !!g.error;
+    if (!LRUN) $('#lrun').disabled = LBAD;
+    const off = new Set((r.mismatch || []).map(m => m.key));
+    for (const [k, sel] of Object.entries(LPF))
+      (Array.isArray(sel) ? sel : [sel]).forEach(t =>
+        $(t).closest('.pf').classList.toggle('off', off.has(k)));
+    $('#lpwarn').innerHTML = (r.mismatch || []).length
+      ? '⚠ the packer is off its training configuration &mdash; '
+        + r.mismatch.map(m => `${PLABEL[m.key] || m.key} ${m.is} (trained at ${m.was})`).join(', ')
+        + '. It will still pack; it was just never asked this.' : '';
+    $('#lpsrc').textContent = off.size ? '— edited' : '';
+    if (err.length || off.size) $('#lpardet').open = true;
+  }, 160);
+}
+async function lPreset(){
+  const r = await (await fetch('/api/params?spec=' + encodeURIComponent($('#lopp').value))).json();
+  if (r.params) writeParams(r.params, LPF);
+  lCheck();
+}
+async function lPoll(){
+  clearTimeout(LPOLL);
+  const r = await fetch('/api/log/status' + (LJOB ? '?job=' + LJOB : ''));
+  if (!r.ok) return;
+  const s = await r.json();
+  LJOB = s.id;
+  lStatus(s);
+  if (s.state === 'running') LPOLL = setTimeout(lPoll, 500);
+}
+function lStatus(s){
+  LSTAT = s;
+  const run = LRUN = s.state === 'running';
+  $('#lsumcard').hidden = false;
+  $('#lrun').disabled = run || LBAD; $('#lstop').disabled = !run;
+  $('#ldot').hidden = !run;
+  $('#lstate').innerHTML = run
+    ? `<span class="spin"></span> packing with ${cEsc(s.label)}&hellip; step ${s.at} of ${s.n_steps}`
+      + (s.drain ? `, then ${s.drain} after it` : '')
+    : s.state === 'done' ? `done in ${s.elapsed.toFixed(1)} s` : s.state;
+  $('#lmsg').textContent = s.error || '';
+  const pct = s.state === 'done' ? 100 : 100 * s.at / Math.max(1, s.n_steps);
+  $('#lpct').textContent = Math.floor(pct) + '%';
+  $('#lall i').style.width = pct + '%';
+  $('#lall').classList.toggle('run', run);
+  $('#lbn').textContent = `${s.packed} / ${s.boxes}`;
+  $('#lpn').textContent = s.pallets.length + (s.cur ? 1 : 0);
+  $('#lutil').textContent = s.pallets.length
+    ? lPct(s.pallets.reduce((a, q) => a + q.util, 0) / s.pallets.length) : '—';
+  $('#lmatch').textContent = s.match[1] ? `${s.match[0]} / ${s.match[1]}` : '—';
+  $('#ltime').textContent = s.elapsed < 90 ? `${s.elapsed.toFixed(0)} s`
+    : `${Math.floor(s.elapsed / 60)} m ${Math.round(s.elapsed % 60)} s`;
+  $('#ldest').textContent = `${s.log} · ${s.rows} rows → ${s.boxes} boxes, the robot picked ${s.picks}`
+    + (s.real ? ` and packed ${s.real.packed} onto ${s.real.pallets} real pallet${s.real.pallets === 1 ? '' : 's'}` : '')
+    + (s.skipped ? ` · ${s.skipped} set aside: they fit no empty pallet` : '')
+    + ` · ${s.label}` + (s.picker ? `, its box picked by ${s.picker}` : '');
+  lTable(s);
+  // the run is over: show its first pallet, unless one of it is on show
+  if (!run && s.pallets.length && (!LRES || LRES.job !== s.id)) lOpen(0);
+}
+/* one row per closed pallet, and the one being packed; a row opens it */
+function lTable(s){
+  const on = i => LRES && LRES.job === s.id && LRES.k === i;
+  const R = s.real_pallets || [], n = Math.max(s.pallets.length + (s.cur ? 1 : 0), R.length);
+  // the real pallet's figure under the agent's, and how far apart they are
+  // more boxes and more fill are better; a height or a type count is neither
+  const vs = (r, txt, d, tone) => r ? `<div class="d lreal">real ${txt}${d === undefined ? ''
+      : ` <span class="${tone ? d >= 0 ? 'up' : 'down' : ''}" style="${tone ? '' : 'color:var(--dim)'}">(${d >= 0 ? '+' : ''}${d})</span>`}</div>` : '';
+  const rows = [];
+  for (let i = 0; i < n; i++){
+    const q = s.pallets[i], r = R[i], cur = !q && s.cur && i === s.pallets.length;
+    const span = (st, t, lg) => `${st ? `steps ${lSpan(st, lg)}` : ''}${t
+      ? ` <span class="d" style="color:var(--dim)">&middot; ${lTime(t[0])} &rarr; ${lTime(t[1])}</span>` : ''}`;
+    const agent = q ? `${span(q.steps, q.times, q.logs)}${q.after_log ? `${q.steps ? ' + ' : ''}${q.after_log} after the log` : ''}
+        <span class="d" style="color:var(--dim)">&middot; ${q.reason}</span>`
+      : cur ? 'packing&hellip;' : '<span class="d" style="color:var(--dim)">the agent needed no pallet here</span>';
+    const num = (a, b, f = v => v, tone = false) => `<td>${a == null ? '&mdash;' : f(a)}${
+      vs(r, b == null ? '&mdash;' : f(b), a != null && b != null && typeof a === 'number' && f === lPct
+        ? +((a - b) * 100).toFixed(1) : a != null && b != null && f !== lPct ? a - b : undefined, tone)}</td>`;
+    const types = [0, 1, 2].map(t => num(q ? q.types[t] : null, r ? r.types[t] : null)).join('');
+    rows.push(`<tr class="${q ? 'view' : 'cur'}${q && on(i) ? ' pick' : ''}" data-i="${i}">
+      <td>P${i + 1}</td>
+      <td>${agent}${r ? `<div class="d lreal">real: ${r.id ? `pallet ${cEsc(r.id)} &middot; ` : ''}${span(r.steps, r.times, r.logs)}${r.failed
+          ? ` &middot; ${r.failed} failed pick${r.failed === 1 ? '' : 's'}` : ''}</div>` : ''}</td>
+      ${num(q ? q.boxes : cur ? s.cur.boxes : null, r ? r.boxes : null, undefined, true)}${types}
+      ${num(q ? q.util : cur ? s.cur.util / 100 : null, r ? r.util : null, lPct, true)}
+      ${num(q ? q.max_height : null, r ? r.max_height : null, v => v + ' cm')}
+      <td>${q && q.match[1] ? q.match[0] + ' / ' + q.match[1] : '&mdash;'}</td></tr>`);
+  }
+  $('#ltab').innerHTML = `<tr><th>pallet</th><th>steps &middot; time &middot; ended because${
+      R.length ? ' &mdash; the agent, then the real robot' : ''}</th>
+      <th>boxes</th>${PTNAME.map((t, i) => `<th>${TSW(i)}${t}</th>`).join('')}<th title="${
+      R.length ? 'the real pallet\'s boxes counted at the size the agent\'s grid gives them, padding included' : ''}">fill</th>
+      <th>height</th><th title="the steps where the box the robot took was within the agent's reach, and how often the agent took it too">same as robot</th></tr>`
+    + rows.join('');
+}
+/* a closed pallet in the result view: what the server kept of it, and how its
+   replay asks for the points and the arm at any step */
+async function lOpen(k){
+  const job = LJOB, n = LSTAT ? LSTAT.pallets.length : 0;
+  if (!job || k < 0 || k >= n) return;
+  const pal = await api('/api/log/pallet', {job, i: k});
+  if (pal.error){ $('#lmsg').textContent = pal.error; return; }
+  Object.assign(pal, {_pk: `L${job}:${k}`, _show: LSHOW, _typed: true,
+    _ask: (step, i) => api('/api/log/points', {job, pallet: k, n: step, i}),
+    _via: {show: '#lshowarm',
+           post: (placed, bin, moves) => api('/api/log/arm', {job, placed, bin, moves})}});
+  LRES = {job, k, pal};
+  $('#lres').hidden = false;
+  document.querySelectorAll('#ltab tr.view').forEach(tr =>
+    tr.classList.toggle('pick', +tr.dataset.i === k));
+  $('#lprev').disabled = k === 0; $('#lnext').disabled = k >= n - 1;
+  const p = pal.params;
+  $('#lressub').textContent = `— ${LSTAT.log}`;
+  $('#lverdict').textContent = `Pallet ${k + 1} of ${n}: ${lPct(pal.util)} filled, ${pal.boxes} boxes`;
+  $('#lverdict').style.color = css('--c1');
+  $('#lvsub').innerHTML = `${pal.bin.join('×')} pallet &middot; N<sub>B</sub> ${p.nb}, reach k ${p.n_pick}`
+    + ` &middot; ${cEsc(pal.label)}` + (pal.picker ? `, its box picked by ${pal.picker}` : '')
+    + ` &middot; it saw only the boxes of the steps so far`;
+  $('#llab').textContent = pal.label;
+  $('#lstat').innerHTML = `
+    <div class="big">${(pal.util * 100).toFixed(1)}<span style="font-size:18px">%</span></div>
+    <div class="sub" style="margin-bottom:8px">of the pallet filled</div>
+    <div class="stat"><span>boxes packed</span><b>${pal.boxes}</b></div>
+    ${pal.types.map((c, t) => `<div class="stat"><span>${TSW(t)}${PTNAME[t]}</span><b>${c}</b></div>`).join('')}
+    <div class="stat"><span>height</span><b>${pal.max_height} cm</b></div>
+    <div class="stat"><span>steps</span><b>${lSpan(pal.steps, pal.logs)}${
+      pal.after_log ? ` + ${pal.after_log} after the log` : ''}</b></div>
+    <div class="stat"><span>time</span><b>${pal.times ? lTime(pal.times[0]) + ' &rarr; ' + lTime(pal.times[1]) : '&mdash;'}</b></div>
+    <div class="stat" title="the steps where the box the robot took was within the agent's reach, and how often the agent took it too"><span>same box as the robot</span><b>${
+      pal.match[1] ? pal.match[0] + ' of ' + pal.match[1] : '&mdash;'}</b></div>
+    <div class="stat"><span>ended because</span><b>${pal.reason}</b></div>`;
+  const real = pal.real;
+  $('#side-r').hidden = $('#lrstat').hidden = !real;
+  $('#lduel').style.gridTemplateColumns = real ? '' : '1fr';
+  $('#lres .lgrid').classList.toggle('two', !real);
+  $('#lrnote').textContent = real
+    ? 'Pallet against pallet: the agent\'s pallet ' + (k + 1) + ' beside the robot\'s pallet ' + (k + 1)
+      + ', box n against box n. The real pallet is built from the log\'s pack positions (box_x/y/z_cm, '
+      + 'orientation_deg) at the real box sizes, no padding; a failed pick adds nothing. The log may start '
+      + 'with the pallet part-packed, so a box can stand on others the log never saw. A new pallet_id '
+      + 'starts a new real pallet (the one before it is finished); a log without pallet_id starts one '
+      + 'where a box would overlap one already there.'
+    : 'This log has no pack positions (box_x_cm, box_y_cm, box_z_cm, orientation_deg), so there is '
+      + 'no real pallet to show beside the agent\'s.';
+  if (real) pal._rstep = new Map(real.map((e, j) => [e.step, j]));
+  // box n against box n: the slider runs to the end of the longer pallet
+  pal._ron = real ? real.filter(e => e.box && e.pallet === k) : [];
+  const len = Math.max(pal.placed.length, pal._ron.length);
+  const sc = $('#lscrub'); sc.max = len; sc.value = len;
+  lDraw(len);
+}
+/* The robot's pallet k beside the agent's pallet k, box for box: its first
+   n boxes, and the station at the step its box n+1 went on -- that step's
+   boxes only, all the robot could see. */
+function lReal(n){
+  const pal = LRES.pal, real = pal.real, k = LRES.k;
+  if (!real) return;
+  const on = pal._ron, R = (pal.real_pallets || [])[k], np = real[real.length - 1].pallet + 1;
+  const [bx, by, bz] = pal.bin, m = Math.min(n, on.length);
+  const head = t => `<h2 style="font-size:11px;color:var(--dim);letter-spacing:.6px;text-transform:uppercase;margin:0 0 8px">${t}</h2>`;
+  drawIso($('#iso-r'), on.slice(0, m).map(e => e.box), bx, by, bz,
+          {height: 400, types: on.slice(0, m).map(e => e.type), highlight: m === n ? m - 1 : -1});
+  const nx = on[n];
+  if (nx){
+    const win = {w: nx.w, t: nx.t, probs: null, step: nx.step, log: nx.log, time: nx.time, robot: true,
+                 tried: nx.pick, failed: null, pick: nx.pick, real: -1, new: [], waiting: nx.w.length};
+    drawWindow($('#win-r'), {windows: [win], _typed: true}, 0, win.w.length, null);
+  } else $('#win-r').innerHTML = `<div class="rwh">${R ? `the robot put ${on.length} boxes on its pallet ${k + 1}`
+      : `the robot used only ${np} pallet${np === 1 ? '' : 's'} in this log`}</div>`;
+  const last = on[m - 1];
+  $('#lrsub').textContent = R ? `— its pallet ${k + 1} of ${np}${R.id ? ` (${R.id})` : ''}, box ${m} of ${on.length}`
+    + (last ? `, step ${last.step} (log ${last.log})` : '') : `— no pallet ${k + 1}`;
+  if (!R){ $('#lrstat').innerHTML = head(`Real pallet ${k + 1}`) + `<div class="sub">the robot used only ${np} pallet${np === 1 ? '' : 's'} in this log</div>`; return; }
+  $('#lrstat').innerHTML = `<div class="big">${(R.util * 100).toFixed(1)}<span style="font-size:18px">%</span></div>
+    <div class="sub" style="margin-bottom:8px" title="each box at the size the agent's grid gives it, padding included, so it reads against the agent's fill">of the pallet filled &mdash; real pallet ${k + 1} of ${np}${R.id ? ` (pallet_id ${cEsc(R.id)})` : ''}</div>
+    <div class="stat"><span>boxes the log put on it</span><b>${R.boxes}</b></div>
+    ${R.types.map((c, t) => `<div class="stat"><span>${TSW(t)}${PTNAME[t]}</span><b>${c}</b></div>`).join('')}
+    <div class="stat"><span>height</span><b>${R.max_height} cm</b></div>
+    <div class="stat"><span>steps</span><b>${lSpan(R.steps, R.logs)}</b></div>
+    <div class="stat"><span>time</span><b>${R.times ? lTime(R.times[0]) + ' &rarr; ' + lTime(R.times[1]) : '&mdash;'}</b></div>
+    <div class="stat"><span>failed picks</span><b>${R.failed}</b></div>
+    <div class="stat"><span>against the agent's</span><b class="${pal.util >= R.util ? 'up' : 'down'}">${
+      pal.util >= R.util ? '+' : ''}${((pal.util - R.util) * 100).toFixed(1)} points of fill, ${
+      pal.boxes - R.boxes >= 0 ? '+' : ''}${pal.boxes - R.boxes} boxes</b></div>`;
+}
+/* the log station's own header line: the step it stood at, and what the
+   robot took there; `drawWindow` closes it */
+function lWinHead(win, reach){
+  const at = win.step == null ? 'after the log'
+    : `step <b>${win.step}</b>${lRef(win.log)}${win.time ? ' &middot; ' + lTime(win.time) : ''}`;
+  // the real robot's station: the boxes of this step only, and what it did
+  if (win.robot) return `<div class="rwh">${at} &mdash; the robot sees the <b>${win.w.length}</b>
+      box${win.w.length === 1 ? '' : 'es'} of this step and `
+    + (win.failed ? `tried #${win.tried + 1}: <span style="color:var(--c3)">${cEsc(win.failed)}</span>`
+       : win.tried >= 0 ? `packed #${win.tried + 1}` : 'took none of them');
+  const rb = win.real_at === 'view' ? ` &middot; the robot took #${win.real + 1}`
+    : win.real_at === 'waiting' ? ' &middot; the robot took a box out of view'
+    : win.real_at === 'packed' ? ' &middot; the robot took a box the agent had packed already'
+    : win.real_at === 'skipped' ? ' &middot; the robot took a box set aside' : '';
+  return `<div class="rwh">${at} &mdash; ` + (win.pick < 0
+      ? `the station when the pallet closed: <b>${win.waiting}</b> waiting, none of the
+         <b>${reach}</b> in reach has a place`
+      : `<b>${win.waiting}</b> waiting, sees <b>${win.w.length}</b>, can pick from
+         <b>${reach}</b>, packed #${win.pick + 1}`) + rb;
+}
+function lDraw(n){
+  if (!LRES) return;
+  const pal = LRES.pal, [bx, by, bz] = pal.bin, again = () => lDraw(lNow());
+  const arm = stepArm(`${pal._pk}:${n}`, pal.placed, n, pal.bin, again,
+                      pal.params.base_x_moves, pal._via);
+  const v = viewPoints('L', pal, n, again);
+  drawIso($('#iso-l'), pal.placed.slice(0, n), bx, by, bz,
+          {highlight: n - 1, height: 400, arm, types: pal.placed_types, ...isoPoints(v)});
+  drawWindow($('#win-l'), pal, n, pal.params.n_pick, v);
+  drawPoints($('#pts-l'), v);
+  armReplayText('#lscrubarm', n, [['agent', pal.placed, ARMC.get(`${pal._pk}:${n}`)]],
+                '#lshowarm', '.armlg-l');
+  lReal(n);
+  const na = Math.min(n, pal.placed.length), w0 = pal.windows[na - 1];
+  const ron = pal._ron || [], nr = Math.min(n, ron.length), r0 = ron[nr - 1];
+  $('#lscrublab').textContent = n === 0 ? 'empty pallets — drag to replay'
+    : `after box ${n}:  agent ${na} of ${pal.placed.length}`
+      + (w0 ? (w0.step != null ? ` (step ${w0.step}, log ${w0.log})` : ' (after the log)') : '')
+      + (pal.real ? `,  real robot ${nr} of ${ron.length}` + (r0 ? ` (step ${r0.step}, log ${r0.log})` : '') : '');
+  // the next box: where the station stood when it was chosen
+  const w = pal.windows[Math.min(n, pal.placed.length)], box = pal.placed[n];
+  const desc = i => `${TSW(w.t[i])}#${i + 1} ${w.w[i].join('×')} ${PTNAME[w.t[i]]}`;
+  const head = t => `<h2 style="font-size:11px;color:var(--dim);letter-spacing:.6px;text-transform:uppercase;margin:0 0 8px">${t}</h2>`;
+  if (!w){
+    $('#lstep').innerHTML = head('The end') + '<div class="sub">nothing more went on: the log ran out and the station is empty</div>';
+    return;
+  }
+  const robot = w.real_at === 'view' ? desc(w.real)
+    : w.real_at === 'waiting' ? 'a box out of view'
+    : w.real_at === 'packed' ? 'a box already on a pallet'
+    : w.real_at === 'skipped' ? 'a box set aside'
+    : w.step == null ? '&mdash;' : 'nothing';
+  $('#lstep').innerHTML = head(w.pick < 0 ? 'Why the pallet closed' : `Next: box ${n + 1}`)
+    + `<div class="stat"><span>step</span><b>${w.step == null ? 'after the log' : w.step + lRef(w.log)}</b></div>
+    <div class="stat"><span>time</span><b>${w.time || '&mdash;'}</b></div>
+    <div class="stat"><span>waiting at the station</span><b>${w.waiting}</b></div>
+    <div class="stat"><span>first seen at this step</span><b>${w.new.length}</b></div>
+    <div class="stat"><span>the robot took</span><b>${robot}</b></div>
+    <div class="stat"><span>the agent took</span><b>${w.pick < 0
+      ? 'nothing: no box in reach has a place' : desc(w.pick)}</b></div>`
+    + (w.pick >= 0 && box ? `<div class="stat"><span>it went to</span><b>(${box[0]}, ${box[1]}) z ${box[2]}</b></div>` : '');
+}
+$('#lrun').onclick = async () => {
+  $('#lmsg').textContent = '';
+  $('#lrun').disabled = true;
+  const r = await api('/api/log/start', {path: $('#lfile').value.trim(), spec: $('#lopp').value,
+                                         tol_cm: $('#ltol').value, params: readParams(LPF)});
+  if (r.error){ $('#lmsg').textContent = (r.errors || [r.error]).join('\n'); $('#lrun').disabled = LBAD; return; }
+  LJOB = r.job; LRES = null; $('#lres').hidden = true;
+  lPoll();
+};
+$('#lstop').onclick = async () => { await api('/api/log/stop', {job: LJOB}); lPoll(); };
+for (const sel of Object.values(LPF).flat()) $(sel).addEventListener('input', lCheck);
+for (const sel of ['#lfile', '#ltol']) $(sel).addEventListener('input', lCheck);
+$('#lopp').onchange = lPreset;
+$('#lpreset').onclick = lPreset;
+$('#lfromplay').onclick = () => { writeParams(readParams(), LPF); lCheck(); };
+$('#ltab').addEventListener('click', e => {
+  const tr = e.target.closest('tr.view');
+  if (tr) lOpen(+tr.dataset.i);
+});
+$('#lprev').onclick = () => { if (LRES) lOpen(LRES.k - 1); };
+$('#lnext').onclick = () => { if (LRES) lOpen(LRES.k + 1); };
+$('#lscrub').oninput = e => lDraw(parseInt(e.target.value, 10));
+$('#lshowarm').onchange = () => lDraw(lNow());
+$('#lshowpts').onchange = e => { $('#lshowbad').disabled = !e.target.checked; lDraw(lNow()); };
+$('#lshowbad').onchange = () => lDraw(lNow());
+boxClicks('L', $('#win-l'), () => lDraw(lNow()));
 /* ================= compare the reports =================
    The server reads the reports with `ar2l.viz.compare`, the parser the
    matplotlib plots use, and works out the winners among whatever is checked;
@@ -2949,12 +3839,23 @@ function cDraw(files){
       <em style="width:${pc(x.sole + x.shared)}"><span style="flex:${x.sole};background:${cCol(x.k)}"></span><span
         style="flex:${x.shared};background:color-mix(in srgb,${cCol(x.k)} 40%,transparent)"></span></em>
       <b>${x.sole + x.shared}</b> of ${cPl(x.ran, 'file')}</div>`).join('');
-  // the winner in each file
+  // the winner in each file, and each run's mean boxes · volume per pallet
+  // without the last pallet; the bottom row averages those over every run
+  const cMean = m => `${m[0].toFixed(1)} · ${m[1].toFixed(1)}%`;
+  const cCell = (dot, ms) => `<td title="mean boxes · volume per pallet, the last pallet left out"><span class="cm"><i>${dot}</i>`
+    + `<span>${ms.map(cMean).join('<br>')}</span></span></td>`;
+  const avg = keys.map(k => {
+    const ms = files.flatMap(f => f.exps.filter(e => e.key === k).map(e => e.mean));
+    return ms.length ? [0, 1].map(i => ms.reduce((a, m) => a + m[i], 0) / ms.length) : null;
+  });
   $('#ctab').innerHTML = `<table><tr><th>file</th>${keys.map(k => `<th title="${cEsc(k)}">${cEsc(k)}</th>`).join('')}<th></th></tr>`
-    + files.map((f, i) => `<tr><td><a href="#cf${i}" data-i="${i}">${cEsc(f.file.replace(/\.csv$/, ''))}</a></td>${keys.map(k =>
-        f.win.includes(k) ? `<td><span class="cdot" style="background:${cCol(k)}"></span></td>`
-        : f.exps.some(e => e.key === k) ? '<td><span class="cdot lose"></span></td>' : '<td></td>').join('')}
-      <td class="res">${cPl(f.best[0], 'pallet')} · ${f.best[1]} on the last</td></tr>`).join('') + '</table>';
+    + files.map((f, i) => `<tr><td><a href="#cf${i}" data-i="${i}">${cEsc(f.file.replace(/\.csv$/, ''))}</a></td>${keys.map(k => {
+        const ms = f.exps.filter(e => e.key === k).map(e => e.mean);
+        return !ms.length ? '<td></td>' : cCell(f.win.includes(k)
+          ? `<span class="cdot" style="background:${cCol(k)}"></span>` : '<span class="cdot lose"></span>', ms);
+      }).join('')}
+      <td class="res">${cPl(f.best[0], 'pallet')} · ${f.best[1]} on the last</td></tr>`).join('')
+    + `<tr class="avg"><td>mean</td>${avg.map(m => m ? cCell('', [m]) : '<td></td>').join('')}<td></td></tr></table>`;
   $('#ctab').querySelectorAll('a').forEach(a => a.onclick = ev => {
     ev.preventDefault();
     const d = $('#cf' + a.dataset.i); d.open = true; d.scrollIntoView({behavior: 'smooth', block: 'start'});
@@ -2988,6 +3889,7 @@ $('#cdel').onclick = async () => {
   const n = Object.values(r.removed).reduce((a, b) => a + b, 0);
   names.forEach(k => { CPICK.delete(k.key); CSEEN.delete(k.key); });
   await cLoad();
+  xCheck();         // a deleted name is free again in the experiment form
   $('#cmsg').className = 'opt';
   $('#cmsg').textContent = `deleted ${cPl(n, 'block')} from ${cPl(Object.keys(r.removed).length, 'file')}`;
 };
@@ -3000,6 +3902,8 @@ let TFORM = null, TCHECK = null, TPOLL = null, TREF = null, TRUNS = [];
 const TSEC = {'run name': 'Run', train: 'Training (train:)', env: 'Environment (env:)',
               ppo: 'PPO (ppo:)', model: 'Model (model:)', eval: 'Orders data (eval:)',
               run: 'Run settings (run:)', other: 'Other'};
+// a checkbox: a store_true flag, or a 0/1 switch (`--soft_mix 1`)
+const tBox = f => f.kind === 'flag' || f.kind === 'switch';
 const tEsc = s => String(s).replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'})[c]);
 async function tLoad(){
   const cfg = $('#tcfg').value.trim();
@@ -3011,7 +3915,7 @@ async function tLoad(){
   $('#tform').innerHTML = r.sections.filter(s => by[s]).map(s => {
     const body = by[s].map(f => {
       const id = 'tf_' + f.dest, tip = `data-dest="${f.dest}"`;
-      if (f.kind === 'flag')
+      if (tBox(f))
         return `<label class="pf flag" ${tip}><input id="${id}" type="checkbox"${f.default ? ' checked' : ''}><span>${f.flag}</span></label>`;
       const ctl = f.kind === 'choice'
         ? `<select id="${id}">${f.choices.map(c => `<option${c === f.default ? ' selected' : ''}>${tEsc(c)}</option>`).join('')}</select>`
@@ -3055,12 +3959,13 @@ async function tFromRun(resume){
   TFORM.fields.forEach(f => {
     if (!(f.dest in v)) return;
     const e = $('#tf_' + f.dest);
-    if (f.kind === 'flag') e.checked = !!v[f.dest]; else e.value = v[f.dest];
+    if (tBox(f)) e.checked = !!v[f.dest]; else e.value = v[f.dest];
   });
   TREF = Object.assign({}, res.values, {resume: resume, name: v.name});
   TLOADED = {run: r, resume: resume};
   if (!resume) $('#tf_name').focus();
   tCheck();
+  return true;
 }
 /* what loading the run means, kept current as the form is edited */
 let TLOADED = null;
@@ -3075,15 +3980,17 @@ function tRunMsg(){
     : `Resumes ${r.name} from last.pt at iteration ${it} and trains on to ${want.toLocaleString()}. Marked fields differ from what it was trained with.`;
 }
 $('#trun').onchange = tRunPick;
-$('#tresume').onclick = () => tFromRun(true);
+$('#tresume').onclick = async () => {
+  if (await tFromRun(true)) $('#tstart').scrollIntoView({block: 'center', behavior: 'smooth'});
+};
 $('#tcopy').onclick = () => tFromRun(false);
 function tValues(){
   const v = {};
   TFORM.fields.forEach(f => {
     const e = $('#tf_' + f.dest);
-    v[f.dest] = f.kind === 'flag' ? e.checked : e.value;
+    v[f.dest] = tBox(f) ? e.checked : e.value;
     const ref = TREF && f.dest in TREF ? TREF[f.dest] : f.default;
-    e.closest('.pf').classList.toggle('chg', f.kind === 'flag' ? e.checked !== ref : e.value.trim() !== ref);
+    e.closest('.pf').classList.toggle('chg', tBox(f) ? e.checked !== ref : e.value.trim() !== ref);
   });
   return v;
 }
@@ -3125,7 +4032,7 @@ function tCard(j){
   const el = document.createElement('div');
   el.className = 'tjob'; el.dataset.name = j.name;
   el.innerHTML = `
-    <div class="thd"><span class="nm">${tEsc(j.name)}</span><span class="st"></span>
+    <div class="thd"><span class="nm">${tEsc(j.name)}</span><span class="chip rk" data-f="rank" hidden></span><span class="st"></span>
       <span class="chip">${tEsc(j.algo)}</span><span class="chip">${tEsc(j.device)}</span><span class="chip" data-f="pid"></span>
       <span class="sub" data-f="beat"></span><span class="tacts" data-f="acts"></span></div>
     <div class="tbody">
@@ -3144,7 +4051,8 @@ function tCard(j){
       </div></div>
     <div class="tcks" data-f="cks"></div>
     <div class="tchart"><div class="lgd"><span><i style="background:var(--tr)"></i>train utilization</span>
-      <span><i class="dot" style="background:var(--ho)"></i>held-out eval</span></div>
+      <span><i class="dot" style="background:var(--ho)"></i>held-out eval</span>
+      <span><i class="dash"></i><span data-f="malg">moving average</span></span></div>
       <svg data-f="svg"></svg><div class="tt"></div></div>
     <div class="tfoot"><div class="xout" data-f="cmd"></div>
       <details><summary class="sub" style="cursor:pointer">output</summary><pre data-f="out"></pre></details></div>`;
@@ -3273,6 +4181,27 @@ function tChart(el){
   g += `<rect x="${now}" y="${T}" width="${Math.max(0, W - R - now)}" height="${H - T - B}" fill="var(--fg)" opacity=".025"/>`;
   g += `<line x1="${now}" x2="${now}" y1="${T}" y2="${H - B}" stroke="var(--dim)" stroke-dasharray="2 3" opacity=".6"/>`;
   const path = a => a.map((p, i) => (i ? 'L' : 'M') + X(p[0]).toFixed(1) + ' ' + Y(p[1]).toFixed(1)).join('');
+  // moving averages, under the curves: each point is the mean of the ones just
+  // before it -- for train the last `span` iterations, for the held-out its last
+  // 3 evals, since those come much more rarely.  The labels give the latest one
+  // at the right edge; when the two are close the lower one's goes below it.
+  const span = Math.round(Math.max(3 * j.log_every, j.iters / 20));
+  const trail = (a, keep) => a.map((p, i) => {
+    let s = 0, n = 0;
+    for (let k = i; k >= 0 && keep(a, k, i); k--){ s += a[k][1]; n++; }
+    return [p[0], s / n];
+  });
+  const maTr = trail(pts, (a, k, i) => a[k][0] > a[i][0] - span);
+  const maHo = trail(ev, (a, k, i) => i - k < 3);
+  const mas = [[maTr, 'var(--tr)']].concat(ev.length ? [[maHo, 'var(--ho)']] : []);
+  const ys = mas.map(([a]) => Y(a[a.length - 1][1])), close = ys.length > 1 && Math.abs(ys[0] - ys[1]) < 12;
+  mas.forEach(([a, c], i) => {
+    const y = ys[i], below = close && y > ys[1 - i];
+    g += `<path d="${path(a)}" fill="none" stroke="${c}" stroke-width="1.5" stroke-dasharray="5 4" opacity=".8"/>`
+       + `<text x="${W - R - 4}" y="${below ? y + 12 : y - 4}" text-anchor="end" style="fill:${c}">avg ${tPct(a[a.length - 1][1])}</text>`;
+  });
+  el.querySelector('[data-f=malg]').textContent =
+    `moving average (train: last ${span.toLocaleString()} it` + (ev.length ? ', held-out: last 3 evals)' : ')');
   g += `<path d="${path(pts)}" fill="none" stroke="var(--tr)" stroke-width="2" stroke-linejoin="round"/>`;
   if (ev.length){
     g += `<path d="${path(ev)}" fill="none" stroke="var(--ho)" stroke-width="1.5" opacity=".75"/>`;
@@ -3288,7 +4217,7 @@ function tChart(el){
   g += `<line class="xh" x1="0" x2="0" y1="${T}" y2="${H - B}" stroke="var(--dim)" visibility="hidden"/>`;
   svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
   svg.innerHTML = g;
-  svg._m = {X, L, R, W};
+  svg._m = {X, L, R, W, maTr, maHo};
 }
 function tHover(el){
   const wrap = el.querySelector('.tchart'), svg = wrap.querySelector('svg'), tt = wrap.querySelector('.tt');
@@ -3302,8 +4231,10 @@ function tHover(el){
     const p = near(j.curve, it), e = j.evals.length ? near(j.evals, it) : null;
     const xh = svg.querySelector('.xh');
     xh.setAttribute('x1', m.X(p[0])); xh.setAttribute('x2', m.X(p[0])); xh.setAttribute('visibility', 'visible');
-    tt.innerHTML = `<b>it ${p[0].toLocaleString()}</b><br><span class="sw" style="background:var(--tr)"></span>train ${tPct(p[1])}`
-      + (e ? `<br><span class="sw" style="background:var(--ho)"></span>held-out ${tPct(e[1])} <span class="sub">(eval at ${e[0]})</span>` : '');
+    // the moving average at that point, as the chart last drew it
+    const avg = (ma, src, q) => { const v = ma[src.indexOf(q)]; return v ? ` <span class="sub">· avg ${tPct(v[1])}</span>` : ''; };
+    tt.innerHTML = `<b>it ${p[0].toLocaleString()}</b><br><span class="sw" style="background:var(--tr)"></span>train ${tPct(p[1])}${avg(m.maTr, j.curve, p)}`
+      + (e ? `<br><span class="sw" style="background:var(--ho)"></span>held-out ${tPct(e[1])}${avg(m.maHo, j.evals, e)} <span class="sub">(eval at ${e[0]})</span>` : '');
     tt.style.display = 'block';
     const w = tt.offsetWidth;
     tt.style.left = Math.min(x + 14, r.width - w) + 'px'; tt.style.top = '28px';
@@ -3325,15 +4256,54 @@ async function tPoll(){
     if (box.children[i] !== c) box.insertBefore(c, box.children[i] || null);
     if (!$('#trn').hidden) tFill(c, j); else c._j = j;
   });
+  tLead(jobs);
   if (live || !$('#trn').hidden) TPOLL = setTimeout(tPoll, live ? 2000 : 5000);
 }
+/* who is winning right now: the runs ranked by their latest held-out eval,
+   one row per number they are judged on (an attacker wins when the packer it
+   faces does worst), with a rank chip on each card.  Shown from two runs up */
+function tLead(jobs){
+  const tIts = j => `<span class="its">${j.it.toLocaleString()} / ${j.iters.toLocaleString()} it</span>`;
+  const groups = {};
+  jobs.forEach(j => (groups[j.held_key] ||= []).push(j));
+  const keys = Object.keys(groups).filter(k => groups[k].length > 1), rank = {};
+  $('#tlead').hidden = !keys.length;
+  $('#tlead').innerHTML = keys.map(k => {
+    const g = groups[k], sc = j => j.lower_better ? -j.held : j.held;
+    const scored = g.filter(j => j.held != null).sort((a, b) => sc(b) - sc(a)), top = scored[0];
+    scored.forEach((j, i) => { rank[j.name] = i; });
+    const pill = (j, i) => {
+      const at = j.evals.length ? j.evals[j.evals.length - 1][0] : null;
+      const tip = `held-out ${tPct(j.held)} at its last eval (it ${at})`
+        + (j.best ? ` · best ${tPct(j.best[1])} at it ${j.best[0]}` : '');
+      const gap = i ? ` · ${(100 * Math.abs(j.held - top.held)).toFixed(1)} pt behind` : '';
+      return `<button type="button" class="${i ? '' : 'lead'}" data-name="${tEsc(j.name)}" title="${tEsc(tip)}">`
+        + `${i ? '#' + (i + 1) : '🏆'} <b>${tEsc(j.name)}</b>${tPct(j.held)}${gap}${tIts(j)}</button>`;
+    };
+    const wait = g.filter(j => j.held == null).map(j =>
+      `<button type="button" class="none" data-name="${tEsc(j.name)}" title="no held-out eval yet${j.next_eval ? ' · first at it ' + j.next_eval : ''}"><b>${tEsc(j.name)}</b>no eval yet${tIts(j)}</button>`);
+    const label = (keys.length > 1 ? k + ' · ' : '') + 'winning now' + (g[0].lower_better ? ' (lower wins)' : '');
+    return `<div class="tlead"><span class="k">${label}</span>${scored.map(pill).join('')}${wait.join('')}</div>`;
+  }).join('');
+  document.querySelectorAll('#tjobs .tjob').forEach(c => {
+    const r = rank[c.dataset.name], chip = c.querySelector('[data-f=rank]');
+    chip.hidden = r == null;
+    chip.textContent = r === 0 ? '🏆 leading' : '#' + (r + 1);
+    chip.classList.toggle('lead', r === 0);
+  });
+}
+$('#tlead').addEventListener('click', ev => {
+  const b = ev.target.closest('button[data-name]');
+  const c = b && $(`#tjobs .tjob[data-name="${CSS.escape(b.dataset.name)}"]`);
+  if (c) c.scrollIntoView({block: 'start', behavior: 'smooth'});
+});
 addEventListener('resize', () => document.querySelectorAll('#tjobs .tjob').forEach(c => c._j && !$('#trn').hidden && tChart(c)));
 /* the explanation of a field, as soon as the mouse is on it */
 $('#tform').addEventListener('mouseover', ev => {
   const pf = ev.target.closest('.pf[data-dest]'), tip = $('#ttip');
   if (!pf){ tip.classList.remove('on'); return; }
   const f = TFORM.fields.find(q => q.dest === pf.dataset.dest);
-  const def = f.kind === 'flag' ? (f.default ? 'on' : 'off') : (f.default === '' ? 'none' : f.default);
+  const def = tBox(f) ? (f.default ? 'on' : 'off') : (f.default === '' ? 'none' : f.default);
   tip.innerHTML = `<b>${f.flag}</b><div>${tEsc(f.help)}</div><div class="d">default: ${tEsc(def)}</div>`;
   const r = pf.getBoundingClientRect(), w = Math.min(340, innerWidth - 16);
   tip.style.left = Math.max(8, Math.min(r.left, innerWidth - w - 8)) + 'px';
@@ -3432,25 +4402,22 @@ async function sPoll(){
 document.addEventListener('visibilitychange', () => { if (!document.hidden && !$('#trn').hidden) sPoll(); });
 document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => showTab(b.dataset.tab));
 addEventListener('resize', moveInk);
-// colour theme: auto (follow the OS) -> light -> dark, remembered per browser.
+// colour theme: dark (default) <-> light, remembered per browser.
 // The canvases read their colours at draw time, so a change redraws them; the
 // dashboard iframe shares this origin's storage and picks it up from 'storage'.
-const THEMES = ['auto', 'light', 'dark'], THEME_ICON = {auto: '\u25D0 Auto', light: '\u2600 Light', dark: '\u263E Dark'};
+const THEME_ICON = {light: '\u2600 Light', dark: '\u263E Dark'};
+const curTheme = () => document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
 function setTheme(t){
   const root = document.documentElement;
-  t === 'auto' ? delete root.dataset.theme : root.dataset.theme = t;
-  try { t === 'auto' ? localStorage.removeItem('ar2l.theme') : localStorage.setItem('ar2l.theme', t); } catch (e) {}
+  t === 'light' ? root.dataset.theme = 'light' : delete root.dataset.theme;
+  try { t === 'light' ? localStorage.setItem('ar2l.theme', 'light') : localStorage.removeItem('ar2l.theme'); } catch (e) {}
   $('#theme').textContent = THEME_ICON[t];
   dispatchEvent(new Event('resize'));
 }
-$('#theme').textContent = THEME_ICON[document.documentElement.dataset.theme || 'auto'];
-$('#theme').onclick = () => {
-  const t = document.documentElement.dataset.theme || 'auto';
-  setTheme(THEMES[(THEMES.indexOf(t) + 1) % THEMES.length]);
-};
-matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => dispatchEvent(new Event('resize')));
+$('#theme').textContent = THEME_ICON[curTheme()];
+$('#theme').onclick = () => setTheme(curTheme() === 'dark' ? 'light' : 'dark');
 requestAnimationFrame(moveInk);
-if (['#exp', '#cmp', '#trn', '#dash'].includes(location.hash)) setTimeout(() => showTab(location.hash.slice(1)), 300);
+if (['#exp', '#logm', '#cmp', '#trn', '#dash'].includes(location.hash)) setTimeout(() => showTab(location.hash.slice(1)), 300);
 else xPoll();                           // an experiment already running shows its dot
 tPoll();                                // and so does a training run
 </script>

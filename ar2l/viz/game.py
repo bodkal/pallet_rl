@@ -56,6 +56,11 @@ The "Big experiment" tab packs every pallet file of a folder, under the setup
 form's rules, onto as many pallets as each file takes, and writes one report
 per file (`ar2l.viz.experiment`), with a live progress bar per file.
 
+The "Log match" tab packs the cell's own conveyor log, a pick per step, with
+the agent seeing only the boxes the camera had seen by then
+(`ar2l.viz.logmatch`), pallet after pallet, under the same rules as the big
+experiment; each closed pallet then opens in a result view like a game's.
+
 The "New training" tab starts `ar2l.train` runs with every flag editable,
 preset from `config.yaml` (`ar2l.viz.trainer`).  A run keeps going when the
 browser is closed and stops only with this server -- Ctrl+C or closing its
@@ -80,14 +85,17 @@ import numpy as np
 
 from .. import pack_collision as PC
 from ..config import CFG
-from ..env import (BPPBatch, TYPE_FLOOR, TYPE_RULES, sample_items,
-                   stack_allowance, type_classes)
+from ..env import (BPPBatch, MIXED_RULES, OUTLINE_AREA, OUTLINE_WHEN,
+                   TYPE_FLOOR, TYPE_RULES, sample_items, stack_allowance,
+                   type_classes)
 from ..orders import (ROUNDING, box_divisor, load_orders, orders_bin,
                       randomize_order)
 from . import agents as A
 from . import compare as C
 from . import dashboard as D
 from . import experiment as X
+# logmatch reads this module's replay helpers back, at call time only
+from . import logmatch as LM
 from . import trainer as TR
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -103,9 +111,9 @@ CLI: dict = {}
 #: triples; `PARAM_KEYS` adds where the boxes come from, below
 GAME_KEYS = ('bin', 'n_items', 'size_lo', 'size_hi', 'nb', 'n_pick',
              'max_l', 'rot', 'ems', 'stability', 'min_support',
-             'n_types', 'type_constraint', 'type_rule', 'arm_collision',
-             'stack_cap',
-             'stack_cap_types', 'stack_cap_side_cm', 'stack_cap_allow_cm',
+             'n_types', 'type_constraint', 'type_rule', 'soft_mix',
+             'outline_resort', 'outline_when', 'outline_area', 'arm_collision',
+             'stack_cap', 'stack_cap_types', 'stack_cap_side_cm', 'stack_cap_allow_cm',
              'base_x_moves')
 #: what a run does not record, so there is nothing to compare it on
 UNRECORDED = ('base_x_moves', 'stack_cap_types', 'stack_cap_side_cm',
@@ -210,6 +218,10 @@ def defaults():
          'n_types': int(e['n_types']),
          'type_constraint': int(e['type_constraint']),
          'type_rule': str(e.get('type_rule', 'touch')),
+         'soft_mix': int(e.get('soft_mix', 0)),
+         'outline_resort': int(e.get('outline_resort', 0)),
+         'outline_when': str(e.get('outline_when', 'station')),
+         'outline_area': str(e.get('outline_area', 'outline')),
          'arm_collision': int(e.get('arm_collision', 0)),
          'stack_cap': int(e['stack_cap']),
          'stack_cap_types': [int(t) for t in e['stack_cap_types'] or []],
@@ -266,13 +278,21 @@ def run_params(spec):
         return p
     a = info['args']
     for k in ('n_items', 'max_l', 'rot', 'ems', 'stability', 'min_support',
-              'nb', 'n_types', 'type_constraint', 'type_rule', 'arm_collision',
+              'nb', 'n_types', 'type_constraint', 'type_rule', 'soft_mix',
+              'outline_resort', 'outline_when', 'outline_area', 'arm_collision',
               'stack_cap'):
         if a.get(k) is not None:
             p[k] = a[k]
-    # a run from before --type_rule existed was trained under `touch`
+    # a run from before --type_rule existed was trained under `touch`, and
+    # one from before --soft_mix, --outline_resort or --outline_area without it
     if a.get('type_rule') is None:
         p['type_rule'] = 'touch'
+    if a.get('soft_mix') is None:
+        p['soft_mix'] = 0
+    if a.get('outline_resort') is None:
+        p['outline_resort'], p['outline_when'] = 0, 'station'
+    if a.get('outline_area') is None:
+        p['outline_area'] = 'outline'
     for k in TRIPLES:
         if a.get(k) is not None:
             p[k] = list(A.extent(a[k]))
@@ -356,6 +376,8 @@ def validate(raw):
     p['n_types'] = whole('n_types', 1, 16, 'box types')
     p['type_constraint'] = whole('type_constraint', 0, 1, 'stacking rule')
     p['arm_collision'] = whole('arm_collision', 0, 1, 'robot-arm filter')
+    p['soft_mix'] = whole('soft_mix', 0, 1, 'soft mix')
+    p['outline_resort'] = whole('outline_resort', 0, 1, 'outline step')
     p['stack_cap'] = whole('stack_cap', 0, 1, 'stack-height limit')
 
     def numbers(k, what, cast=float):
@@ -450,6 +472,18 @@ def validate(raw):
                    f"got {s!r}")
     else:
         p['type_rule'] = s
+    s = str(raw.get('outline_when', p['outline_when']))
+    if s not in OUTLINE_WHEN:
+        err.append(f"outline step opens: expected one of "
+                   f"{', '.join(OUTLINE_WHEN)}, got {s!r}")
+    else:
+        p['outline_when'] = s
+    s = str(raw.get('outline_area', p['outline_area']))
+    if s not in OUTLINE_AREA:
+        err.append(f"outline step looks at: expected one of "
+                   f"{', '.join(OUTLINE_AREA)}, got {s!r}")
+    else:
+        p['outline_area'] = s
     try:
         ms = float(raw.get('min_support', p['min_support']))
         if not 0.0 <= ms <= 1.0:
@@ -624,17 +658,43 @@ def grids(env):
     return cand[0], free_positions(env), z[0], odims[0], k, tunder[0]
 
 
-def type_blocked(env, z, odims):
+def free_rules(env):
+    """`(fallback, last_resort)` for the box in front under the mixed rules
+    (`MIXED_RULES`), as you play it -- the EMS filter off, as in
+    `free_positions`: is it going by its own fallback, and by soft mix's
+    last resort, because nothing within reach can go by the hard rules?"""
+    ems = env.ems
+    env.ems = 0
+    env._invalidate(hmap=False)          # the station is asked afresh
+    try:
+        return bool(env.fallback()[0]), bool(env.last_resort()[0])
+    finally:
+        env.ems = ems
+        env._invalidate(hmap=False)
+
+
+def type_blocked(env, z, odims, fallback=False, soft=False):
     """(R, S, S) the placements the box-type rule rejects, under `type_rule`.
 
     The page says why a cell is illegal; under `column` the foreign box may be
-    deep under the footprint, so the top-type map alone cannot tell it.
+    deep under the footprint, so the top-type map alone cannot tell it.  Under
+    the `MIXED_RULES` it is asked as `free_positions` asks it, the EMS filter
+    off -- which decides where a small blue box could still go -- and by the
+    fallback rules when `fallback` says the box goes by them, soft mix's last
+    resort on top when `soft` does.
     """
     if not (env.type_constraint and env.n_types > 1):
         return np.zeros(z.shape, bool)
     t = env.head_item()[1]
-    return np.stack([~env._type_ok(np.asarray(d)[None], zr[None], t)[0]
-                     for d, zr in zip(odims, z)])
+    ems = env.ems
+    env.ems = 0
+    try:
+        tier = 3 if soft else 2 if fallback else 1
+        return np.stack([~env._type_ok(np.asarray(d)[None], zr[None], t,
+                                       tier)[0]
+                         for d, zr in zip(odims, z)])
+    finally:
+        env.ems = ems
 
 
 def arm_blocked(env, free):
@@ -788,9 +848,26 @@ def replay_hmap(placed, S):
 def stack_kw(p):
     """The type rule and stack-height limit of a parameter set, as `BPPBatch`
     (and `agents.play`) take them."""
-    return dict(type_rule=p['type_rule'], stack_cap=bool(p['stack_cap']), stack_types=p['stack_cap_types'],
+    return dict(type_rule=p['type_rule'], soft_mix=bool(p['soft_mix']),
+                outline_resort=bool(p['outline_resort']),
+                outline_when=p['outline_when'],
+                outline_area=p['outline_area'],
+                stack_cap=bool(p['stack_cap']),
+                stack_types=p['stack_cap_types'],
                 stack_side_cm=p['stack_cap_side_cm'],
                 stack_allow_cm=p['stack_cap_allow_cm'])
+
+
+def play_kw(p):
+    """The env of a parameter set, as `agents.play` (and `episode_env`)
+    take it."""
+    return dict(nb=p['nb'], S=p['bin'], size_hi=p['size_hi'],
+                max_l=p['max_l'], n_pick=p['n_pick'], rot=p['rot'],
+                ems=p['ems'], stability=p['stability'],
+                min_support=p['min_support'], n_types=p['n_types'],
+                type_constraint=bool(p['type_constraint']),
+                arm_collision=bool(p['arm_collision']), arm_cell_m=cell_m(p),
+                arm_moves=p['base_x_moves'], **stack_kw(p))
 
 
 def arm_replay(st, placed, S, moves=None):
@@ -934,6 +1011,12 @@ def board(st):
     item = env.seq[0, min(int(env.head[0]), env.n_items - 1)]
     picks = reach(st)
     nfree = int(free.sum())
+    mixed = (env.type_rule in MIXED_RULES and env.type_constraint
+             and env.n_types > 1)
+    fallback, soft = (free_rules(env) if mixed and not env.done[0]
+                      else (False, False))
+    # the packer's candidates, by the env's own filter: from the outline step?
+    outline = bool(mixed and not env.done[0] and env.outline()[0])
     return {
         'Lx': int(env.Lx), 'Ly': int(env.Ly), 'Lz': int(env.Lz),
         'rot': int(odims.shape[0]),
@@ -947,6 +1030,19 @@ def board(st):
         'n_types': int(env.n_types),
         'type_constraint': bool(env.type_constraint),
         'type_rule': env.type_rule,
+        # under the `MIXED_RULES`: whether the box in front has nowhere to go
+        # by the normal rules, and the numbers the hover note quotes
+        'fallback': bool(fallback),
+        'last_resort': bool(soft),
+        'outline': outline,
+        'mixed': ({'top_gap_cm': env.top_gap_cm, 'top_gap': int(env.top_gap),
+                   'area_pct': round(100 * env.area_frac),
+                   'small_blue': list(env.small_blue),
+                   'soft': bool(env.soft_mix),
+                   'outline': bool(env.outline_resort),
+                   'outline_when': env.outline_when,
+                   'outline_area': env.outline_area}
+                  if mixed else None),
         'arm_collision': bool(env.arm_collision),
         'floor_type': int(TYPE_FLOOR),
         'item': item[:3].tolist(),
@@ -954,7 +1050,8 @@ def board(st):
         'mask': cand.astype(np.uint8).tolist(),      # the packer's candidate list
         'free': free.astype(np.uint8).tolist(),      # everything you may click
         'armblock': arm_blocked(env, free).astype(np.uint8).tolist(),
-        'typeblock': type_blocked(env, z, odims).astype(np.uint8).tolist(),
+        'typeblock': type_blocked(env, z, odims, fallback,
+                                  soft).astype(np.uint8).tolist(),
         'zmap': z.astype(int).tolist(),
         'ncand': k,
         'nfree': nfree,
@@ -1060,6 +1157,9 @@ def new_game(seed, attacker_spec, params, human_pick=True, opp_spec=None):
           'human_pick': bool(human_pick) and p['n_pick'] > 1,
           'promoted': None, 'opp_spec': None, 'opp': None,
           'hcands': [], 'htaken': [], 'hwin': [], 'hprobs': [],
+          # what `replay` needs to put your bin back as it stood at any
+          # step: the attacker's move before it, and where the box went
+          'hprom': [], 'hplace': [],
           'pol': None, 'picker': None, 'plabel': None}
     # the opponent, asked at every position what it would do there: its
     # packer scores your candidate points, and with no attacker on a select
@@ -1120,13 +1220,7 @@ def hand_over(st, spec, p, seq=None):
     policy, label, _ = A.load_policy(spec, DEVICE)
     perm, plabel = opp_permuter(st, spec, p['n_pick'])
     t0 = time.time()
-    ep = A.play(seq, policy, perm, nb=p['nb'], S=p['bin'],
-                size_hi=p['size_hi'], max_l=p['max_l'], n_pick=p['n_pick'],
-                rot=p['rot'], ems=p['ems'], stability=p['stability'],
-                min_support=p['min_support'], n_types=p['n_types'],
-                type_constraint=bool(p['type_constraint']),
-                arm_collision=bool(p['arm_collision']), arm_cell_m=cell_m(p),
-                arm_moves=p['base_x_moves'], **stack_kw(p))
+    ep = A.play(seq, policy, perm, **play_kw(p))
     return {'label': label, 'util': ep['util'], 'items': ep['items'],
             'placed': ep['placed'], 'placed_types': ep['placed_types'],
             # before box n went in, the placements the packer had for it
@@ -1193,14 +1287,174 @@ def recalc_params(st, raw):
 def recalc(st, spec, p):
     """One row of the recalculation table: the same instance, other rules."""
     # `placed` stays in: the page draws the rerun's bin in 3D beside the game's
-    out = hand_over(st, spec, p, session_seq(st, p))
+    seq = session_seq(st, p)
+    out = hand_over(st, spec, p, seq)
     out['params'] = p
+    # kept on the session, so `replay` can put its bin back at any step
+    rows = st.setdefault('rows', {})
+    out['rid'] = rid = max(rows, default=0) + 1
+    rows[rid] = (spec, p, out, seq)
+    for old in list(rows)[:-ROWS_KEPT]:
+        rows.pop(old)
     # what moved from the game that was played, and what that leaves the agent
     # standing on: a rerun can walk a policy off its training configuration
     # just as the setup form can, and for the same reason it has to say so
     out['changed'] = diff_params(p, st['p'], RECALC_KEYS)
     out['drift'] = mismatch(p, spec)
     return out
+
+
+# ------------------------------------------- replay: the points at any step
+# The result screen draws, for each step of a bin, where the box that went in
+# could have gone.  Which other box of the station could have gone where, and
+# which of the packer's positions the rules turned down, nobody recorded: the
+# bin is put back as it stood and asked again.
+ROWS_KEPT = 20         # recalculation rows a session keeps for `replay`
+SNAP_EVERY = 10        # steps between the checkpoints a replay jumps back to
+STATE = ('seq', 'length', 'head', 'done', 'hmap', 'tmap', 'smap', 'cmap',
+         'omap', 'packed', 'ptype', 'n_packed', 'volume')
+_REPLAY = threading.Lock()
+
+
+def env_state(env):
+    """A copy of everything `step` and `permute` change."""
+    return {k: getattr(env, k).copy() for k in STATE}
+
+
+def set_state(env, s):
+    """Put `env_state` back, every cache dropped."""
+    for k, v in s.items():
+        setattr(env, k, v.copy())
+    env._invalidate()
+
+
+def track(st, side):
+    """One bin of the result screen as `replay` re-plays it.
+
+    `side` is 'h' for yours, 'a' for the agent's, or a recalculation row's
+    `rid`.  Each step is the conveyor as the page draws it -- yours after the
+    attacker moved a box to the front (`prom`), the agent's before -- then
+    the box that went in (`pick`) and where: the agent's by its index into
+    the candidate list (`act`), yours by orientation and cell (`rxy`), since
+    you were free to go off the list.
+    """
+    if side == 'h':
+        return {'key': 'h', 'p': st['p'], 'seq': st['seq'], 'pol': st['pol'],
+                'steps': [{'prom': pr, 'pick': w['pick'], 'rxy': rxy}
+                          for pr, w, rxy in zip(st['hprom'], st['hwin'],
+                                                st['hplace'])],
+                'prom': st['promoted'] or 0, 'placed': None}
+    if side == 'a':
+        if st.get('opp') is None:
+            raise ValueError('the agent has not played this game yet')
+        spec, p, out, seq = st['opp_spec'], st['p'], st['opp'], st['seq']
+        key = 'a:' + spec
+    else:
+        row = st.get('rows', {}).get(side)
+        if row is None:
+            raise ValueError('that recalculation is no longer kept')
+        spec, p, out, seq = row
+        key = f'r:{side}'
+    return {'key': key, 'p': p, 'seq': seq, 'pol': A.load_policy(spec, DEVICE)[0],
+            'steps': [{'prom': 0, 'pick': w['pick'], 'act': a}
+                      for w, a in zip(out['windows'], out['taken'])],
+            'prom': 0, 'placed': out['placed']}
+
+
+def replay(st, tr, n):
+    """`tr`'s env as the page draws step `n`: `n` boxes in, the conveyor as
+    it stood when the next was chosen.
+
+    Kept on the session and stepped forward, with a checkpoint every
+    `SNAP_EVERY` steps to jump back to, so scrubbing costs a step or a few.
+    """
+    def front(env, j):          # the attacker's move, before the page draws
+        pr = tr['steps'][j]['prom'] if j < len(tr['steps']) else tr['prom']
+        env.permute(np.array([pr]))
+
+    rps = st.setdefault('replays', {})
+    rp = rps.get(tr['key'])
+    if rp is None:
+        env = A.episode_env(tr['seq'], **play_kw(tr['p']))
+        front(env, 0)
+        rp = rps[tr['key']] = {'env': env, 'at': 0, 'snaps': {0: env_state(env)}}
+    env = rp['env']
+    if rp['at'] > n:
+        j = max(k for k in rp['snaps'] if k <= n)
+        set_state(env, rp['snaps'][j])
+        rp['at'] = j
+    while rp['at'] < n:
+        j, s = rp['at'], tr['steps'][rp['at']]
+        env.permute(np.array([s['pick']]))
+        if 'act' in s:
+            env.obs()                   # the candidate list `act` indexes
+            env.step(np.array([s['act']]))
+            got = (env.packed[0, j] * env.scale).round().astype(int).tolist()
+            if got != tr['placed'][j]:
+                raise ValueError(f'the replay drifted at box {j + 1}: '
+                                 f'{got} where the game had {tr["placed"][j]}')
+        elif not place(env, *s['rxy']):
+            raise ValueError(f'the replay drifted at box {j + 1}: it will not '
+                             f'rest where you put it')
+        rp['at'] = j + 1
+        front(env, j + 1)
+        if rp['at'] % SNAP_EVERY == 0:
+            rp['snaps'][rp['at']] = env_state(env)
+    return env
+
+
+def turned_down(env, feas, z, odims):
+    """[[x, y, z, r]] every position the packer's action space offers the item
+    in front that the rules turn down -- the stability rule, the box-type
+    rule, the stack-height limit, the robot arm, the lid.  With `ems` 0 that
+    is every cell the footprint fits in."""
+    late = bool(env._pos_ol[0])                 # the outline step's positions
+    item = env.head_item()[0][0]
+    gx, gy = np.arange(env.Lx)[:, None], np.arange(env.Ly)[None, :]
+    out = []
+    for r in range(odims.shape[1]):
+        if r and item[0] == item[1]:            # a square box turned round
+            break
+        d = odims[:, r]
+        space = env._space(d, z[:, r], late)[0]
+        space &= (gx + int(d[0, 0]) <= env.Lx) & (gy + int(d[0, 1]) <= env.Ly)
+        xs, ys = np.nonzero(space & ~feas[0, r])
+        out += [[int(x), int(y), int(z[0, r, x, y]), r] for x, y in zip(xs, ys)]
+    return out
+
+
+def points(st, side, n, i):
+    """Where box `i` of the station could go at step `n` of one bin:
+    the packer's candidate list for it, the side's policy over that list,
+    and the positions of its action space the rules turned down.
+
+    A step past the end of the bin is the conveyor it was left with, and the
+    box is asked as though the bin were still open: why it stopped.
+    """
+    with _REPLAY:
+        tr = track(st, side)
+        n = max(0, min(int(n), len(tr['steps'])))
+        env = replay(st, tr, n)
+        i = int(i)
+        k = min(env.n_pick, env.nb, int(env.length[0] - env.head[0]))
+        if not 0 <= i < k:
+            raise ValueError(f'box {i + 1} is not within reach at that step')
+        seq, done = env.seq.copy(), env.done.copy()
+        env.done[:] = False
+        env.permute(np.array([i]))
+        try:
+            cands = cand_points(env)
+            feas, z, odims, _ = env._positions()
+            bad = turned_down(env, feas, z, odims)
+            probs = None
+            if tr['pol'] is not None and cands:
+                probs = rounded(tr['pol'](env)[1][0][:len(cands)])
+            capped = int(feas.sum()) - len(cands)
+        finally:
+            env.seq, env.done = seq, done
+            env._invalidate(hmap=False)
+    return {'n': n, 'i': i, 'cands': cands, 'probs': probs, 'bad': bad,
+            'capped': capped}
 
 
 def exp_params(raw):
@@ -1218,7 +1472,8 @@ def exp_params(raw):
 
 #: what the experiment's form carries, and so what drift is judged on there
 EXP_KEYS = ('nb', 'n_pick', 'max_l', 'rot', 'ems', 'stability', 'min_support',
-            'type_constraint', 'type_rule', 'arm_collision', 'stack_cap',
+            'type_constraint', 'type_rule', 'soft_mix', 'outline_resort',
+            'outline_when', 'outline_area', 'arm_collision', 'stack_cap',
             'pallet_cm',
             'box_pad_m', 'box_scale', 'box_round')
 
@@ -1235,6 +1490,58 @@ def exp_mismatch(p, spec):
     keys = (EXP_KEYS if info and info['args'].get('data')
             else EXP_KEYS[:EXP_KEYS.index('pallet_cm')])
     return diff_params(p, run_params(spec), keys)
+
+
+def log_tol(raw):
+    """-> (the log match's same-box tolerance in cm, errors)."""
+    try:
+        t = float(LM.TOL_CM if raw in (None, '') else raw)
+        if not 0.0 <= t <= 20.0:
+            raise ValueError
+        return t, []
+    except (TypeError, ValueError):
+        return LM.TOL_CM, ['same box seen twice: a tolerance between 0 and 20 cm']
+
+
+def n_csv(folder):
+    """How many .csv files `folder` holds; 0 when it cannot be read."""
+    try:
+        with os.scandir(folder) as it:
+            return sum(1 for e in it if e.name.lower().endswith('.csv')
+                       and e.is_file())
+    except OSError:
+        return 0
+
+
+def list_dirs(folder, files=False):
+    """What the folder picker shows of `folder`: its subfolders, each with
+    how many .csv files it holds, and its parent.  With `files`, also the
+    data files (.csv, .npy) it holds, for the play tab's file picker.
+
+    A path that is not a folder opens at its nearest existing parent, so a
+    half-typed path, or a file's own path, still lands somewhere.
+    """
+    q = X.resolve(folder or '.')
+    while not os.path.isdir(q) and os.path.dirname(q) != q:
+        q = os.path.dirname(q)
+    try:
+        with os.scandir(q) as it:
+            ents = [e for e in it if not e.name.startswith('.')]
+            subs = sorted((e.name for e in ents if e.is_dir()), key=str.lower)
+            data = sorted(((e.name, e.stat().st_size) for e in ents
+                           if e.name.lower().endswith(('.csv', '.npy'))
+                           and e.is_file()), key=lambda f: f[0].lower())
+    except OSError as e:
+        raise ValueError(f'cannot read {folder}: {e.strerror}')
+    up = os.path.dirname(q)
+    out = {'dir': X._show(q), 'parent': X._show(up) if up != q else None,
+           'csv': n_csv(q),
+           'dirs': [{'name': n, 'path': X._show(os.path.join(q, n)),
+                     'csv': n_csv(os.path.join(q, n))} for n in subs]}
+    if files:
+        out['files'] = [{'name': n, 'path': X._show(os.path.join(q, n)),
+                         'size': s} for n, s in data]
+    return out
 
 
 def cmp_reports(folder, picks=None):
@@ -1267,6 +1574,7 @@ def cmp_reports(folder, picks=None):
                       'win': [C.key(exps[j]) for j in win], 'best': list(best),
                       'exps': [{'key': C.key(e), 'num': e['num'], 'time': e['time'],
                                 'boxes': e['boxes'], 'params': e['params'],
+                                'mean': list(C.mean_full(e)),
                                 'pallets': [{'id': int(r['pallet_id']),
                                              'boxes': int(r[C.BOXES]),
                                              'volume': float(r[C.VOLUME])}
@@ -1379,6 +1687,13 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(cmp_reports((q.get('dir') or [''])[0], picks))
             except ValueError as e:
                 return self._json({'error': str(e)}, 400)
+        if p == '/api/dirs':
+            q = parse_qs(u.query)
+            try:
+                return self._json(list_dirs((q.get('dir') or [''])[0],
+                                            files=(q.get('files') or [''])[0] == '1'))
+            except ValueError as e:
+                return self._json({'error': str(e)}, 400)
         if p == '/api/train/form':
             try:
                 return self._json(TR.form((parse_qs(u.query).get('config') or [''])[0]
@@ -1400,6 +1715,11 @@ class Handler(BaseHTTPRequestHandler):
             q = parse_qs(u.query)
             s = X.status((q.get('job') or [''])[0])
             return self._json(s or {'error': 'no experiment has run yet'},
+                              200 if s else 404)
+        if p == '/api/log/status':
+            q = parse_qs(u.query)
+            s = LM.status((q.get('job') or [''])[0])
+            return self._json(s or {'error': 'no log has been run yet'},
                               200 if s else 404)
         self.send_error(404)
 
@@ -1437,7 +1757,9 @@ class Handler(BaseHTTPRequestHandler):
             params, err = exp_params(body.get('params'))
             return self._json({'params': params, 'errors': err,
                                'mismatch': [] if err else
-                               exp_mismatch(params, body.get('spec'))})
+                               exp_mismatch(params, body.get('spec')),
+                               'taken': X.name_used(body.get('out') or '',
+                                                    body.get('name') or '')})
         if p == '/api/exp/start':
             params, err = exp_params(body.get('params'))
             if err:
@@ -1487,6 +1809,45 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({'ok': TR.dismiss(body.get('name'))})
         if p == '/api/exp/stop':
             return self._json({'ok': X.stop(body.get('job'))})
+        if p == '/api/log/check':
+            params, err = exp_params(body.get('params'))
+            tol, terr = log_tol(body.get('tol_cm'))
+            try:
+                log = LM.summary(body.get('path') or '', params['n_types'], tol)
+            except (OSError, ValueError) as e:
+                log = {'error': str(e)}
+            return self._json({'params': params, 'errors': err + terr, 'log': log,
+                               'mismatch': [] if err else
+                               exp_mismatch(params, body.get('spec'))})
+        if p == '/api/log/start':
+            params, err = exp_params(body.get('params'))
+            tol, terr = log_tol(body.get('tol_cm'))
+            if err + terr:
+                return self._json({'error': (err + terr)[0], 'errors': err + terr}, 400)
+            try:
+                jid = LM.start(body.get('path') or '', body.get('spec') or 'random',
+                               params, cell_m(params), DEVICE, tol)
+            except (OSError, ValueError) as e:
+                return self._json({'error': str(e)}, 400)
+            return self._json({'job': jid})
+        if p == '/api/log/stop':
+            return self._json({'ok': LM.stop(body.get('job'))})
+        if p.startswith('/api/log/'):
+            # a closed pallet of a run: its result view, and the replay asks
+            try:
+                if p == '/api/log/pallet':
+                    return self._json(LM.pallet(body.get('job'), body.get('i', 0)))
+                if p == '/api/log/points':
+                    return self._json(LM.points(body.get('job'), body.get('pallet', 0),
+                                                body.get('n', 0), body.get('i', 0)))
+                if p == '/api/log/arm':
+                    return self._json(LM.arm(body.get('job'), body.get('placed'),
+                                             body.get('bin'), body.get('moves')))
+            except (TypeError, ValueError) as e:
+                return self._json({'error': str(e)}, 400)
+            except Exception as e:
+                return self._json({'error': f'{type(e).__name__}: {e}'}, 500)
+            return self.send_error(404)
         st = _GAMES.get(body.get('gid'))
         if st is None:
             return self._json({'error': 'that game has expired'}, 404)
@@ -1513,6 +1874,8 @@ class Handler(BaseHTTPRequestHandler):
             st['hcands'].append(pts)
             st['hwin'].append(win)
             st['hprobs'].append(probs)
+            st['hprom'].append(st['promoted'] or 0)
+            st['hplace'].append((r, x, y))
             st['htaken'].append(next((i for i, c in enumerate(pts)
                                       if (c[3], c[0], c[1]) == (r, x, y)), -1))
             advance(st)
@@ -1541,6 +1904,14 @@ class Handler(BaseHTTPRequestHandler):
                                        human_taken=st['htaken'],
                                        human_windows=st['hwin'] + human_final(st),
                                        human_cand_probs=st['hprobs']))
+            except Exception as e:
+                return self._json({'error': f'{type(e).__name__}: {e}'}, 500)
+        if p == '/api/points':
+            try:
+                return self._json(points(st, body.get('side'), body.get('n', 0),
+                                         body.get('i', 0)))
+            except (TypeError, ValueError) as e:
+                return self._json({'error': str(e)}, 400)
             except Exception as e:
                 return self._json({'error': f'{type(e).__name__}: {e}'}, 500)
         if p == '/api/recalc':
