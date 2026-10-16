@@ -127,13 +127,8 @@ def packer(spec, n_pick, device):
     return policy, picker, label
 
 
-def pack_pallet(seq, policy, picker, S, p, cell_m, tick=None, stop=None):
-    """Pack one pallet from the front of `seq`.  -> (env, rest of seq).
-
-    The pallet is closed when no box within reach fits, not when the front
-    one does not: the env ends a bin on its front box, so a stuck front with a
-    placeable box behind it is permuted rather than taken as the end.
-    """
+def pallet_env(seq, S, p, cell_m):
+    """An empty pallet under the form's rules, its conveyor `seq`."""
     env = BPPBatch(1, S=S, nb=p["nb"], n_items=len(seq), max_l=p["max_l"],
                    rot=p["rot"], ems=p["ems"], stability=p["stability"],
                    min_support=p["min_support"], n_pick=p["n_pick"],
@@ -152,6 +147,17 @@ def pack_pallet(seq, policy, picker, S, p, cell_m, tick=None, stop=None):
                    stack_allow_cm=p["stack_cap_allow_cm"],
                    size_hi=seq[:, :3].max(0))
     env.reset(seq[None])
+    return env
+
+
+def pack_pallet(seq, policy, picker, S, p, cell_m, tick=None, stop=None):
+    """Pack one pallet from the front of `seq`.  -> (env, rest of seq).
+
+    The pallet is closed when no box within reach fits, not when the front
+    one does not: the env ends a bin on its front box, so a stuck front with a
+    placeable box behind it is permuted rather than taken as the end.
+    """
+    env = pallet_env(seq, S, p, cell_m)
     while True:
         if stop is not None and stop.is_set():
             break

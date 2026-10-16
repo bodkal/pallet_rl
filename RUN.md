@@ -407,6 +407,25 @@ Both servers bind `127.0.0.1` by default; pass `--host 0.0.0.0` to reach them
 from another machine. The file viewers take `--root` (where `runs/`, `data/`
 and `results/` live) and `--fps` for the GIFs.
 
+The game's **Log match** tab (`ar2l/viz/logmatch.py`) packs a conveyor log of
+the real cell (`data/log data/*.csv`: one row per box the camera saw at each
+pick `step`, with `type` 1/2/3, `size_L/W/H_cm`, `mid_y_m` and `picked`). A box
+seen at several steps is one box (same type, same sides within the tab's
+tolerance, 1.5 cm by default, not moved back along the belt). The agent packs
+one box per step from the boxes it has seen and not packed, with the first
+N_B in view and the first k in reach, and never sees a box from a later step.
+When nothing in reach fits, it opens a new pallet. Each closed pallet opens in
+the Play tab's result view, with the box the real robot took marked at each
+step. A log that also has the robot's pack positions (`not_packed_reason`,
+`box_x/y/z_cm`, `orientation_deg`: 0/180 puts L along the pallet's y, ±90 along
+x) gets the real robot's pallets beside the agent's, pallet against pallet
+(agent pallet 1 vs real pallet 1, 2 vs 2, ...), box n against box n on one
+slider, the robot's station showing only that step's boxes. The pallet table
+puts each real pallet's figures under the agent's, its fill counting every
+box at the agent's padded size. A failed pick adds nothing. A new `pallet_id` on a packed
+box finishes the real pallet and starts the next; a log without `pallet_id`
+starts one where a box would overlap one already there.
+
 ## Checks
 
 ```bash

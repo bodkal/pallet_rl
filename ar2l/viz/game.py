@@ -56,6 +56,11 @@ The "Big experiment" tab packs every pallet file of a folder, under the setup
 form's rules, onto as many pallets as each file takes, and writes one report
 per file (`ar2l.viz.experiment`), with a live progress bar per file.
 
+The "Log match" tab packs the cell's own conveyor log, a pick per step, with
+the agent seeing only the boxes the camera had seen by then
+(`ar2l.viz.logmatch`), pallet after pallet, under the same rules as the big
+experiment; each closed pallet then opens in a result view like a game's.
+
 The "New training" tab starts `ar2l.train` runs with every flag editable,
 preset from `config.yaml` (`ar2l.viz.trainer`).  A run keeps going when the
 browser is closed and stops only with this server -- Ctrl+C or closing its
@@ -89,6 +94,8 @@ from . import agents as A
 from . import compare as C
 from . import dashboard as D
 from . import experiment as X
+# logmatch reads this module's replay helpers back, at call time only
+from . import logmatch as LM
 from . import trainer as TR
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -1485,6 +1492,17 @@ def exp_mismatch(p, spec):
     return diff_params(p, run_params(spec), keys)
 
 
+def log_tol(raw):
+    """-> (the log match's same-box tolerance in cm, errors)."""
+    try:
+        t = float(LM.TOL_CM if raw in (None, '') else raw)
+        if not 0.0 <= t <= 20.0:
+            raise ValueError
+        return t, []
+    except (TypeError, ValueError):
+        return LM.TOL_CM, ['same box seen twice: a tolerance between 0 and 20 cm']
+
+
 def n_csv(folder):
     """How many .csv files `folder` holds; 0 when it cannot be read."""
     try:
@@ -1698,6 +1716,11 @@ class Handler(BaseHTTPRequestHandler):
             s = X.status((q.get('job') or [''])[0])
             return self._json(s or {'error': 'no experiment has run yet'},
                               200 if s else 404)
+        if p == '/api/log/status':
+            q = parse_qs(u.query)
+            s = LM.status((q.get('job') or [''])[0])
+            return self._json(s or {'error': 'no log has been run yet'},
+                              200 if s else 404)
         self.send_error(404)
 
     def do_POST(self):
@@ -1786,6 +1809,45 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({'ok': TR.dismiss(body.get('name'))})
         if p == '/api/exp/stop':
             return self._json({'ok': X.stop(body.get('job'))})
+        if p == '/api/log/check':
+            params, err = exp_params(body.get('params'))
+            tol, terr = log_tol(body.get('tol_cm'))
+            try:
+                log = LM.summary(body.get('path') or '', params['n_types'], tol)
+            except (OSError, ValueError) as e:
+                log = {'error': str(e)}
+            return self._json({'params': params, 'errors': err + terr, 'log': log,
+                               'mismatch': [] if err else
+                               exp_mismatch(params, body.get('spec'))})
+        if p == '/api/log/start':
+            params, err = exp_params(body.get('params'))
+            tol, terr = log_tol(body.get('tol_cm'))
+            if err + terr:
+                return self._json({'error': (err + terr)[0], 'errors': err + terr}, 400)
+            try:
+                jid = LM.start(body.get('path') or '', body.get('spec') or 'random',
+                               params, cell_m(params), DEVICE, tol)
+            except (OSError, ValueError) as e:
+                return self._json({'error': str(e)}, 400)
+            return self._json({'job': jid})
+        if p == '/api/log/stop':
+            return self._json({'ok': LM.stop(body.get('job'))})
+        if p.startswith('/api/log/'):
+            # a closed pallet of a run: its result view, and the replay asks
+            try:
+                if p == '/api/log/pallet':
+                    return self._json(LM.pallet(body.get('job'), body.get('i', 0)))
+                if p == '/api/log/points':
+                    return self._json(LM.points(body.get('job'), body.get('pallet', 0),
+                                                body.get('n', 0), body.get('i', 0)))
+                if p == '/api/log/arm':
+                    return self._json(LM.arm(body.get('job'), body.get('placed'),
+                                             body.get('bin'), body.get('moves')))
+            except (TypeError, ValueError) as e:
+                return self._json({'error': str(e)}, 400)
+            except Exception as e:
+                return self._json({'error': f'{type(e).__name__}: {e}'}, 500)
+            return self.send_error(404)
         st = _GAMES.get(body.get('gid'))
         if st is None:
             return self._json({'error': 'that game has expired'}, 404)
