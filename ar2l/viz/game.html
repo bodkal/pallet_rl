@@ -609,6 +609,12 @@ details.cf>summary b{font-size:14px}
           <div class="pf" title="where the outline step runs the rules again: the outline points on top of the action space's own, or every cell of the grid, as the 'every loading position' action space offers them"><span>outline step looks at</span><select id="olarea">
             <option value="outline">outline &mdash; the edges of every box and of the pallet</option>
             <option value="all">all &mdash; every cell of the grid</option></select></div>
+          <label class="pf flag" title="the model only: while a blue or white box can go turned 90 degrees on the floor somewhere along the pallet's x = 0 edge, the model is offered only its legal turned placements at x = 0 -- every y, at any height. With no such floor spot, and for brown boxes, it chooses from everything as before. Your own clicks stay free."><input id="cornerfirst" type="checkbox"><span>corner first &mdash; blue / white held to x = 0, turned 90&deg;</span></label>
+          <label class="pf flag" title="the model's box picker only (a select run's mixer): among the boxes whose probability is within this many percentage points of its top choice -- with 1, a box at 20% ties with one at 19% or 21% -- it takes the biggest, by x * y + z in cells: the footprint first, the height a lesser say. Your own pick and an attacker's are left as they are."><input id="pickbig" type="checkbox"><span>bigger box on ties &mdash; the model's pick, by x&middot;y + z</span></label>
+          <div class="pf" title="the model's box picker only (a select run's mixer): among the boxes whose probability is within this many percentage points of its top choice -- with 1, a box at 20% ties with one at 19% or 21% -- it takes the biggest, by x * y + z in cells: the footprint first, the height a lesser say. Your own pick and an attacker's are left as they are."><span>tie threshold (percentage points)</span><input id="pickbigpct" type="number" min="0" max="100" step="0.5"></div>
+          <label class="pf flag" title="the model only: when it would put a blue or white box on the floor (z = 0) and another legal spot with z &gt; 0 has a probability at most this many percentage points below the floor spot's, the box goes up, to the likeliest such spot. Brown boxes and your own clicks are left as they are."><input id="prefstack" type="checkbox"><span>stack over floor &mdash; blue / white, the model's placement</span></label>
+          <div class="pf" title="the model only: when it would put a blue or white box on the floor (z = 0) and another legal spot with z &gt; 0 has a probability at most this many percentage points below the floor spot's, the box goes up, to the likeliest such spot. Brown boxes and your own clicks are left as they are."><span>stack threshold (percentage points)</span><input id="prefstackpct" type="number" min="0" max="100" step="1"></div>
+          <label class="pf flag" title="the model only: when it would put a blue or white box on the floor (z = 0) away from the x = 0 edge, and the box has any legal spot at x = 0 (on the floor or stacked), every floor spot with x &gt; 0 is removed and the model takes its likeliest spot of the rest. Checked after 'stack over floor'. Brown boxes and your own clicks are left as they are."><input id="floorx0" type="checkbox"><span>floor only at x = 0 &mdash; blue / white, the model's placement</span></label>
           <div class="pf"><span>robot-arm filter</span><select id="armcol">
             <option value="0">off &mdash; every placement the rules allow</option>
             <option value="1">on &mdash; drop placements the arm collides on</option></select></div>
@@ -858,6 +864,12 @@ details.cf>summary b{font-size:14px}
         <div class="pf" title="where the outline step runs the rules again: the outline points on top of the action space's own, or every cell of the grid, as the 'every loading position' action space offers them"><span>outline step looks at</span><select id="rcolarea">
           <option value="outline">outline &mdash; the edges of every box and of the pallet</option>
           <option value="all">all &mdash; every cell of the grid</option></select></div>
+        <label class="pf flag" title="the model only: while a blue or white box can go turned 90 degrees on the floor somewhere along the pallet's x = 0 edge, the model is offered only its legal turned placements at x = 0 -- every y, at any height. With no such floor spot, and for brown boxes, it chooses from everything as before. Your own clicks stay free."><input id="rccornerfirst" type="checkbox"><span>corner first &mdash; blue / white held to x = 0, turned 90&deg;</span></label>
+        <label class="pf flag" title="the model's box picker only (a select run's mixer): among the boxes whose probability is within this many percentage points of its top choice -- with 1, a box at 20% ties with one at 19% or 21% -- it takes the biggest, by x * y + z in cells: the footprint first, the height a lesser say. Your own pick and an attacker's are left as they are."><input id="rcpickbig" type="checkbox"><span>bigger box on ties &mdash; the model's pick, by x&middot;y + z</span></label>
+        <div class="pf" title="the model's box picker only (a select run's mixer): among the boxes whose probability is within this many percentage points of its top choice -- with 1, a box at 20% ties with one at 19% or 21% -- it takes the biggest, by x * y + z in cells: the footprint first, the height a lesser say. Your own pick and an attacker's are left as they are."><span>tie threshold (percentage points)</span><input id="rcpickbigpct" type="number" min="0" max="100" step="0.5"></div>
+        <label class="pf flag" title="the model only: when it would put a blue or white box on the floor (z = 0) and another legal spot with z &gt; 0 has a probability at most this many percentage points below the floor spot's, the box goes up, to the likeliest such spot. Brown boxes and your own clicks are left as they are."><input id="rcprefstack" type="checkbox"><span>stack over floor &mdash; blue / white, the model's placement</span></label>
+        <div class="pf" title="the model only: when it would put a blue or white box on the floor (z = 0) and another legal spot with z &gt; 0 has a probability at most this many percentage points below the floor spot's, the box goes up, to the likeliest such spot. Brown boxes and your own clicks are left as they are."><span>stack threshold (percentage points)</span><input id="rcprefstackpct" type="number" min="0" max="100" step="1"></div>
+        <label class="pf flag" title="the model only: when it would put a blue or white box on the floor (z = 0) away from the x = 0 edge, and the box has any legal spot at x = 0 (on the floor or stacked), every floor spot with x &gt; 0 is removed and the model takes its likeliest spot of the rest. Checked after 'stack over floor'. Brown boxes and your own clicks are left as they are."><input id="rcfloorx0" type="checkbox"><span>floor only at x = 0 &mdash; blue / white, the model's placement</span></label>
         <div class="pf"><span>robot-arm filter</span><select id="rcarmcol">
           <option value="0">off &mdash; every placement the rules allow</option>
           <option value="1">on &mdash; drop placements the arm collides on</option></select></div>
@@ -1013,6 +1025,12 @@ details.cf>summary b{font-size:14px}
         <div class="pf" title="where the outline step runs the rules again: the outline points on top of the action space's own, or every cell of the grid, as the 'every loading position' action space offers them"><span>outline step looks at</span><select id="xolarea">
           <option value="outline">outline &mdash; the edges of every box and of the pallet</option>
           <option value="all">all &mdash; every cell of the grid</option></select></div>
+        <label class="pf flag" title="the model only: while a blue or white box can go turned 90 degrees on the floor somewhere along the pallet's x = 0 edge, the model is offered only its legal turned placements at x = 0 -- every y, at any height. With no such floor spot, and for brown boxes, it chooses from everything as before. Your own clicks stay free."><input id="xcornerfirst" type="checkbox"><span>corner first &mdash; blue / white held to x = 0, turned 90&deg;</span></label>
+        <label class="pf flag" title="the model's box picker only (a select run's mixer): among the boxes whose probability is within this many percentage points of its top choice -- with 1, a box at 20% ties with one at 19% or 21% -- it takes the biggest, by x * y + z in cells: the footprint first, the height a lesser say. Your own pick and an attacker's are left as they are."><input id="xpickbig" type="checkbox"><span>bigger box on ties &mdash; the model's pick, by x&middot;y + z</span></label>
+        <div class="pf" title="the model's box picker only (a select run's mixer): among the boxes whose probability is within this many percentage points of its top choice -- with 1, a box at 20% ties with one at 19% or 21% -- it takes the biggest, by x * y + z in cells: the footprint first, the height a lesser say. Your own pick and an attacker's are left as they are."><span>tie threshold (percentage points)</span><input id="xpickbigpct" type="number" min="0" max="100" step="0.5"></div>
+        <label class="pf flag" title="the model only: when it would put a blue or white box on the floor (z = 0) and another legal spot with z &gt; 0 has a probability at most this many percentage points below the floor spot's, the box goes up, to the likeliest such spot. Brown boxes and your own clicks are left as they are."><input id="xprefstack" type="checkbox"><span>stack over floor &mdash; blue / white, the model's placement</span></label>
+        <div class="pf" title="the model only: when it would put a blue or white box on the floor (z = 0) and another legal spot with z &gt; 0 has a probability at most this many percentage points below the floor spot's, the box goes up, to the likeliest such spot. Brown boxes and your own clicks are left as they are."><span>stack threshold (percentage points)</span><input id="xprefstackpct" type="number" min="0" max="100" step="1"></div>
+        <label class="pf flag" title="the model only: when it would put a blue or white box on the floor (z = 0) away from the x = 0 edge, and the box has any legal spot at x = 0 (on the floor or stacked), every floor spot with x &gt; 0 is removed and the model takes its likeliest spot of the rest. Checked after 'stack over floor'. Brown boxes and your own clicks are left as they are."><input id="xfloorx0" type="checkbox"><span>floor only at x = 0 &mdash; blue / white, the model's placement</span></label>
         <div class="pf"><span>robot-arm filter</span><select id="xarmcol">
           <option value="0">off &mdash; every placement the rules allow</option>
           <option value="1">on &mdash; drop placements the arm collides on</option></select></div>
@@ -1130,6 +1148,12 @@ details.cf>summary b{font-size:14px}
         <div class="pf" title="where the outline step runs the rules again: the outline points on top of the action space's own, or every cell of the grid, as the 'every loading position' action space offers them"><span>outline step looks at</span><select id="lolarea">
           <option value="outline">outline &mdash; the edges of every box and of the pallet</option>
           <option value="all">all &mdash; every cell of the grid</option></select></div>
+        <label class="pf flag" title="the model only: while a blue or white box can go turned 90 degrees on the floor somewhere along the pallet's x = 0 edge, the model is offered only its legal turned placements at x = 0 -- every y, at any height. With no such floor spot, and for brown boxes, it chooses from everything as before. Your own clicks stay free."><input id="lcornerfirst" type="checkbox"><span>corner first &mdash; blue / white held to x = 0, turned 90&deg;</span></label>
+        <label class="pf flag" title="the model's box picker only (a select run's mixer): among the boxes whose probability is within this many percentage points of its top choice -- with 1, a box at 20% ties with one at 19% or 21% -- it takes the biggest, by x * y + z in cells: the footprint first, the height a lesser say. Your own pick and an attacker's are left as they are."><input id="lpickbig" type="checkbox"><span>bigger box on ties &mdash; the model's pick, by x&middot;y + z</span></label>
+        <div class="pf" title="the model's box picker only (a select run's mixer): among the boxes whose probability is within this many percentage points of its top choice -- with 1, a box at 20% ties with one at 19% or 21% -- it takes the biggest, by x * y + z in cells: the footprint first, the height a lesser say. Your own pick and an attacker's are left as they are."><span>tie threshold (percentage points)</span><input id="lpickbigpct" type="number" min="0" max="100" step="0.5"></div>
+        <label class="pf flag" title="the model only: when it would put a blue or white box on the floor (z = 0) and another legal spot with z &gt; 0 has a probability at most this many percentage points below the floor spot's, the box goes up, to the likeliest such spot. Brown boxes and your own clicks are left as they are."><input id="lprefstack" type="checkbox"><span>stack over floor &mdash; blue / white, the model's placement</span></label>
+        <div class="pf" title="the model only: when it would put a blue or white box on the floor (z = 0) and another legal spot with z &gt; 0 has a probability at most this many percentage points below the floor spot's, the box goes up, to the likeliest such spot. Brown boxes and your own clicks are left as they are."><span>stack threshold (percentage points)</span><input id="lprefstackpct" type="number" min="0" max="100" step="1"></div>
+        <label class="pf flag" title="the model only: when it would put a blue or white box on the floor (z = 0) away from the x = 0 edge, and the box has any legal spot at x = 0 (on the floor or stacked), every floor spot with x &gt; 0 is removed and the model takes its likeliest spot of the rest. Checked after 'stack over floor'. Brown boxes and your own clicks are left as they are."><input id="lfloorx0" type="checkbox"><span>floor only at x = 0 &mdash; blue / white, the model's placement</span></label>
         <div class="pf"><span>robot-arm filter</span><select id="larmcol">
           <option value="0">off &mdash; every placement the rules allow</option>
           <option value="1">on &mdash; drop placements the arm collides on</option></select></div>
@@ -1354,7 +1378,8 @@ const PF = {
   size_hi: ['#hi0', '#hi1', '#hi2'],
   nb: '#nb', n_pick: '#npick', n_items: '#nitems', max_l: '#maxl',
   rot: '#prot', ems: '#ems', stability: '#stab', min_support: '#msup',
-  type_rule: '#trule', soft_mix: '#softmix',
+  type_rule: '#trule', soft_mix: '#softmix', corner_first: '#cornerfirst', pick_big: '#pickbig', pick_big_pct: '#pickbigpct',
+  prefer_stack: '#prefstack', prefer_stack_pct: '#prefstackpct', floor_x0: '#floorx0',
   outline_resort: '#olresort', outline_when: '#olwhen', outline_area: '#olarea', arm_collision: '#armcol', base_x_moves: '#armmoves',
   stack_cap: '#stackcap', stack_cap_types: '#stacktypes',
   stack_cap_side_cm: '#stackside', stack_cap_allow_cm: '#stackallow',
@@ -1368,9 +1393,9 @@ const EMSTEXT = {1: 'the corners of the empty maximal spaces',
   2: 'the corner cells of the height map',
   3: 'the empty-maximal-space corners and the corner cells'};
 const PSTR = new Set(['stability', 'type_rule', 'outline_when', 'outline_area', 'source', 'data', 'box_round']);
-const PFLOAT = new Set(['min_support', 'order_random', 'cell_cm', 'box_pad_m', 'box_scale']);
+const PFLOAT = new Set(['min_support', 'pick_big_pct', 'prefer_stack_pct', 'order_random', 'cell_cm', 'box_pad_m', 'box_scale']);
 /* a checkbox, sent as 1 or 0 */
-const PFLAG = new Set(['soft_mix', 'outline_resort']);
+const PFLAG = new Set(['soft_mix', 'outline_resort', 'corner_first', 'pick_big', 'prefer_stack', 'floor_x0']);
 /* a list of numbers typed as "0, -0.5, 0.5"; the server checks the values */
 const PNUMS = new Set(['base_x_moves', 'stack_cap_types', 'stack_cap_side_cm',
   'stack_cap_allow_cm']);
@@ -1384,7 +1409,9 @@ const PLABEL = {source: 'box source', data: 'data file', pallet: 'pallet',
   nb: 'window N_B', n_pick: 'reach k', n_items: 'items in the sequence',
   max_l: 'candidate cap', rot: 'orientations', ems: 'action space',
   stability: 'stability rule', min_support: 'support floor',
-  type_rule: 'box-type rule', soft_mix: 'soft mix',
+  type_rule: 'box-type rule', soft_mix: 'soft mix', corner_first: 'corner first', pick_big: 'bigger box on ties', pick_big_pct: 'tie threshold',
+  prefer_stack: 'stack over floor', prefer_stack_pct: 'stack threshold',
+  floor_x0: 'floor only at x = 0',
   outline_resort: 'outline step', outline_when: 'outline step opens', outline_area: 'outline step looks at', arm_collision: 'robot-arm filter', base_x_moves: 'arm base x moves',
   stack_cap: 'stack-height limit', stack_cap_types: 'limited box types',
   stack_cap_side_cm: 'stack-limit sides (cm)', stack_cap_allow_cm: 'stack-limit allowances (cm)'};
@@ -1423,6 +1450,9 @@ function writeParams(p, pf = PF){
 /* soft mix and the outline step mean something only under the mixed rules,
    and when the outline step opens and where it looks only with it on */
 function syncSoft(pf = PF){
+  // the tie threshold means something only with the bigger-box pick on
+  if (pf.pick_big_pct) $(pf.pick_big_pct).disabled = !$(pf.pick_big).checked;
+  if (pf.prefer_stack_pct) $(pf.prefer_stack_pct).disabled = !$(pf.prefer_stack).checked;
   if (!pf.type_rule) return;
   const mixed = $(pf.type_rule).value.startsWith('mixed');
   if (pf.soft_mix) $(pf.soft_mix).disabled = !mixed;
@@ -2204,6 +2234,8 @@ function kpis(){
                               : 'mixed touch rules for')
                : 'may stack only on',
                `${TSW(B.item_type)}${TNAME(B.item_type)}`]);
+  if (B.corner)
+    rows.push(['corner first: the model may only use', 'x = 0 · 90°']);
   $('#kpis').innerHTML = rows.map(([k, v]) =>
     `<div class="kpi"><div class="v">${v}</div><div class="k">${k}</div></div>`).join('');
 }
@@ -2699,7 +2731,8 @@ const RPF = {
   bin: ['#rcbin0', '#rcbin1', '#rcbin2'],
   nb: '#rcnb', n_pick: '#rcnpick', max_l: '#rcmaxl',
   rot: '#rcrot', ems: '#rcems', stability: '#rcstab', min_support: '#rcmsup',
-  type_rule: '#rctrule', soft_mix: '#rcsoftmix',
+  type_rule: '#rctrule', soft_mix: '#rcsoftmix', corner_first: '#rccornerfirst', pick_big: '#rcpickbig', pick_big_pct: '#rcpickbigpct',
+  prefer_stack: '#rcprefstack', prefer_stack_pct: '#rcprefstackpct', floor_x0: '#rcfloorx0',
   outline_resort: '#rcolresort', outline_when: '#rcolwhen', outline_area: '#rcolarea', arm_collision: '#rcarmcol', base_x_moves: '#rcarmmoves',
   stack_cap: '#rcstackcap', stack_cap_types: '#rcstacktypes',
   stack_cap_side_cm: '#rcstackside', stack_cap_allow_cm: '#rcstackallow',
@@ -3270,6 +3303,8 @@ const XPF = {
   nb: '#xnb', n_pick: '#xnpick', max_l: '#xmaxl',
   rot: '#xprot', ems: '#xems', stability: '#xstab', min_support: '#xmsup',
   type_constraint: '#xtcon', type_rule: '#xtrule', soft_mix: '#xsoftmix',
+  corner_first: '#xcornerfirst', pick_big: '#xpickbig', pick_big_pct: '#xpickbigpct',
+  prefer_stack: '#xprefstack', prefer_stack_pct: '#xprefstackpct', floor_x0: '#xfloorx0',
   outline_resort: '#xolresort', outline_when: '#xolwhen', outline_area: '#xolarea', arm_collision: '#xarmcol', base_x_moves: '#xarmmoves',
   stack_cap: '#xstackcap', stack_cap_types: '#xstacktypes',
   stack_cap_side_cm: '#xstackside', stack_cap_allow_cm: '#xstackallow',
@@ -3278,8 +3313,8 @@ const XPF = {
 };
 PLABEL.type_constraint = 'stacking rule';
 for (const pf of [PF, RPF, XPF])
-  for (const k of ['type_rule', 'outline_resort'])
-    $(pf[k]).addEventListener('input', () => syncSoft(pf));
+  for (const k of ['type_rule', 'outline_resort', 'pick_big', 'prefer_stack'])
+    if (pf[k]) $(pf[k]).addEventListener('input', () => syncSoft(pf));
 let XCHECK = null, XFILLED = false;
 /* a run with no name cannot be told apart in Compare, nor deleted by name */
 const xNoName = () => !$('#xname').value.replace(/,/g, ' ').trim();
@@ -3428,13 +3463,15 @@ const LPF = {
   nb: '#lnb', n_pick: '#lnpick', max_l: '#lmaxl',
   rot: '#lprot', ems: '#lems', stability: '#lstab', min_support: '#lmsup',
   type_constraint: '#ltcon', type_rule: '#ltrule', soft_mix: '#lsoftmix',
+  corner_first: '#lcornerfirst', pick_big: '#lpickbig', pick_big_pct: '#lpickbigpct',
+  prefer_stack: '#lprefstack', prefer_stack_pct: '#lprefstackpct', floor_x0: '#lfloorx0',
   outline_resort: '#lolresort', outline_when: '#lolwhen', outline_area: '#lolarea', arm_collision: '#larmcol', base_x_moves: '#larmmoves',
   stack_cap: '#lstackcap', stack_cap_types: '#lstacktypes',
   stack_cap_side_cm: '#lstackside', stack_cap_allow_cm: '#lstackallow',
   pallet_cm: ['#lpcm0', '#lpcm1', '#lpcm2'], cell_cm: '#lcellcm',
   box_pad_m: '#lbpad', box_scale: '#lbscale', box_round: '#lbround',
 };
-for (const k of ['type_rule', 'outline_resort'])
+for (const k of ['type_rule', 'outline_resort', 'pick_big', 'prefer_stack'])
   $(LPF[k]).addEventListener('input', () => syncSoft(LPF));
 let LJOB = null, LPOLL = null, LRUN = false, LBAD = false, LFILLED = false, LCHECK = null;
 let LSTAT = null, LRES = null;          // the last status, and the pallet on show

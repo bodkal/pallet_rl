@@ -112,12 +112,15 @@ CLI: dict = {}
 GAME_KEYS = ('bin', 'n_items', 'size_lo', 'size_hi', 'nb', 'n_pick',
              'max_l', 'rot', 'ems', 'stability', 'min_support',
              'n_types', 'type_constraint', 'type_rule', 'soft_mix',
-             'outline_resort', 'outline_when', 'outline_area', 'arm_collision',
+             'outline_resort', 'outline_when', 'outline_area', 'corner_first',
+             'pick_big', 'pick_big_pct', 'prefer_stack', 'prefer_stack_pct',
+             'floor_x0', 'arm_collision',
              'stack_cap', 'stack_cap_types', 'stack_cap_side_cm', 'stack_cap_allow_cm',
              'base_x_moves')
 #: what a run does not record, so there is nothing to compare it on
 UNRECORDED = ('base_x_moves', 'stack_cap_types', 'stack_cap_side_cm',
-              'stack_cap_allow_cm')
+              'stack_cap_allow_cm', 'corner_first', 'pick_big', 'pick_big_pct',
+              'prefer_stack', 'prefer_stack_pct', 'floor_x0')
 TRIPLES = ('bin', 'size_lo', 'size_hi')
 
 #: where the boxes come from: the generator, or a file of real pallets and how
@@ -222,6 +225,12 @@ def defaults():
          'outline_resort': int(e.get('outline_resort', 0)),
          'outline_when': str(e.get('outline_when', 'station')),
          'outline_area': str(e.get('outline_area', 'outline')),
+         'corner_first': int(e.get('corner_first', 0)),
+         'pick_big': int(e.get('pick_big', 0)),
+         'pick_big_pct': float(e.get('pick_big_pct', 1.0)),
+         'prefer_stack': int(e.get('prefer_stack', 0)),
+         'prefer_stack_pct': float(e.get('prefer_stack_pct', 30.0)),
+         'floor_x0': int(e.get('floor_x0', 0)),
          'arm_collision': int(e.get('arm_collision', 0)),
          'stack_cap': int(e['stack_cap']),
          'stack_cap_types': [int(t) for t in e['stack_cap_types'] or []],
@@ -378,6 +387,23 @@ def validate(raw):
     p['arm_collision'] = whole('arm_collision', 0, 1, 'robot-arm filter')
     p['soft_mix'] = whole('soft_mix', 0, 1, 'soft mix')
     p['outline_resort'] = whole('outline_resort', 0, 1, 'outline step')
+    p['corner_first'] = whole('corner_first', 0, 1, 'corner first')
+    p['pick_big'] = whole('pick_big', 0, 1, 'bigger box on ties')
+    p['prefer_stack'] = whole('prefer_stack', 0, 1, 'stack over floor')
+    p['floor_x0'] = whole('floor_x0', 0, 1, 'floor only at x = 0')
+
+    def points(k, what):
+        v = raw.get(k, p[k])
+        try:
+            if not 0.0 <= float(v) <= 100.0:
+                raise ValueError
+            return float(v)
+        except (TypeError, ValueError):
+            err.append(f'{what}: percentage points from 0 to 100, got {v!r}')
+            return p[k]
+
+    p['pick_big_pct'] = points('pick_big_pct', 'tie threshold')
+    p['prefer_stack_pct'] = points('prefer_stack_pct', 'stack threshold')
     p['stack_cap'] = whole('stack_cap', 0, 1, 'stack-height limit')
 
     def numbers(k, what, cast=float):
@@ -655,7 +681,11 @@ def grids(env):
     """
     k = int(env.obs()['l_mask'][0].sum())   # refreshes the candidate table first
     cand, z, odims, tunder = env._positions()
-    return cand[0], free_positions(env), z[0], odims[0], k, tunder[0]
+    cand = cand[0]
+    if env.corner()[0]:                     # `corner_first`: turned at x = 0
+        cand = cand & (np.arange(cand.shape[0]) == 1)[:, None, None]
+        cand[:, 1:] = False
+    return cand, free_positions(env), z[0], odims[0], k, tunder[0]
 
 
 def free_rules(env):
@@ -787,9 +817,10 @@ def place(env, r, x, y):
     table with the EMS filter off and nothing truncated away, find the cell in
     it, and step that index normally.
     """
-    ems, max_l = env.ems, env.max_l
+    ems, max_l, corner = env.ems, env.max_l, env.corner_first
     env.ems = 0
     env.max_l = env.rot * env.Lx * env.Ly   # every (orientation, x, y), none dropped
+    env.corner_first = False                # it narrows the packer, not you
     env._invalidate(hmap=False)
     try:
         o = env.obs()
@@ -803,7 +834,7 @@ def place(env, r, x, y):
         # have nowhere left, not when the packer would have run out.
         env.step(np.array([int(hit[0])]))
     finally:
-        env.ems, env.max_l = ems, max_l
+        env.ems, env.max_l, env.corner_first = ems, max_l, corner
         env._invalidate(hmap=False)
     return True
 
@@ -852,6 +883,7 @@ def stack_kw(p):
                 outline_resort=bool(p['outline_resort']),
                 outline_when=p['outline_when'],
                 outline_area=p['outline_area'],
+                corner_first=bool(p.get('corner_first', 0)),
                 stack_cap=bool(p['stack_cap']),
                 stack_types=p['stack_cap_types'],
                 stack_side_cm=p['stack_cap_side_cm'],
@@ -1035,6 +1067,8 @@ def board(st):
         'fallback': bool(fallback),
         'last_resort': bool(soft),
         'outline': outline,
+        # `corner_first` holds the packer to x = 0, turned, for this box
+        'corner': bool(not env.done[0] and env.corner()[0]),
         'mixed': ({'top_gap_cm': env.top_gap_cm, 'top_gap': int(env.top_gap),
                    'area_pct': round(100 * env.area_frac),
                    'small_blue': list(env.small_blue),
@@ -1182,7 +1216,7 @@ def new_game(seed, attacker_spec, params, human_pick=True, opp_spec=None):
     return gid, st
 
 
-def opp_permuter(st, spec, n_pick=None):
+def opp_permuter(st, spec, n_pick=None, p=None):
     """Who chooses the agent's box: the attacker, or its own selector.
 
     A `select` run is trained *with* a permuter that hands it one of the `k`
@@ -1193,6 +1227,10 @@ def opp_permuter(st, spec, n_pick=None):
     `n_pick` is the reach of the replay being set up rather than the session's,
     because a recalculation may have changed it: a select run recalculated down
     to k = 1 has nothing left to select, and must not be handed its mixer.
+
+    With `p['pick_big']` the mixer takes the biggest box among those within
+    `p['pick_big_pct']` percentage points of its top choice (`prefer_big`);
+    an attacker is left as it is.
     """
     if st['att'] is not None:
         return st['att'], st['alabel']
@@ -1202,6 +1240,10 @@ def opp_permuter(st, spec, n_pick=None):
         info = A.run_info(run)
         if info and info['args'].get('algo') == 'select' and k > 1:
             fn, lab, _ = A.load_attacker(f'mix:{run}', DEVICE)
+            if p is not None and p.get('pick_big'):
+                pct = float(p.get('pick_big_pct', 1.0))
+                fn = A.prefer_big(fn, pct / 100)
+                lab = f'{lab}, bigger box within {pct:g} points'
             return fn, lab
     return None, None
 
@@ -1217,8 +1259,8 @@ def hand_over(st, spec, p, seq=None):
     replaces the stream when a recalculation re-read it at another padding.
     """
     seq = st['seq'] if seq is None else seq
-    policy, label, _ = A.load_policy(spec, DEVICE)
-    perm, plabel = opp_permuter(st, spec, p['n_pick'])
+    policy, label = A.stack_rule(*A.load_policy(spec, DEVICE)[:2], p)
+    perm, plabel = opp_permuter(st, spec, p['n_pick'], p)
     t0 = time.time()
     ep = A.play(seq, policy, perm, **play_kw(p))
     return {'label': label, 'util': ep['util'], 'items': ep['items'],

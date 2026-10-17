@@ -176,6 +176,8 @@ COLUMN_RULES = ("column", "mixed_column")
 # pairs, `_type_ok` the conditions, `_open_sweep` the cells of rule (d).
 MIXED_RULES = ("mixed_touch", "mixed_column")
 BLUE, WHITE, BROWN = 0, 1, 2
+#: the types `corner_first` turns along the pallet's x = 0 edge
+CORNER_TYPES = (BLUE, WHITE)
 # What a mixed rule says of a box of one type on a box of another: it may
 # not, it may, it may if the pair's own condition holds, or it may if its top
 # ends near the lid -- rule (a) alone (`mixed_tables`)
@@ -451,7 +453,7 @@ class BPPBatch:
                  stack_allow_cm=None, stack_cell_cm=None,
                  mixed_top_gap_cm=None, mixed_area_frac=None,
                  mixed_small_blue=None, soft_mix=None, outline_resort=None,
-                 outline_when=None, outline_area=None):
+                 outline_when=None, outline_area=None, corner_first=None):
         # `None` means "whatever config.yaml says"; an explicit argument wins
         e = CFG["env"]
         S = e["bin"] if S is None else S
@@ -629,6 +631,13 @@ class BPPBatch:
             raise ValueError(f"outline_area is one of {OUTLINE_AREA}, got "
                              f"{self.outline_area!r}")
         self._ol = False
+        # `corner_first`: a blue or white box in front that can go turned 90
+        # degrees on the floor somewhere along the pallet's x = 0 edge is
+        # offered only its legal turned placements at x = 0 -- every y, at
+        # any height (`corner`).  With no such floor placement the packer
+        # chooses from everything, as before.
+        self.corner_first = bool(e.get("corner_first", 0)
+                                 if corner_first is None else corner_first)
         # the contact count costs a second sweep, so only pay for it when a
         # rule actually reads it -- the `MIXED_RULES` do too, for blue on blue,
         # which `_sweeps` asks as it goes, as a caller may switch the rule
@@ -2059,6 +2068,19 @@ class BPPBatch:
         self._positions()
         return self._pos_ol.copy()
 
+    def corner(self):
+        """(n,) is the leading item held to x = 0, turned, by `corner_first`?
+
+        It is blue or white, and its turned orientation (r = 1) is legal on
+        the floor somewhere along x = 0 -- every rule in force, the arm
+        included.  It is then offered only its turned placements at x = 0."""
+        if not (self.corner_first and self.rot >= 2):
+            return np.zeros(self.n_env, bool)
+        feas, z, _, _ = self._positions()
+        t = self.head_item()[1]
+        return (np.isin(t, CORNER_TYPES)
+                & (feas[:, 1, 0] & (z[:, 1, 0] == 0)).any(1))
+
     def type_blocked(self):
         """(n,) is the leading item blocked *only* by the stacking rule?
 
@@ -2110,6 +2132,14 @@ class BPPBatch:
         feas, z, odims, tunder = self._positions()
         scale, n = self.scale, self.n_env
         flat = feas.reshape(n, -1)
+        cells = self.Lx * self.Ly
+        # `corner_first`: only the turned placements at x = 0 -- flat
+        # indices cells + y, every y -- for a box held to that edge
+        hit = self.corner()
+        if hit.any():
+            edge = np.zeros(flat.shape[1], bool)
+            edge[cells:cells + self.Ly] = True
+            flat = flat & (edge[None] | ~hit[:, None])
         NL = int(min(self.max_l, flat.shape[1], max(flat.sum(1).max(), 1)))
 
         # keep the NL deepest candidates when more than NL are feasible
@@ -2118,7 +2148,6 @@ class BPPBatch:
         lmask = np.take_along_axis(flat, order, 1)
         zz = np.take_along_axis(z.reshape(n, -1), order, 1)
         tt = np.take_along_axis(tunder.reshape(n, -1), order, 1)
-        cells = self.Lx * self.Ly
         rr, rem = order // cells, order % cells
         xx, yy = rem // self.Ly, rem % self.Ly
         dims = odims[self._ar[:, None], rr]                   # (n, NL, 3)
@@ -2127,6 +2156,7 @@ class BPPBatch:
             [np.stack([xx, yy, zz], -1).astype(np.float32), dims], -1) / scale
         lnode *= lmask[..., None]
         self._lxy = np.stack([xx, yy, rr], -1).astype(np.int32)
+        self._lmask = lmask
         self._lz = zz.astype(np.int32)
         self._ldim = dims.astype(np.int32)
         # a masked-out slot has no footprint and so no type underneath; giving

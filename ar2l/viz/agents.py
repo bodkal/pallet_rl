@@ -23,7 +23,7 @@ import threading
 import numpy as np
 import torch
 
-from ..env import BPPBatch
+from ..env import BPPBatch, CORNER_TYPES
 from ..evaluate import load_nets
 from ..heuristics import NAMES as HEURISTICS, scores as heur_scores  # noqa: F401
 from ..ppo import to_torch
@@ -123,6 +123,71 @@ def load_policy(spec, device="cuda"):
     return fn, f"{info['algo']}({run})", info["nb"]
 
 
+def prefer_big(picker, tol=0.01):
+    """`picker`, but where boxes tie with its top choice -- a probability at
+    most `tol` below the top one's -- the biggest of them goes instead, by
+    x * y + z in cells: the footprint first, the height a lesser say.  An
+    equal size goes to the likelier box.  The probabilities stay the
+    picker's own, so the page still shows what it scored."""
+    def fn(env):
+        _, p = picker(env)
+        win, _ = env.window()
+        d = win[..., :3].astype(np.int64)
+        size = d[..., 0] * d[..., 1] + d[..., 2]
+        tie = (p > 0) & (p >= p.max(1, keepdims=True) - tol - 1e-9)
+        return np.where(tie, size + p, -1.0).argmax(1), p
+    return fn
+
+
+def prefer_stack(policy, tol=0.30):
+    """`policy`, but a blue or white box it would put on the floor (z = 0)
+    goes up instead when a legal placement with z > 0 has a probability at
+    most `tol` below the floor one's -- the likeliest such placement.  The
+    probabilities stay the policy's own."""
+    def fn(env):
+        act, p = policy(env)
+        z = env._lz                       # the candidate list `policy` scored
+        q = p[:, :z.shape[1]]
+        ar = np.arange(len(act))
+        floor = np.isin(env.head_item()[1], CORNER_TYPES) & (z[ar, act] == 0)
+        ok = ((z > 0) & (q > 0)
+              & (q >= q[ar, act][:, None] - tol - 1e-9) & floor[:, None])
+        up = np.where(ok, q, -1.0).argmax(1)
+        return np.where(ok.any(1), up, act), p
+    return fn
+
+
+def floor_x0(policy):
+    """`policy`, but a blue or white box it would put on the floor (z = 0)
+    off the x = 0 edge, while the box has any legal placement at x = 0, goes
+    to the likeliest placement that is left once every floor placement with
+    x > 0 is dropped.  The probabilities stay the policy's own."""
+    def fn(env):
+        act, p = policy(env)
+        x, z, lm = env._lxy[..., 0], env._lz, env._lmask
+        q = p[:, :z.shape[1]]
+        ar = np.arange(len(act))
+        hit = (np.isin(env.head_item()[1], CORNER_TYPES)
+               & (z[ar, act] == 0) & (x[ar, act] > 0)
+               & (lm & (x == 0)).any(1))
+        keep = lm & ~((z == 0) & (x > 0))
+        return np.where(hit, np.where(keep, q, -1.0).argmax(1), act), p
+    return fn
+
+
+def stack_rule(policy, label, p):
+    """`policy` and its label under a parameter set's `prefer_stack` and
+    `floor_x0`: the stack first, then the floor edge on what it chose."""
+    if p and p.get("prefer_stack"):
+        pct = float(p.get("prefer_stack_pct", 30.0))
+        policy = prefer_stack(policy, pct / 100)
+        label = f"{label}, stacks within {pct:g} points"
+    if p and p.get("floor_x0"):
+        policy = floor_x0(policy)
+        label = f"{label}, floor only at x = 0"
+    return policy, label
+
+
 def load_attacker(spec, device="cuda"):
     if not spec or spec == "none":
         return None, "nominal", None
@@ -166,7 +231,7 @@ def episode_env(seq, nb=1, S=10, stability="com", min_support=None,
                 arm_cell_m=None, arm_moves=None, stack_cap=None,
                 stack_types=None, stack_side_cm=None, stack_allow_cm=None,
                 type_rule=None, soft_mix=None, outline_resort=None,
-                outline_when=None, outline_area=None):
+                outline_when=None, outline_area=None, corner_first=None):
     """The one-bin env `play` packs `seq` in, reset to its first box.
 
     `S` is an int for a cube or an (Lx, Ly, Lz) triple.  `size_hi` bounds the
@@ -189,6 +254,7 @@ def episode_env(seq, nb=1, S=10, stability="com", min_support=None,
                    type_constraint=type_constraint, type_rule=type_rule,
                    soft_mix=soft_mix, outline_resort=outline_resort,
                    outline_when=outline_when, outline_area=outline_area,
+                   corner_first=corner_first,
                    arm_collision=arm_collision, arm_cell_m=arm_cell_m,
                    arm_moves=arm_moves, stack_cap=stack_cap,
                    stack_types=stack_types, stack_side_cm=stack_side_cm,

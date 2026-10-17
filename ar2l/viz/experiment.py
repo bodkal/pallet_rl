@@ -112,18 +112,23 @@ def read_file(path, S, p):
     return seq, len(ids), len(seq) + skipped, skipped
 
 
-def packer(spec, n_pick, device):
+def packer(spec, n_pick, device, p=None):
     """-> (policy, picker, label): who places, and who picks from the reach.
 
-    A `select` run gets its own selector back, as the game hands it one.
+    A `select` run gets its own selector back, as the game hands it one --
+    with `p['pick_big']`, taking the biggest box among those within
+    `p['pick_big_pct']` percentage points of its top choice.  The policy
+    goes by `p['prefer_stack']` and `p['floor_x0']` (`agents.stack_rule`).
     """
-    policy, label, _ = A.load_policy(spec, device)
+    policy, label = A.stack_rule(*A.load_policy(spec, device)[:2], p)
     picker = None
     if spec.startswith("run:") and n_pick > 1:
         run = spec.split(":")[1]
         info = A.run_info(run)
         if info and info["args"].get("algo") == "select":
             picker = A.load_attacker(f"mix:{run}", device)[0]
+            if p is not None and p.get("pick_big"):
+                picker = A.prefer_big(picker, float(p.get("pick_big_pct", 1.0)) / 100)
     return policy, picker, label
 
 
@@ -139,6 +144,7 @@ def pallet_env(seq, S, p, cell_m):
                    outline_resort=bool(p.get("outline_resort", 0)),
                    outline_when=p.get("outline_when", "station"),
                    outline_area=p.get("outline_area", "outline"),
+                   corner_first=bool(p.get("corner_first", 0)),
                    arm_collision=bool(p["arm_collision"]), arm_cell_m=cell_m,
                    arm_moves=p["base_x_moves"],
                    stack_cap=bool(p["stack_cap"]),
@@ -195,6 +201,12 @@ def params_text(spec, p, S):
            f"outline_resort={int(p.get('outline_resort', 0))} "
            f"outline_when={p.get('outline_when', 'station')} "
            f"outline_area={p.get('outline_area', 'outline')} "
+           f"corner_first={int(p.get('corner_first', 0))} "
+           f"pick_big={int(p.get('pick_big', 0))} "
+           f"pick_big_pct={float(p.get('pick_big_pct', 1.0)):g} "
+           f"prefer_stack={int(p.get('prefer_stack', 0))} "
+           f"prefer_stack_pct={float(p.get('prefer_stack_pct', 30.0)):g} "
+           f"floor_x0={int(p.get('floor_x0', 0))} "
            f"arm_collision={p['arm_collision']} "
            f"base_x_moves={'/'.join(f'{t:g}' for t in p['base_x_moves'])} "
            f"stack_cap={p['stack_cap']} "
@@ -303,7 +315,7 @@ def start(folder, out, spec, p, cell_m, device, name="", seed=0):
 def _run(job, dst, spec, p, S, cell_m, device):
     try:
         os.makedirs(dst, exist_ok=True)
-        policy, picker, label = packer(spec, p["n_pick"], device)
+        policy, picker, label = packer(spec, p["n_pick"], device, p)
         job["label"] = label
         env_f, data_f = params_text(spec, p, S)
         if p.get("order_random"):

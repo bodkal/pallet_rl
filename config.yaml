@@ -80,6 +80,33 @@ env:
   outline_resort: 0
   outline_when: station         # station | box
   outline_area: outline         # outline | all
+  # Corner first: 1 holds a blue or white box to the pallet's x = 0 edge,
+  # turned 90 degrees -- while the turned box has a legal floor placement
+  # somewhere along x = 0 under every rule in force, the packer is offered
+  # only its legal turned placements at x = 0, every y, at any height.  With
+  # no such floor placement, and for a brown box, it chooses as before.  It
+  # narrows the packer's choice only: a human playing the game places freely.
+  corner_first: 0
+  # Bigger box on ties, read by the game (ar2l/viz) only: 1 lets the
+  # model's box picker -- a select run's mixer -- take the biggest box,
+  # by x * y + z in cells (the footprint first, the height a lesser say),
+  # among the boxes whose probability is at most pick_big_pct percentage
+  # points below its top choice: with 1, a box at 20% ties with one at 19%
+  # or 21%.  Your own pick and an attacker's are left as they are.
+  pick_big: 0
+  pick_big_pct: 1.0
+  # Stack over floor, read by the game (ar2l/viz) only: 1 sends a blue or
+  # white box the model would put on the floor (z = 0) up instead, to its
+  # likeliest legal placement with z > 0 among those whose probability is
+  # at most prefer_stack_pct percentage points below the floor one's.
+  prefer_stack: 0
+  prefer_stack_pct: 30.0
+  # Floor only at x = 0, read by the game (ar2l/viz) only: 1 keeps a blue
+  # or white box the model would put on the floor off the x = 0 edge from
+  # going there while the box has any legal placement at x = 0 -- every
+  # floor placement with x > 0 is dropped and the model takes its likeliest
+  # placement of the rest.  Applied after prefer_stack.
+  floor_x0: 0
   # The mixed rules' numbers, in real cm read onto the grid with the arm
   # filter's cell size (4 cm with the shipped eval.cell_cm * eval.box_scale).
   # The gap is rounded down to whole cells (5 cm -> 1 cell); the small blue

@@ -340,9 +340,12 @@ def start(path, spec, p, cell_m, device, tol_cm=TOL_CM):
 def _run(job, steps, boxes, cell_m, device):
     p, S = job["p"], tuple(job["bin"])
     try:
-        policy, picker, label = X.packer(job["spec"], p["n_pick"], device)
+        policy, picker, label = X.packer(job["spec"], p["n_pick"], device, p)
         job["label"], job["policy"] = label, policy
-        job["picker"] = ("its own selector" if picker is not None
+        job["picker"] = (("its own selector, bigger box within "
+                          f"{float(p.get('pick_big_pct', 1.0)):g} points"
+                          if p.get("pick_big") else "its own selector")
+                         if picker is not None
                          else "the first in reach that fits"
                          if p["n_pick"] > 1 else None)
         Pack(job, steps, boxes, policy, picker, S, cell_m).run()
