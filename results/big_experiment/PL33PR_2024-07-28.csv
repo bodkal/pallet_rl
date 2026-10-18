@@ -1,5 +1,0 @@
-PL33PR_2024-07-28.csv,current date:,2026-09-29 16:01:07,boxes:,102,palet: ,2,1 -100 -160 -10000 -476 15000 311 -2 470 -2910 6200 0 894 2 -100 -109 -10000 -402 15000 -49 183 473 -2116 6500 0 496 3 0 -44 -10000 -140 5000 -4 72 46 -495 429 0 221 ,0 5736 766 0 644,
-pallet_id,max_height,uneven_z_val,boxes_volume_per_pallet [%],time_to_pack [ms],total_number_of_boxes,number_of_blue_boxes,number_of_white_boxes,number_of_master_boxes,
-0,157,55.393215,68,5971,47,14,17,16,
-1,159,60.256233,64,12773,37,18,7,12,
-2,150,60.972416,32,13144,18,3,15,0,
