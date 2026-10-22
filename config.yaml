@@ -170,6 +170,21 @@ model:
   heads: 1
   layers: 1              # attention blocks
   c_temp: 10.0            # pointer-head temperature c in Eq. 28
+  # Bound on the score inside Eq. 28's tanh: > 0 uses ptr_norm * cos(q, k),
+  # 0 the paper's unbounded q.k / sqrt(d).  Unbounded, a wider or deeper net
+  # can push every candidate's score past ~3, where the tanh gives them all
+  # the same logit and no gradient, and the policy is uniform for good: the
+  # 256-wide, 3-layer selector died that way by iteration 2000.  Checkpoints
+  # from before this option were trained with 0, and are loaded and resumed
+  # with 0 whatever this says.
+  ptr_norm: 3.0
+  # 1 subtracts the mean over the live candidates from that score before the
+  # tanh.  What saturated the 256-wide selector was a score every candidate
+  # shared; centred, that offset is gone and the differences the softmax reads
+  # are left as they are -- unlike ptr_norm, which also caps them and left a
+  # 128-wide packer softer and weaker (0.57 held out against 0.61 with 0).
+  # Checkpoints from before this option were trained with 0.
+  ptr_center: 0
   # Width of the trainable type embedding concatenated onto every node's
   # physical features before the per-element projection.  The embedding table
   # has n_types + 1 rows: one per box type, plus the bin floor, which is what

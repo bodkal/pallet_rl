@@ -94,6 +94,9 @@ def load_nets(path, device, what=("pack", "attacker")):
     # current type count so it can be run against a typed env at all
     kw["n_types"] = a.get("n_types", CFG["env"]["n_types"])
     kw["type_embed"] = a.get("type_embed", CFG["model"]["type_embed"])
+    # a run trained before --ptr_norm existed used the unbounded Eq. 28 score
+    kw["ptr_norm"] = a.get("ptr_norm", 0.0)
+    kw["ptr_center"] = a.get("ptr_center", 0)
     out = {}
     if "pack" in what:
         net = _fit_state(PackNet(**kw).to(device), ck["pack"]); net.eval()

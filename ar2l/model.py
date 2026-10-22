@@ -98,18 +98,57 @@ class Encoder(nn.Module):
 
 
 class Pointer(nn.Module):
-    """Eq. 28: compatibility of every candidate with the global feature."""
+    """Eq. 28: compatibility of every candidate with the global feature.
 
-    def __init__(self, d=None, c_temp=None):
+    As written, the score inside the tanh is unbounded, and once it passes ~3
+    for every candidate they all get the same logit +c and the tanh passes no
+    gradient back: the policy is uniform for good and cannot learn its way
+    out.  A 256-wide, 3-layer selector did exactly that by iteration 2000
+    (score ~14.6 on every box).  `norm` > 0 bounds the score instead, as
+    `norm * cos(q, k)`, so it stays inside [-norm, norm] whatever the weights
+    do; 0 is Eq. 28 unchanged, which is what every checkpoint trained before
+    the option existed was trained with.
+
+    The bound has a price: with only the angle to work with, a small net
+    cannot spread similar candidates apart, and a 128-wide, 1-layer packer
+    trained with `norm` 3 settled on a softer, weaker policy than with 0
+    (0.57 against 0.61 held out).  `center` attacks the dead state itself
+    instead: what killed the selector was a score shared by every candidate,
+    and subtracting the mean over the live candidates removes exactly that,
+    leaving the differences -- which are all the softmax ever reads -- as
+    Eq. 28 made them.  Every candidate scoring alike then lands at 0, where
+    the tanh is steepest, rather than at its flat end.
+
+    `sat` is the share of live candidates whose score sat past SAT on the last
+    forward pass -- the training log's `*_sat` column.
+    """
+
+    SAT = 3.0
+
+    def __init__(self, d=None, c_temp=None, norm=None, center=None):
         super().__init__()
         d = CFG["model"]["width"] if d is None else d
         c_temp = CFG["model"]["c_temp"] if c_temp is None else c_temp
+        norm = CFG["model"]["ptr_norm"] if norm is None else norm
+        center = CFG["model"].get("ptr_center", 0) if center is None else center
         self.q = nn.Linear(d, d)
         self.k = nn.Linear(d, d)
-        self.c_temp, self.d = c_temp, d
+        self.c_temp, self.d, self.norm = c_temp, d, float(norm)
+        self.center = bool(center)
+        self.sat = torch.zeros(())
 
     def forward(self, xbar, nodes, mask):
-        y = torch.einsum("bd,bnd->bn", self.q(xbar), self.k(nodes)) / math.sqrt(self.d)
+        q, k = self.q(xbar), self.k(nodes)
+        if self.norm > 0:
+            y = self.norm * torch.einsum("bd,bnd->bn", F.normalize(q, dim=-1),
+                                         F.normalize(k, dim=-1))
+        else:
+            y = torch.einsum("bd,bnd->bn", q, k) / math.sqrt(self.d)
+        live = mask.to(y.dtype)
+        if self.center:
+            y = y - (y * live).sum(-1, keepdim=True) / live.sum(-1, keepdim=True).clamp(min=1)
+        with torch.no_grad():
+            self.sat = ((y.abs() > self.SAT).float() * live).sum() / live.sum().clamp(min=1)
         return self.c_temp * torch.tanh(y) + torch.where(mask, 0.0, NEG)
 
 
@@ -139,10 +178,10 @@ class PackNet(nn.Module):
     """Packing policy pi_pack(l | C, B, L) and its value function."""
 
     def __init__(self, d=None, n_head=None, n_layer=None, c_temp=None,
-                 n_types=None, type_embed=None):
+                 n_types=None, type_embed=None, ptr_norm=None, ptr_center=None):
         super().__init__()
         self.enc = Encoder([6, 3, 6], d, n_head, n_layer, n_types, type_embed)
-        self.ptr = Pointer(self.enc.d, c_temp)
+        self.ptr = Pointer(self.enc.d, c_temp, ptr_norm, ptr_center)
         self.critic = Critic(d, n_head, n_layer, n_types, type_embed)
 
     def logits(self, o):
@@ -179,10 +218,10 @@ class PermNet(nn.Module):
     """
 
     def __init__(self, d=None, n_head=None, n_layer=None, c_temp=None,
-                 n_types=None, type_embed=None):
+                 n_types=None, type_embed=None, ptr_norm=None, ptr_center=None):
         super().__init__()
         self.enc = Encoder([6, 3], d, n_head, n_layer, n_types, type_embed)
-        self.ptr = Pointer(self.enc.d, c_temp)
+        self.ptr = Pointer(self.enc.d, c_temp, ptr_norm, ptr_center)
         self.critic = Critic(d, n_head, n_layer, n_types, type_embed)
 
     def logits(self, o):

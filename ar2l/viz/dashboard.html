@@ -90,7 +90,7 @@ const cvar = n => getComputedStyle(document.documentElement).getPropertyValue(n)
 
 // series: key in log.jsonl -> [title, scale, formatter]
 const PLOTS = [
-  ['nom_util',  'held-out nominal utilisation (%)', 100, v => v.toFixed(1)],
+  ['nom_util',  'held-out utilisation (%) — nominal, selected or attacked, as the run is judged', 100, v => v.toFixed(1)],
   ['util',      'training utilisation, each algorithm’s own dynamics (%)', 100, v => v.toFixed(1)],
   ['nom_items', 'held-out items packed', 1, v => v.toFixed(1)],
   ['pack_vf',   'packer value loss', 1, v => v.toExponential(1)],
@@ -108,11 +108,20 @@ const isAtt = m => m.algo === 'attack';
 
 async function jget(u){ const r = await fetch(u); return r.json(); }
 
+// the held-out eval is logged under the name of what it scores -- att_ for an
+// attacker, sel_ for a select run, nom_ otherwise -- as train._held reads it
+const held = (r, key) => {
+  if (!key.startsWith('nom_')) return r[key];
+  const s = key.slice(4), p = ['att_', 'sel_', 'nom_'].find(p => r[p + s] != null);
+  return p && r[p + s];
+};
+
 function series(run, key, scale){
   const rows = LOGS[run] || [];
   // nom_util is logged as 0 until the first held-out evaluation
-  return rows.filter(r => r[key] != null && !(key.startsWith('nom') && r[key] === 0))
-             .map(r => [r.it, r[key] * scale]);
+  return rows.map(r => [r.it, held(r, key)])
+             .filter(([, v]) => v != null && !(key.startsWith('nom') && v === 0))
+             .map(([it, v]) => [it, v * scale]);
 }
 
 function plotData(key, scale){

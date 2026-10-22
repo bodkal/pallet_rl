@@ -97,3 +97,101 @@ def test_networks_only_ever_choose_unmasked_nodes():
         assert o["l_mask"][torch.arange(n), a].all()
     lg2, _ = PermNet()(o)
     assert lg2.shape == (n, nb) and torch.isfinite(lg2).all()
+
+
+def test_pointer_norm_zero_is_eq28_as_written():
+    torch.manual_seed(0)
+    from ar2l.model import Pointer
+    p = Pointer(d=16, c_temp=10.0, norm=0.0)
+    xbar, nodes = torch.randn(3, 16), torch.randn(3, 5, 16)
+    mask = torch.ones(3, 5, dtype=torch.bool)
+    y = torch.einsum("bd,bnd->bn", p.q(xbar), p.k(nodes)) / 4.0
+    assert torch.allclose(p(xbar, nodes, mask), 10.0 * torch.tanh(y))
+
+
+def test_pointer_norm_keeps_a_gradient_where_eq28_saturates():
+    """The state the 256-wide selector died in: q and k dominated by a shared
+    direction, so every candidate scores far past tanh's range.  Unbounded,
+    they all get logit +c and no gradient; bounded, the policy can still move."""
+    torch.manual_seed(0)
+    from ar2l.model import Pointer
+    xbar, nodes = torch.randn(4, 16), torch.randn(4, 6, 16)
+    mask = torch.ones(4, 6, dtype=torch.bool)
+    for norm, dead in ((0.0, True), (3.0, False)):
+        p = Pointer(d=16, c_temp=10.0, norm=norm)
+        with torch.no_grad():
+            for lin in (p.q, p.k):
+                lin.bias.fill_(3.0)
+        lg = p(xbar, nodes, mask)
+        lg.log_softmax(-1)[:, 0].sum().backward()
+        g = p.q.weight.grad.abs().max().item()
+        assert (p.sat.item() > 0.9) == dead
+        assert (g < 1e-6) == dead, (norm, g)
+    assert lg.abs().max() <= 10.0 * torch.tanh(torch.tensor(3.0)) + 1e-5
+
+
+def test_checkpoints_without_ptr_norm_load_unbounded(tmp_path):
+    from ar2l.evaluate import load_nets
+    kw = dict(d=32, n_head=1, n_layer=1, n_types=3, type_embed=16)
+    a = {"width": 32, "heads": 1, "layers": 1, "n_types": 3, "type_embed": 16}
+    ck = {"pack": PackNet(ptr_norm=0.0, **kw).state_dict(),
+          "mixer": PermNet(ptr_norm=0.0, **kw).state_dict(), "args": a}
+    torch.save(ck, tmp_path / "old.pt")
+    nets = load_nets(tmp_path / "old.pt", "cpu", ("pack", "mixer"))
+    assert nets["pack"].ptr.norm == 0.0 and nets["mixer"].ptr.norm == 0.0
+    torch.save(dict(ck, args=dict(a, ptr_norm=3.0)), tmp_path / "new.pt")
+    assert load_nets(tmp_path / "new.pt", "cpu", ("pack",))["pack"].ptr.norm == 3.0
+
+
+def test_pointer_center_leaves_the_policy_of_a_healthy_pointer_alone():
+    """Far from saturation the tanh is nearly linear, so taking out the score
+    every candidate shares barely moves the softmax -- and never which
+    candidate is most likely.  Masked candidates stay out of the mean."""
+    torch.manual_seed(0)
+    from ar2l.model import Pointer
+    xbar, nodes = torch.randn(4, 16) * 0.1, torch.randn(4, 7, 16) * 0.1
+    mask = torch.ones(4, 7, dtype=torch.bool)
+    mask[:, 5:] = False
+    plain = Pointer(d=16, c_temp=10.0, norm=0.0, center=0)
+    cent = Pointer(d=16, c_temp=10.0, norm=0.0, center=1)
+    cent.load_state_dict(plain.state_dict())
+    p0, p1 = plain(xbar, nodes, mask).softmax(-1), cent(xbar, nodes, mask).softmax(-1)
+    assert (p0.argmax(-1) == p1.argmax(-1)).all()
+    assert (p0 - p1).abs().max() < 0.05
+    assert p1[:, 5:].max() == 0.0
+    # the masked slots' scores do not reach the mean: changing them is a no-op
+    nodes2 = nodes.clone(); nodes2[:, 5:] = 100.0
+    assert torch.allclose(cent(xbar, nodes2, mask)[:, :5], cent(xbar, nodes, mask)[:, :5])
+
+
+def test_pointer_center_revives_the_state_eq28_dies_in():
+    """The dead selector's state: a shared offset puts every candidate far past
+    tanh's range.  Centred, the shared part is gone, the policy is not uniform
+    and the gradient flows -- without capping the score as ptr_norm does."""
+    torch.manual_seed(0)
+    from ar2l.model import Pointer
+    xbar, nodes = torch.randn(4, 16), torch.randn(4, 6, 16)
+    mask = torch.ones(4, 6, dtype=torch.bool)
+    p = Pointer(d=16, c_temp=10.0, norm=0.0, center=1)
+    with torch.no_grad():
+        for lin in (p.q, p.k):
+            lin.bias.fill_(3.0)
+    lg = p(xbar, nodes, mask)
+    lg.log_softmax(-1)[:, 0].sum().backward()
+    assert p.sat.item() < 0.9
+    assert p.q.weight.grad.abs().max().item() > 1e-3
+    assert lg.std(-1).min() > 0.1                 # not one logit for all
+
+
+def test_checkpoints_without_ptr_center_load_uncentred(tmp_path):
+    from ar2l.evaluate import load_nets
+    kw = dict(d=32, n_head=1, n_layer=1, n_types=3, type_embed=16)
+    a = {"width": 32, "heads": 1, "layers": 1, "n_types": 3, "type_embed": 16,
+         "ptr_norm": 0.0}
+    ck = {"pack": PackNet(**kw).state_dict(), "mixer": PermNet(**kw).state_dict(),
+          "args": a}
+    torch.save(ck, tmp_path / "old.pt")
+    nets = load_nets(tmp_path / "old.pt", "cpu", ("pack", "mixer"))
+    assert not nets["pack"].ptr.center and not nets["mixer"].ptr.center
+    torch.save(dict(ck, args=dict(a, ptr_center=1)), tmp_path / "new.pt")
+    assert load_nets(tmp_path / "new.pt", "cpu", ("pack",))["pack"].ptr.center

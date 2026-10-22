@@ -135,7 +135,9 @@ def run_meta(run):
     return dict(run=run, algo=args.get('algo', '?'), nb=nb,
                 alpha=args.get('alpha'), rho=args.get('rho'),
                 iters=int(args.get('iters', 0)), it=int(last.get('it', 0)),
-                nom_util=last.get('nom_util', 0.0), nom_items=last.get('nom_items', 0.0),
+                # a select run logs its held-out eval as sel_*, not nom_*
+                nom_util=last.get('sel_util', last.get('nom_util', 0.0)),
+                nom_items=last.get('sel_items', last.get('nom_items', 0.0)),
                 target=bench[0] if bench else None,
                 has_ckpt=os.path.exists(os.path.join(d, 'best.pt')))
 

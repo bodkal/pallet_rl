@@ -726,6 +726,8 @@ comparable to another trained with the same ones.
 |---|---|---|
 | `--width` / `--heads` / `--layers` | `128` / `1` / `1` | the transformer, shared by all three networks. The paper's size is 64/1/1 (65k parameters each) |
 | `--c_temp` | `10.0` | pointer-head temperature `c` of Eq. 28 |
+| `--ptr_norm` | `3.0` | bounds the score inside Eq. 28's tanh to `ptr_norm * cos(q, k)`; `0` is the paper's unbounded `q·k/√d`, which can saturate (every candidate the same logit, no gradient, a policy that stops learning). Checkpoints from before the flag load and resume with `0`. The log's `pack_sat` / `mix_sat` is the share of saturated candidates, and training warns when it passes 90% |
+| `--ptr_center` | `0` | `1` subtracts the mean over the live candidates from the pointer score before the tanh. It removes the score every candidate shares -- what saturated the 256-wide selector -- and leaves the differences between candidates as they are, so unlike `--ptr_norm` it does not cap how sharp a choice can get. Use with `--ptr_norm 0`. Checkpoints from before the flag load and resume with `0` |
 | `--type_embed` | `16` | width of the trainable box-type embedding, concatenated onto every node's physical features before its element-wise projection |
 
 **Logging and checkpoints** (`run:`)

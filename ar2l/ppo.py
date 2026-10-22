@@ -136,7 +136,8 @@ class PPO:
         n = act.shape[0]
         adv_n = (adv - adv.mean()) / (adv.std() + 1e-8)
         z = torch.zeros((), device=act.device)
-        stats = {k: z.clone() for k in ("pg", "vf", "ent", "aux", "kl")}
+        stats = {k: z.clone() for k in ("pg", "vf", "ent", "aux", "kl", "sat")}
+        ptr = getattr(self.net, "ptr", None)
         nb = 0
         for _ in range(self.epochs):
             perm = torch.randperm(n, device=act.device)
@@ -168,5 +169,7 @@ class PPO:
                     stats["pg"] += pg.detach(); stats["vf"] += vf.detach()
                     stats["ent"] += ent.mean(); stats["aux"] += extra.detach()
                     stats["kl"] += (old_logp[mb] - logp).mean()
+                    if ptr is not None:
+                        stats["sat"] += ptr.sat
                 nb += 1
         return {k: float(v) / max(nb, 1) for k, v in stats.items()}

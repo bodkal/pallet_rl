@@ -5,7 +5,7 @@ Packing"** — Pan, Chen & Lin, NeurIPS 2023
 ([arXiv:2310.04323](https://arxiv.org/abs/2310.04323)), and its extension to
 real orders, box types and the UR20 cell.
 
-*Last updated: 2026-10-12* — only open items are listed; finished work is in
+*Last updated: 2026-10-21* — only open items are listed; finished work is in
 the git history (the full list as of 2026-09-27 is `git show eb38e8c:TODO.md`).
 
 The official implementation is at <https://github.com/panyxy/ar2l_bpp>. **No
@@ -180,3 +180,145 @@ the whole grid (`outline_area: all`) would have rescued none -- the rules are.
       own limit. **Waiting on operations**: it puts more on a small brown
       box than the cell's C++ `stable_grid` allows, and the real cell would
       refuse the placement unless that rule changes too
+
+### D.7 Picker lookahead (search over the station)
+
+Idea: before the picker (`PermNet`) chooses, search a few picks ahead and
+keep it off boxes that lead to a stuck station. Each branch picks a station
+box, places it at the **packer's top-1 position** (no branching over
+placements), and checks whether the station is then stuck -- the same check
+`step` already ends with under `pick_feasible`, which is this search at depth
+0. The station refills from the preview after every pick, so each level has
+`n_pick` = 5 choices: 5 branches at depth 1, 5 + 25 = 30 at depth 2,
+155 at depth 3. Only as deep as the visible conveyor (`nb` = 10); past it
+the boxes are unknown. A box is bad only if **every** branch under it gets
+stuck -- "any branch" would block nearly every box, since one bad placement
+is always possible; the fraction stuck is the soft version.
+
+Three ways to use the result:
+
+| | Search in training | Search at deploy | Picker learns |
+|---|---|---|---|
+| Mask | yes | yes | can't pick a dead box |
+| Penalty | yes | no | to avoid dead picks, from the reward |
+| Input feature (4th number per box: dead-end risk) | yes | yes, always -- an input missing at deploy breaks the net | to weigh the risk itself |
+
+A fourth, free: a **hindsight penalty** on the last 1-3 picks of an episode
+that ended stuck -- no search, but no idea which pick would have saved it.
+
+Measured 2026-10-21 on `all_data.csv` (`mixed_column`, arm on), with another
+training run sharing the machine. One branch = deepcopy + permute + `obs` +
+packer forward + `step`:
+
+| | One branch | Normal move | Depth 1 | Depth 2 | Depth 3 |
+|---|---|---|---|---|---|
+| 1 pallet, 4 cm grid (31x27x40) | ~18 ms | ~30 ms | 0.09 s | 0.54 s | 2.8 s |
+| 1 pallet, 2 cm grid (62x54x80) | ~32 ms | ~45 ms | 0.16 s | 0.96 s | 5.0 s |
+| 1 pallet, 1 cm grid (124x108x160) | ~69 ms | ~85 ms | 0.35 s | 2.1 s | 10.7 s |
+| 64 bins, 4 cm (training, per move) | ~0.37 s | ~0.4 s | 1.9 s | 11 s | 57 s |
+
+A 4x finer grid costs ~4x, not 16x: `ems: 3` keeps the candidates to
+corners. At 1 cm the p90 `step` is ~2x its mean. In training, depth 1 adds
+~55 s to a ~35 s iteration (T = 30) and depth 2 ~5.5 min -- 20,000 iterations
+at depth 2 is months -- so the search is cheap at deploy and dear in training.
+
+- [ ] **Measure first**: on the held-out pallets, how many episodes end with
+      the station stuck vs the pallet full, and how many of the stuck ones a
+      different pick 1-2 moves earlier would have saved. That is the most
+      any form of this can gain
+- [ ] **Deploy-time mask, no retraining**: in `evaluate.py`, drop station
+      boxes whose depth-2 search is stuck on every branch before the trained
+      picker chooses; compare boxes packed with and without. Safe because a
+      mask changes the choices, not what the net sees. Also bounds what a
+      search-trained picker could gain
+- [ ] An env snapshot/restore cheaper than `deepcopy` (copy the maps and the
+      sequence, rebuild or keep the caches) -- ~20 ms of the 69 ms branch at
+      1 cm
+- [ ] Training with it, if the mask pays: depth 1, all 5 branches batched as
+      one 320-bin env, and only when the station is at risk (<= 2 boxes with
+      a place, or a brown in reach). Penalty first; input feature if the
+      picker does not pick it up; hindsight penalty as the free baseline
+
+#### D.7.1 Review of the idea (2026-10-21)
+
+It is a good idea, and the codebase already has the first level of it.
+`pick_feasible` (`ar2l/env.py:866`) removes a station box from the picker's
+mask when it has no legal place right now; this idea is that check, looking
+`n` steps further ahead. It targets the real failure mode: an episode ends
+when the whole station is blocked (`ar2l/env.py:2239`), and the stuck-station
+experiments say the main cause is the type rule (brown-on-white), not the
+pallet being full. Picking in the wrong order can create those dead ends, so
+a lookahead could see them coming.
+
+Four things to change or check before building it:
+
+1. **"All branches die", not "one branch dies".** At each later step the
+   packer has many placements and the picker several boxes, so some branch
+   almost always dies -- a bad placement is always possible. If one dead
+   branch blocked a box, nearly every box would be blocked. Box *i* is bad
+   only if **every** continuation dies within `n` steps. The softer version is
+   the fraction of branches that die, as a penalty or an extra input.
+2. **Prune the tree.** Unpruned, each level is up to 5 boxes x ~32 feasible
+   placements (p90), ~160 branches a level and ~25,000 at depth 2, each
+   needing a feasibility sweep with the arm check -- the expensive part of
+   this env. So:
+   - expand only the packer's top 1-3 placements, not all of them -- which
+     also tests whether *our* packer gets stuck, the question that matters;
+   - stay within what the cell can see: the station plus the preview. Past
+     that the boxes are unknown;
+   - depth 2 probably catches most cases: "pick A, and then the other four
+     are all blocked" is the typical stuck pattern.
+3. **Mask or penalty** -- they differ at deploy:
+   - mask: a hard constraint, but the search runs on the real cell at every
+     pick, adding latency;
+   - penalty in training only: the picker learns to avoid dead ends and no
+     search runs at deploy. Keep it small, or make it an auxiliary loss, so it
+     does not swamp the main objective of packing more boxes;
+   - input feature: give the search result to `PermNet` as one more number
+     per box ("dead-end risk") and let the network learn how far to trust it.
+4. **Measure the problem first.** Count how many episodes end with the
+   station stuck vs the pallet actually full, then replay the stuck ones and
+   ask whether a different pick 1-2 moves earlier would have avoided the dead
+   end. That is the most this idea can gain. The experiments so far give only
+   partial bounds (cap-at-stuck +0.4 boxes, arm-off +2.2).
+
+Implementation cost: the env has no clone or snapshot method and keeps a lot
+of cached state (`_pos_cache`, `_slot_geo`, ...). The lookahead needs a safe
+way to copy one env, try steps on the copy and throw it away, so that comes
+first.
+
+#### D.7.2 Top-1 packer position, and the input-feature option
+
+With only the packer's recommended position, the tree branches only on which
+box is picked. The station refills from the preview after every pick, so
+every level has 5 choices: 5 + 25 = 30 branches at depth 2, 155 at depth 3
+(an earlier estimate of 20 and 60 assumed the station shrinks; it does not)
+-- small enough to run at every pick on one pallet (D.7 table).
+
+The input-feature option gives each conveyor box a 4th number. Today
+`PermNet` sees each box as 3 numbers (its size) plus its type
+(`ar2l/model.py:225`, encoder `[6, 3]`); the 4th is its dead-end risk from
+the search:
+
+- 0: picking it leaves a way to keep packing for the next `n` steps;
+- 1: every branch after picking it gets stuck;
+- in between: the fraction of branches that get stuck.
+
+The picker then decides how much to trust that number instead of being
+forced by a mask. It has to be computed **always** -- in training, in
+evaluation and on the real cell: whatever the network sees as input in
+training must be there at deploy. Computed in training only, the network
+learns to rely on it, and at deploy the number is missing (or 0) and it
+behaves badly.
+
+| Option | Search in training | Search at deploy | How the picker learns |
+|---|---|---|---|
+| 1. Mask | yes | yes | can't pick a dead box at all |
+| 2. Penalty | yes | no | from punishment, to avoid dead picks |
+| 3. Extra input | yes | yes | sees the risk and decides itself |
+
+For training, start with the penalty: it changes only the reward, not the
+network or the deploy code, so it is the fastest to test. If the picker does
+not learn to avoid dead ends well enough, switch to the input; the two also
+combine -- the input says where the danger is, the penalty makes the picker
+care.

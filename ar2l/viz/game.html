@@ -1066,7 +1066,7 @@ details.cf>summary b{font-size:14px}
     <h2>Log match &mdash; the cell's conveyor log, packed by an agent one pick at a time</h2>
     <div class="xg">
       <div class="pf wide"><span>conveyor log (.csv &mdash; type a path or browse)</span>
-        <div class="dirp"><input id="lfile" type="text" spellcheck="false" value="data/log data/conveyor_boxes_PL11PR_steps_1-133_with_maxnum.csv"></div></div>
+        <div class="dirp"><input id="lfile" type="text" spellcheck="false" value="" placeholder="data/log data/"></div></div>
       <div class="pf"><span>packer</span><select id="lopp"></select></div>
       <div class="pf" title="two rows of two log steps are the same box when they have the same type and the same three sides, in any order, within this many cm, and the box has not moved back along the belt"><span>same box in two steps: sides within, cm</span>
         <input id="ltol" type="number" min="0" max="20" step="0.1" value="1.5"></div>
@@ -3720,6 +3720,13 @@ $('#lrun').onclick = async () => {
 $('#lstop').onclick = async () => { await api('/api/log/stop', {job: LJOB}); lPoll(); };
 for (const sel of Object.values(LPF).flat()) $(sel).addEventListener('input', lCheck);
 for (const sel of ['#lfile', '#ltol']) $(sel).addEventListener('input', lCheck);
+/* the log field opens on the first conveyor log in data/log data/, by name */
+fetch('/api/dirs?dir=' + encodeURIComponent('data/log data') + '&files=1')
+  .then(x => x.json()).then(r => {
+    const f = r.dir === 'data/log data'
+      && (r.files || []).find(f => f.name.toLowerCase().endsWith('.csv'));
+    if (f && !$('#lfile').value.trim()){ $('#lfile').value = f.path; if (LFILLED) lCheck(); }
+  }).catch(() => {});
 $('#lopp').onchange = lPreset;
 $('#lpreset').onclick = lPreset;
 $('#lfromplay').onclick = () => { writeParams(readParams(), LPF); lCheck(); };
