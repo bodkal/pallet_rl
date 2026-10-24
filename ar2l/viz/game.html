@@ -384,6 +384,14 @@ details.cf>summary b{font-size:14px}
   border:1px solid var(--line);border-radius:9px;padding:8px 11px;font-size:12px;line-height:1.45;
   box-shadow:0 6px 22px rgba(0,0,0,.35);opacity:0;transform:translateY(3px);transition:opacity .12s,transform .12s}
 #ttip.on{opacity:1;transform:none}
+/* a candidate point's pop-up, opened by a click on it in a 3D bin */
+#ptpop{position:absolute;z-index:40;max-width:320px;max-height:60vh;overflow:auto;background:var(--panel);
+  border:1px solid var(--line);border-radius:9px;padding:8px 11px;font-size:12px;line-height:1.5;
+  box-shadow:0 6px 22px rgba(0,0,0,.35)}
+#ptpop b{font-family:ui-monospace,monospace;font-weight:600}
+#ptpop .ph{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+#ptpop .d{color:var(--dim);font-size:11px}
+#ptpop hr{border:0;border-top:1px solid var(--line);margin:6px 0}
 #ttip b{font-family:ui-monospace,monospace;font-weight:600}
 #ttip .d{color:var(--dim);margin-top:4px;font-size:11px}
 :root{--tr:#279cc4;--ho:#c2850a}
@@ -602,6 +610,10 @@ details.cf>summary b{font-size:14px}
             <option value="mixed_touch">mixed touch &mdash; the cell's blue / white / brown rules, on what it rests on</option>
             <option value="mixed_column">mixed column &mdash; the same rules, on anything below</option></select></div>
           <label class="pf flag" title="mixed rules only: a box's own fallback onto another type becomes a last resort for the whole station -- only when no box within reach has any other place -- and brown on blue loses (c) but gains that last resort. Blue on blue keeps its fallback; brown never goes on white."><input id="softmix" type="checkbox"><span>soft mix &mdash; mixes only as a last resort for the station</span></label>
+          <label class="pf flag" title="under every box-type rule, and with it off: a blue box on blue rests on blue with all of its base -- every cell of its footprint at the height it lands at, so resting fully across two blues is fine -- so a blue tower does not shift. Otherwise only as its own fallback, when it has no other place at all. Off, blue on blue needs only the support floor, under the mixed rules too."><input id="bsup" type="checkbox"><span>blue towers (b) &mdash; blue on blue needs all of its base on blue</span></label>
+          <label class="pf flag" title="under every box-type rule, and with it off: a white box on white rests on at least the small white box&#39;s base (mixed_white_support_cm, 45 x 27 cm = 12 x 8 cells), or all of its own when that is less -- on top of the support floor -- so a white tower does not shift. Otherwise only as its own fallback, when it has no other place at all. Resting fully across two whites is fine."><input id="wsup" type="checkbox"><span>white towers (w) &mdash; white on white needs a small white&#39;s base</span></label>
+          <div class="pf" title="(w)&#39;s small white box, length and width in cm, padded and rounded like a box of the data: 45, 27 is 12 x 8 cells"><span>small white for (w), cm: length / width</span>
+            <input id="wsupcm" type="text" placeholder="45, 27"></div>
           <label class="pf flag" title="mixed rules only: when every other step leaves nothing -- the normal rules, a box's own fallback, soft mix's last resort -- the same rules again over every point on an outline: the edges of every packed box (on it flush with an edge, or beside it flush with a side) and the pallet's edges. Nothing to add when the action space is every loading position already."><input id="olresort" type="checkbox"><span>outline points &mdash; a last resort after soft mix</span></label>
           <div class="pf"><span>outline step opens</span><select id="olwhen">
             <option value="station">station &mdash; when no box within reach has a place</option>
@@ -614,6 +626,11 @@ details.cf>summary b{font-size:14px}
             <option value="1">on &mdash; drop placements the arm collides on</option></select></div>
           <div class="pf"><span>arm base x moves (-1..1, tried in order)</span>
             <input id="armmoves" type="text" placeholder="0, -0.5, 0.5, -1, 1"></div>
+          <div class="pf" title="how the agent's packer and picker centre their pointer scores before the tanh. It holds no weights, so a checkpoint can be played under another one without retraining. Top score: the best box sits at 0, where the tanh is steepest, so boxes the network ranks apart never tie at the same probability."><span>pointer centering (agent)</span><select id="pcenter">
+            <option value="-1">as trained</option>
+            <option value="0">off &mdash; the raw score</option>
+            <option value="1">average &mdash; minus the mean over the boxes</option>
+            <option value="2">top score &mdash; minus the best box's score</option></select></div>
           <div class="pf"><span>stack-height limit over small boxes</span><select id="stackcap">
             <option value="1">on &mdash; short stacks on small boxes</option>
             <option value="0">off &mdash; any height on any box</option></select></div>
@@ -851,6 +868,10 @@ details.cf>summary b{font-size:14px}
           <option value="mixed_touch">mixed touch &mdash; the cell's blue / white / brown rules, on what it rests on</option>
           <option value="mixed_column">mixed column &mdash; the same rules, on anything below</option></select></div>
         <label class="pf flag" title="mixed rules only: a box's own fallback onto another type becomes a last resort for the whole station -- only when no box within reach has any other place -- and brown on blue loses (c) but gains that last resort. Blue on blue keeps its fallback; brown never goes on white."><input id="rcsoftmix" type="checkbox"><span>soft mix &mdash; mixes only as a last resort for the station</span></label>
+        <label class="pf flag" title="under every box-type rule, and with it off: a blue box on blue rests on blue with all of its base -- every cell of its footprint at the height it lands at, so resting fully across two blues is fine -- so a blue tower does not shift. Otherwise only as its own fallback, when it has no other place at all. Off, blue on blue needs only the support floor, under the mixed rules too."><input id="rcbsup" type="checkbox"><span>blue towers (b) &mdash; blue on blue needs all of its base on blue</span></label>
+        <label class="pf flag" title="under every box-type rule, and with it off: a white box on white rests on at least the small white box&#39;s base (mixed_white_support_cm, 45 x 27 cm = 12 x 8 cells), or all of its own when that is less -- on top of the support floor -- so a white tower does not shift. Otherwise only as its own fallback, when it has no other place at all. Resting fully across two whites is fine."><input id="rcwsup" type="checkbox"><span>white towers (w) &mdash; white on white needs a small white&#39;s base</span></label>
+        <div class="pf" title="(w)&#39;s small white box, length and width in cm, padded and rounded like a box of the data: 45, 27 is 12 x 8 cells"><span>small white for (w), cm: length / width</span>
+          <input id="rcwsupcm" type="text" placeholder="45, 27"></div>
         <label class="pf flag" title="mixed rules only: when every other step leaves nothing -- the normal rules, a box's own fallback, soft mix's last resort -- the same rules again over every point on an outline: the edges of every packed box (on it flush with an edge, or beside it flush with a side) and the pallet's edges. Nothing to add when the action space is every loading position already."><input id="rcolresort" type="checkbox"><span>outline points &mdash; a last resort after soft mix</span></label>
         <div class="pf"><span>outline step opens</span><select id="rcolwhen">
           <option value="station">station &mdash; when no box within reach has a place</option>
@@ -863,6 +884,11 @@ details.cf>summary b{font-size:14px}
           <option value="1">on &mdash; drop placements the arm collides on</option></select></div>
         <div class="pf"><span>arm base x moves (-1..1, tried in order)</span>
           <input id="rcarmmoves" type="text" placeholder="0, -0.5, 0.5, -1, 1"></div>
+        <div class="pf" title="how the agent's packer and picker centre their pointer scores before the tanh. It holds no weights, so a checkpoint can be played under another one without retraining. Top score: the best box sits at 0, where the tanh is steepest, so boxes the network ranks apart never tie at the same probability."><span>pointer centering (agent)</span><select id="rcpcenter">
+          <option value="-1">as trained</option>
+          <option value="0">off &mdash; the raw score</option>
+          <option value="1">average &mdash; minus the mean over the boxes</option>
+          <option value="2">top score &mdash; minus the best box's score</option></select></div>
         <div class="pf"><span>stack-height limit over small boxes</span><select id="rcstackcap">
           <option value="1">on &mdash; short stacks on small boxes</option>
           <option value="0">off &mdash; any height on any box</option></select></div>
@@ -1006,6 +1032,10 @@ details.cf>summary b{font-size:14px}
           <option value="mixed_touch">mixed touch &mdash; the cell's blue / white / brown rules, on what it rests on</option>
           <option value="mixed_column">mixed column &mdash; the same rules, on anything below</option></select></div>
         <label class="pf flag" title="mixed rules only: a box's own fallback onto another type becomes a last resort for the whole station -- only when no box within reach has any other place -- and brown on blue loses (c) but gains that last resort. Blue on blue keeps its fallback; brown never goes on white."><input id="xsoftmix" type="checkbox"><span>soft mix &mdash; mixes only as a last resort for the station</span></label>
+        <label class="pf flag" title="under every box-type rule, and with it off: a blue box on blue rests on blue with all of its base -- every cell of its footprint at the height it lands at, so resting fully across two blues is fine -- so a blue tower does not shift. Otherwise only as its own fallback, when it has no other place at all. Off, blue on blue needs only the support floor, under the mixed rules too."><input id="xbsup" type="checkbox"><span>blue towers (b) &mdash; blue on blue needs all of its base on blue</span></label>
+        <label class="pf flag" title="under every box-type rule, and with it off: a white box on white rests on at least the small white box&#39;s base (mixed_white_support_cm, 45 x 27 cm = 12 x 8 cells), or all of its own when that is less -- on top of the support floor -- so a white tower does not shift. Otherwise only as its own fallback, when it has no other place at all. Resting fully across two whites is fine."><input id="xwsup" type="checkbox"><span>white towers (w) &mdash; white on white needs a small white&#39;s base</span></label>
+        <div class="pf" title="(w)&#39;s small white box, length and width in cm, padded and rounded like a box of the data: 45, 27 is 12 x 8 cells"><span>small white for (w), cm: length / width</span>
+          <input id="xwsupcm" type="text" placeholder="45, 27"></div>
         <label class="pf flag" title="mixed rules only: when every other step leaves nothing -- the normal rules, a box's own fallback, soft mix's last resort -- the same rules again over every point on an outline: the edges of every packed box (on it flush with an edge, or beside it flush with a side) and the pallet's edges. Nothing to add when the action space is every loading position already."><input id="xolresort" type="checkbox"><span>outline points &mdash; a last resort after soft mix</span></label>
         <div class="pf"><span>outline step opens</span><select id="xolwhen">
           <option value="station">station &mdash; when no box within reach has a place</option>
@@ -1123,6 +1153,10 @@ details.cf>summary b{font-size:14px}
           <option value="mixed_touch">mixed touch &mdash; the cell's blue / white / brown rules, on what it rests on</option>
           <option value="mixed_column">mixed column &mdash; the same rules, on anything below</option></select></div>
         <label class="pf flag" title="mixed rules only: a box's own fallback onto another type becomes a last resort for the whole station -- only when no box within reach has any other place -- and brown on blue loses (c) but gains that last resort. Blue on blue keeps its fallback; brown never goes on white."><input id="lsoftmix" type="checkbox"><span>soft mix &mdash; mixes only as a last resort for the station</span></label>
+        <label class="pf flag" title="under every box-type rule, and with it off: a blue box on blue rests on blue with all of its base -- every cell of its footprint at the height it lands at, so resting fully across two blues is fine -- so a blue tower does not shift. Otherwise only as its own fallback, when it has no other place at all. Off, blue on blue needs only the support floor, under the mixed rules too."><input id="lbsup" type="checkbox"><span>blue towers (b) &mdash; blue on blue needs all of its base on blue</span></label>
+        <label class="pf flag" title="under every box-type rule, and with it off: a white box on white rests on at least the small white box&#39;s base (mixed_white_support_cm, 45 x 27 cm = 12 x 8 cells), or all of its own when that is less -- on top of the support floor -- so a white tower does not shift. Otherwise only as its own fallback, when it has no other place at all. Resting fully across two whites is fine."><input id="lwsup" type="checkbox"><span>white towers (w) &mdash; white on white needs a small white&#39;s base</span></label>
+        <div class="pf" title="(w)&#39;s small white box, length and width in cm, padded and rounded like a box of the data: 45, 27 is 12 x 8 cells"><span>small white for (w), cm: length / width</span>
+          <input id="lwsupcm" type="text" placeholder="45, 27"></div>
         <label class="pf flag" title="mixed rules only: when every other step leaves nothing -- the normal rules, a box's own fallback, soft mix's last resort -- the same rules again over every point on an outline: the edges of every packed box (on it flush with an edge, or beside it flush with a side) and the pallet's edges. Nothing to add when the action space is every loading position already."><input id="lolresort" type="checkbox"><span>outline points &mdash; a last resort after soft mix</span></label>
         <div class="pf"><span>outline step opens</span><select id="lolwhen">
           <option value="station">station &mdash; when no box within reach has a place</option>
@@ -1354,10 +1388,11 @@ const PF = {
   size_hi: ['#hi0', '#hi1', '#hi2'],
   nb: '#nb', n_pick: '#npick', n_items: '#nitems', max_l: '#maxl',
   rot: '#prot', ems: '#ems', stability: '#stab', min_support: '#msup',
-  type_rule: '#trule', soft_mix: '#softmix',
+  type_rule: '#trule', soft_mix: '#softmix', white_support: '#wsup', white_support_cm: '#wsupcm', blue_support: '#bsup',
   outline_resort: '#olresort', outline_when: '#olwhen', outline_area: '#olarea', arm_collision: '#armcol', base_x_moves: '#armmoves',
   stack_cap: '#stackcap', stack_cap_types: '#stacktypes',
   stack_cap_side_cm: '#stackside', stack_cap_allow_cm: '#stackallow',
+  ptr_center: '#pcenter',
   source: '#src', data: '#data', pallet: '#palpick', order_random: '#ordrnd',
   pallet_cm: ['#pcm0', '#pcm1', '#pcm2'], cell_cm: '#cellcm',
   box_pad_m: '#bpad', box_scale: '#bscale', box_round: '#bround',
@@ -1370,10 +1405,10 @@ const EMSTEXT = {1: 'the corners of the empty maximal spaces',
 const PSTR = new Set(['stability', 'type_rule', 'outline_when', 'outline_area', 'source', 'data', 'box_round']);
 const PFLOAT = new Set(['min_support', 'order_random', 'cell_cm', 'box_pad_m', 'box_scale']);
 /* a checkbox, sent as 1 or 0 */
-const PFLAG = new Set(['soft_mix', 'outline_resort']);
+const PFLAG = new Set(['soft_mix', 'white_support', 'blue_support', 'outline_resort']);
 /* a list of numbers typed as "0, -0.5, 0.5"; the server checks the values */
 const PNUMS = new Set(['base_x_moves', 'stack_cap_types', 'stack_cap_side_cm',
-  'stack_cap_allow_cm']);
+  'stack_cap_allow_cm', 'white_support_cm']);
 const readList = v => v.split(/[\s,]+/).filter(t => t !== '').map(Number);
 const showList = v => (v || []).join(', ');
 /* what an orders file decides, so the form shows it rather than takes it */
@@ -1384,10 +1419,11 @@ const PLABEL = {source: 'box source', data: 'data file', pallet: 'pallet',
   nb: 'window N_B', n_pick: 'reach k', n_items: 'items in the sequence',
   max_l: 'candidate cap', rot: 'orientations', ems: 'action space',
   stability: 'stability rule', min_support: 'support floor',
-  type_rule: 'box-type rule', soft_mix: 'soft mix',
+  type_rule: 'box-type rule', soft_mix: 'soft mix', white_support: 'white towers (w)', white_support_cm: 'small white (cm)', blue_support: 'blue towers (b)',
   outline_resort: 'outline step', outline_when: 'outline step opens', outline_area: 'outline step looks at', arm_collision: 'robot-arm filter', base_x_moves: 'arm base x moves',
   stack_cap: 'stack-height limit', stack_cap_types: 'limited box types',
-  stack_cap_side_cm: 'stack-limit sides (cm)', stack_cap_allow_cm: 'stack-limit allowances (cm)'};
+  stack_cap_side_cm: 'stack-limit sides (cm)', stack_cap_allow_cm: 'stack-limit allowances (cm)',
+  ptr_center: 'pointer centering'};
 
 function readParams(pf = PF){
   const o = {};
@@ -1421,11 +1457,14 @@ function writeParams(p, pf = PF){
 }
 
 /* soft mix and the outline step mean something only under the mixed rules,
+   (w)'s size only with (w) on,
    and when the outline step opens and where it looks only with it on */
 function syncSoft(pf = PF){
   if (!pf.type_rule) return;
   const mixed = $(pf.type_rule).value.startsWith('mixed');
   if (pf.soft_mix) $(pf.soft_mix).disabled = !mixed;
+  if (pf.white_support_cm)
+    $(pf.white_support_cm).disabled = !$(pf.white_support).checked;
   if (pf.outline_resort) $(pf.outline_resort).disabled = !mixed;
   for (const k of ['outline_when', 'outline_area'])
     if (pf[k]) $(pf[k]).disabled = !mixed || !$(pf.outline_resort).checked;
@@ -1707,12 +1746,18 @@ function drawIso(cv, boxes, L, W, H, opts){
   // down, the same shapes in red and a size smaller, drawn first so the
   // packer's own sit on top of them.  `onlyRot` (0 or 1) draws one
   // orientation's marks alone; indices into `points` stay as they were.
+  // `cv._marks` keeps where each mark landed on screen, for a click to find
+  // (`pickMark`); `cv._sel` is the one picked, ringed dashed and followed by
+  // its pop-up as the view turns.
   const shown = r => opts.onlyRot == null || (r ? 1 : 0) === opts.onlyRot;
+  const marks = cv._marks = [];
+  const nCand = opts.points ? opts.points.length : 0;
   if(opts.bad && opts.bad.length){
     const R = Math.max(2, Math.min(4.5, s*0.17));
-    for(const [x,y,z,r] of opts.bad){
+    for(const [x,y,z,r,why] of opts.bad){
       if(!shown(r)) continue;
       const [px,py] = P(x,y,z);
+      marks.push({px, py, R, ok: false, x, y, z, r, why});
       g.beginPath();
       if(r){ const d = R*1.45;
              g.moveTo(px,py-d); g.lineTo(px+d,py); g.lineTo(px,py+d); g.lineTo(px-d,py); g.closePath();
@@ -1726,6 +1771,10 @@ function drawIso(cv, boxes, L, W, H, opts){
     for(const [k, [x,y,z,r]] of opts.points.entries()){
       if(!shown(r)) continue;
       const [px,py] = P(x,y,z);
+      marks.push({px, py, R, ok: true, x, y, z, r, k, n: nCand,
+                  p: opts.pointProbs ? opts.pointProbs[k] : null,
+                  rank: opts.pointProbs ? 1 + opts.pointProbs.filter(q => q > opts.pointProbs[k]).length : 0,
+                  taken: k === opts.pointsTaken});
       g.beginPath();
       if(r){ const d = R*1.45;
              g.moveTo(px,py-d); g.lineTo(px+d,py); g.lineTo(px,py+d); g.lineTo(px-d,py); g.closePath();
@@ -1748,6 +1797,14 @@ function drawIso(cv, boxes, L, W, H, opts){
       }
     }
   }
+  const sel = (cv._sel || []).map(q => marks.find(m => sameMark(m, q))).filter(Boolean);
+  for(const m of sel){
+    g.beginPath(); g.arc(m.px, m.py, m.R*2.6, 0, 7);
+    g.strokeStyle = css('--bg'); g.lineWidth = 4; g.stroke();
+    g.setLineDash([3,2]); g.strokeStyle = css('--c1'); g.lineWidth = 2; g.stroke();
+    g.setLineDash([]);
+  }
+  markPop(cv, sel);
 
   // ---- robot arm ----
   if(ARM){
@@ -1837,7 +1894,13 @@ function bindRotate(sel){
     redrawIsos();
   });
   const stop = e=>{ if(DRAG){ DRAG=null; cv.style.cursor='grab'; } };
-  cv.addEventListener('pointerup', stop);
+  // a press that hardly moved is a click: on a candidate point, it opens that
+  // point's pop-up
+  cv.addEventListener('pointerup', e=>{
+    if(DRAG && !DRAG.pan && Math.hypot(e.clientX-DRAG.x, e.clientY-DRAG.y) < 4)
+      pickMark(cv, e);
+    stop(e);
+  });
   cv.addEventListener('pointercancel', stop);
   cv.addEventListener('contextmenu', e=>e.preventDefault());
   // the wheel zooms about the cursor: the point under it stays put
@@ -1854,6 +1917,75 @@ function bindRotate(sel){
   }, {passive:false});
   cv.addEventListener('dblclick', ()=>{ Object.assign(VIEW, VIEW0); redrawIsos(); });
 }
+
+/* ---- a candidate point's pop-up ------------------------------------------
+   A click on a mark in a 3D bin says what it is: where it is, which way the
+   box is turned, whether the rules let it go there (and if not, which rule),
+   and the agent's probability for it.  Every mark under the click is listed
+   at once -- marks that overlap on screen, and the other orientation and
+   kind at the same corner -- the nearest first.  One pop-up for the page;
+   the bin that owns it moves it as the view turns. */
+const POP = {cv: null};
+const sameMark = (a, b) => a.ok === b.ok && a.x === b.x && a.y === b.y && a.z === b.z && a.r === b.r;
+const DOWN_WHY = {
+  arm: 'the robot arm would hit the pack placing it here, or cannot reach it',
+  lid: 'it would poke out through the lid',
+  cap: 'the stack-height limit: a small box below caps how high another may start over it',
+  white: "white on white must rest on at least a small white box's base (w)",
+  blue: 'blue on blue must rest on it with all of its base (b)',
+  type: 'the box-type rule: it may not rest on what is under it',
+  support: 'not enough support underneath: it would not rest stably'};
+function pickMark(cv, e){
+  const b = cv.getBoundingClientRect(), mx = e.clientX - b.left, my = e.clientY - b.top;
+  const near = (cv._marks || []).map(m => ({m, d: Math.hypot(m.px - mx, m.py - my)}))
+    .filter(o => o.d <= o.m.R * 1.6 + 5)
+    .sort((u, v) => u.d - v.d || v.m.ok - u.m.ok);
+  const m = near.length ? near[0].m : null;
+  if (POP.cv && POP.cv !== cv) POP.cv._sel = null;
+  // the same mark again, or empty space, closes it
+  const again = m && cv._sel && sameMark(cv._sel[0], m);
+  cv._sel = m && !again ? [...near.map(o => o.m), ...cv._marks.filter(q =>
+      q.x === m.x && q.y === m.y && !near.some(o => o.m === q))] : null;
+  redrawIsos();
+}
+function markHtml(m){
+  const turn = `orientation ${m.r ? 90 : 0}&deg;`;
+  return `<div class="ph"><b>x ${m.x} &middot; y ${m.y} &middot; z ${m.z}</b>
+      <span class="d">${turn}</span></div>`
+    + (m.ok ? `<div><span style="color:var(--c2)">&#10003; valid</span> &mdash; on the packer's candidate list</div>`
+       + `<div>score: ${m.p != null
+           ? `<b>${PCT(m.p)}</b> the agent's probability, rank <b>${m.rank}</b> of ${m.n}`
+           : 'none &mdash; no policy scored this bin'}${m.taken ? ' &middot; <b>taken</b>' : ''}</div>`
+     : `<div><span style="color:var(--c3)">&#10007; not valid</span> &mdash; ${DOWN_WHY[m.why] || 'the rules turn it down'}</div>`
+       + `<div class="d">score: none &mdash; the packer is never offered it</div>`);
+}
+function markPop(cv, sel){
+  let el = $('#ptpop');
+  if (!sel.length){
+    if (POP.cv === cv){ POP.cv = null; if (el) el.hidden = true; }
+    return;
+  }
+  if (!el){
+    el = document.createElement('div'); el.id = 'ptpop'; document.body.appendChild(el);
+  }
+  POP.cv = cv;
+  el.innerHTML = (sel.length > 1 ? `<div class="d">${sel.length} points here</div>` : '')
+    + sel.map(markHtml).join('<hr>');
+  el.hidden = false;
+  const b = cv.getBoundingClientRect(), at = sel[0];
+  const left = Math.min(b.left + at.px + 16, innerWidth - el.offsetWidth - 8);
+  el.style.left = (scrollX + Math.max(8, left)) + 'px';
+  el.style.top = (scrollY + b.top + at.py + 14) + 'px';
+}
+function closePop(){
+  if (!POP.cv) return;
+  POP.cv._sel = null; markPop(POP.cv, []); redrawIsos();
+}
+addEventListener('keydown', e => { if (e.key === 'Escape') closePop(); });
+// a press anywhere but a bin or the pop-up itself closes it
+addEventListener('pointerdown', e => {
+  if (POP.cv && e.target !== POP.cv && !e.target.closest('#ptpop')) closePop();
+});
 
 /* ---- the robot arm ------------------------------------------------------
    Pointing at a cell asks the server to place the held box there with the
@@ -2125,7 +2257,6 @@ function mixedWhy(t, u){
                     : 'when it has no other place at all';
   // what each pair asks; null is never
   const when = {
-    '0,0': 'with all of its base on blue, or with less when it has no other place at all',
     '0,1': `when ${lid}, or ${late}`,
     '0,2': `when ${lid}, or ${late}`,
     '1,0': `when ${lid} or ${open}, or ${late}`,
@@ -2136,7 +2267,7 @@ function mixedWhy(t, u){
   };
   const rule = B.type_rule === 'mixed_column' ? 'mixed column rule' : 'mixed touch rule';
   if (B.type_rule === 'mixed_column'){
-    const parts = [0, 1, 2].filter(k => k !== t || t === 0).map(k => {
+    const parts = [0, 1, 2].filter(k => k !== t || when[`${t},${k}`]).map(k => {
       const w = when[`${t},${k}`];
       return w === null ? `never over ${PTNAME[k]}` : `over ${PTNAME[k]} only ${w}`;
     });
@@ -2333,9 +2464,20 @@ function onMove(ev){
                     : typed() && B.type_constraint && z > 0 && u >= 0
                       && u !== B.item_type;
   const armBlocked = B.armblock && B.armblock[ORIENT] && B.armblock[ORIENT][x][y];
+  const whiteBlocked = B.whiteblock && B.whiteblock[ORIENT] && B.whiteblock[ORIENT][x][y];
+  const blueBlocked = B.blueblock && B.blueblock[ORIENT] && B.blueblock[ORIENT][x][y];
+  const W = B.white || {};
   const why = armBlocked ? 'the robot arm would hit the pack placing it here, or cannot reach it (robot-arm filter on)'
             : (x + l > LX || y + w > LY) ? 'it hangs off the pallet'
             : (z + h > LZ) ? 'it would poke out through the lid'
+            : whiteBlocked && !wrongType ? `a white box on white must rest on at least a
+                           small white box's base (${(W.cm || []).join('×')} cm,
+                           ${(W.cells || []).join('×')} cells), or all of its own when that is
+                           less, so a white tower does not shift; it may with less only
+                           when it has no other place at all (white towers (w))`
+            : blueBlocked && !wrongType ? `a blue box on blue must rest on it with all of
+                           its base, so a blue tower does not shift; it may with less only
+                           when it has no other place at all (blue towers (b))`
             : wrongType && column ? `there is a box of another type somewhere under
                            its footprint, and a ${TNAME(B.item_type)} box may only be
                            over its own type (column rule)`
@@ -2464,7 +2606,7 @@ function renderResult(){
   const p = G.params;
   $('#vsub').innerHTML = `${LX}×${LY}×${LZ} bin · `
     + (G.pallet_id != null
-       ? `pallet ${G.pallet_id} of ${p.data}, ${p.n_items} boxes`
+       ? `pallet ${G.pallet_id}${p.pallet != null ? '/#' + p.pallet : ''} of ${p.data}, ${p.n_items} boxes`
          + (p.order_random ? `, order randomised ${p.order_random}` : '')
        : `items ${p.size_lo.join('×')} to ${p.size_hi.join('×')}`)
     + ` · N<sub>B</sub> ${p.nb}, reach k ${p.n_pick}
@@ -2574,7 +2716,7 @@ function viewPoints(pid, side, n, redraw){
 function isoPoints(v){
   if (!v || !v.pts) return {};
   const top = topPoints(v.pts, v.probs, NTOP);
-  return {points: v.pts, pointsTaken: v.taken, bad: v.bad,
+  return {points: v.pts, pointsTaken: v.taken, bad: v.bad, pointProbs: v.probs,
           pointRanks: new Map(top.map((t, k) => [t.i, k + 1])),
           onlyRot: PTSROT === 'all' ? null : +PTSROT};
 }
@@ -2699,10 +2841,11 @@ const RPF = {
   bin: ['#rcbin0', '#rcbin1', '#rcbin2'],
   nb: '#rcnb', n_pick: '#rcnpick', max_l: '#rcmaxl',
   rot: '#rcrot', ems: '#rcems', stability: '#rcstab', min_support: '#rcmsup',
-  type_rule: '#rctrule', soft_mix: '#rcsoftmix',
+  type_rule: '#rctrule', soft_mix: '#rcsoftmix', white_support: '#rcwsup', white_support_cm: '#rcwsupcm', blue_support: '#rcbsup',
   outline_resort: '#rcolresort', outline_when: '#rcolwhen', outline_area: '#rcolarea', arm_collision: '#rcarmcol', base_x_moves: '#rcarmmoves',
   stack_cap: '#rcstackcap', stack_cap_types: '#rcstacktypes',
   stack_cap_side_cm: '#rcstackside', stack_cap_allow_cm: '#rcstackallow',
+  ptr_center: '#rcpcenter',
   box_pad_m: '#rcbpad',
 };
 let RCROWS = [];
@@ -3269,7 +3412,7 @@ const XPF = {
   bin: ['#xbin0', '#xbin1', '#xbin2'],
   nb: '#xnb', n_pick: '#xnpick', max_l: '#xmaxl',
   rot: '#xprot', ems: '#xems', stability: '#xstab', min_support: '#xmsup',
-  type_constraint: '#xtcon', type_rule: '#xtrule', soft_mix: '#xsoftmix',
+  type_constraint: '#xtcon', type_rule: '#xtrule', soft_mix: '#xsoftmix', white_support: '#xwsup', white_support_cm: '#xwsupcm', blue_support: '#xbsup',
   outline_resort: '#xolresort', outline_when: '#xolwhen', outline_area: '#xolarea', arm_collision: '#xarmcol', base_x_moves: '#xarmmoves',
   stack_cap: '#xstackcap', stack_cap_types: '#xstacktypes',
   stack_cap_side_cm: '#xstackside', stack_cap_allow_cm: '#xstackallow',
@@ -3278,7 +3421,7 @@ const XPF = {
 };
 PLABEL.type_constraint = 'stacking rule';
 for (const pf of [PF, RPF, XPF])
-  for (const k of ['type_rule', 'outline_resort'])
+  for (const k of ['type_rule', 'outline_resort', 'white_support'])
     $(pf[k]).addEventListener('input', () => syncSoft(pf));
 let XCHECK = null, XFILLED = false;
 /* a run with no name cannot be told apart in Compare, nor deleted by name */
@@ -3427,14 +3570,14 @@ const LPF = {
   bin: ['#lbin0', '#lbin1', '#lbin2'],
   nb: '#lnb', n_pick: '#lnpick', max_l: '#lmaxl',
   rot: '#lprot', ems: '#lems', stability: '#lstab', min_support: '#lmsup',
-  type_constraint: '#ltcon', type_rule: '#ltrule', soft_mix: '#lsoftmix',
+  type_constraint: '#ltcon', type_rule: '#ltrule', soft_mix: '#lsoftmix', white_support: '#lwsup', white_support_cm: '#lwsupcm', blue_support: '#lbsup',
   outline_resort: '#lolresort', outline_when: '#lolwhen', outline_area: '#lolarea', arm_collision: '#larmcol', base_x_moves: '#larmmoves',
   stack_cap: '#lstackcap', stack_cap_types: '#lstacktypes',
   stack_cap_side_cm: '#lstackside', stack_cap_allow_cm: '#lstackallow',
   pallet_cm: ['#lpcm0', '#lpcm1', '#lpcm2'], cell_cm: '#lcellcm',
   box_pad_m: '#lbpad', box_scale: '#lbscale', box_round: '#lbround',
 };
-for (const k of ['type_rule', 'outline_resort'])
+for (const k of ['type_rule', 'outline_resort', 'white_support'])
   $(LPF[k]).addEventListener('input', () => syncSoft(LPF));
 let LJOB = null, LPOLL = null, LRUN = false, LBAD = false, LFILLED = false, LCHECK = null;
 let LSTAT = null, LRES = null;          // the last status, and the pallet on show

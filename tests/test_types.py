@@ -176,7 +176,7 @@ def test_an_overhang_over_a_foreign_type_is_legal():
     """
     env = BPPBatch(1, S=(6, 6, 6), nb=1, rot=1, ems=False, seed=0,
                    n_types=3, types=CLASSES, min_support=0.6,
-                   type_rule="touch")
+                   type_rule="touch", blue_support=False)   # (b) bars it
     def offer(t_far):
         env.reset(np.array([[[3, 1, 1, 0]] * 4], np.int16))
         env.hmap[0, 0:2, 0] = 2          # a type-0 shelf, two cells wide
@@ -639,8 +639,9 @@ def test_column_rule_is_touch_minus_footprints_over_a_foreign_box():
     """The column mask, cell by cell, is the touch mask with every footprint
     that covers a foreign box anywhere below taken out -- and it does take
     some out, or the two rules would be the same."""
+    # (b) reads "on blue" as each rule does, so it would differ between them
     env = typed(8, seed=12, type_rule="column", arm_collision=False,
-                stack_cap=False)
+                stack_cap=False, blue_support=False)
     rng = np.random.default_rng(12)
     removed = 0
     for _ in range(30):

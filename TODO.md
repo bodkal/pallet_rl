@@ -5,7 +5,7 @@ Packing"** — Pan, Chen & Lin, NeurIPS 2023
 ([arXiv:2310.04323](https://arxiv.org/abs/2310.04323)), and its extension to
 real orders, box types and the UR20 cell.
 
-*Last updated: 2026-10-21* — only open items are listed; finished work is in
+*Last updated: 2026-10-24* — only open items are listed; finished work is in
 the git history (the full list as of 2026-09-27 is `git show eb38e8c:TODO.md`).
 
 The official implementation is at <https://github.com/panyxy/ar2l_bpp>. **No
@@ -110,6 +110,16 @@ which is roughly half the shortfall at `N_B = 10` and almost none of it at
 - [ ] Try the reverse KL in Eq. 6 (A.7) as an ablation, one run
 - [ ] `pct_nb1` + its attackers, to fill the missing PCT row of Table 1
 - [ ] Table 1 at `N_B = 10, 15` (currently only 5 and 20)
+
+- [ ] Pointer saturation penalty: `--ptr_center 2` (max) only stops the top
+      choice tying; candidates far below the best still sit past tanh's range
+      with no gradient (68% of the w128/l1 `column` selector's on pallet
+      13689113, and on 23 of 32 steps every rival of the top box), because the
+      raw score is unbounded -- brown drifted ~240 below blue/white.  Add
+      `coef * mean(relu(|y| - 3)^2)` over the live candidates to the pointer
+      losses (selector first, then packer) so scores stay where the tanh still
+      answers; compare `mix_sat` / `mix_kl` and held-out util against
+      `--ptr_center 2` alone
 
 ### D.3 Not started
 

@@ -13,6 +13,9 @@ Policy ids
 Attacker ids are `run:<name>` (the permutation-based attacker stored in that
 checkpoint), `mix:<name>` (its mixture-dynamics model), or None for the
 nominal conveyor.
+
+`ptr_center` plays a trained net under another pointer centering (`Pointer`:
+0 off, 1 mean, 2 max); None or -1 keeps the one it was trained with.
 """
 from __future__ import annotations
 
@@ -86,7 +89,11 @@ def _nets(path, device):
     return _NETS[key]
 
 
-def load_policy(spec, device="cuda"):
+def _center(ptr_center):
+    return None if ptr_center is None or int(ptr_center) < 0 else int(ptr_center)
+
+
+def load_policy(spec, device="cuda", ptr_center=None):
     """-> (callable(env) -> (action, probs_over_candidates), label, nb)."""
     if spec == "random":
         def fn(env):
@@ -114,16 +121,16 @@ def load_policy(spec, device="cuda"):
     path = os.path.join(run_dir(run), which + ".pt")
     nets = _nets(path if os.path.exists(path) else info["ckpt"], device)
 
-    def fn(env, _net=nets["pack"]):
+    def fn(env, _net=nets["pack"], _c=_center(ptr_center)):
         o = to_torch(env.obs(), device)
         with torch.no_grad():
-            lg = _net.logits(o)
+            lg = _net.logits(o, _c)
             p = torch.softmax(lg, -1)
         return p.argmax(-1).cpu().numpy(), p.cpu().numpy()
     return fn, f"{info['algo']}({run})", info["nb"]
 
 
-def load_attacker(spec, device="cuda"):
+def load_attacker(spec, device="cuda", ptr_center=None):
     if not spec or spec == "none":
         return None, "nominal", None
     kind, run = spec.split(":")[0], spec.split(":")[1]
@@ -133,10 +140,10 @@ def load_attacker(spec, device="cuda"):
     nets = _nets(info["ckpt"], device)
     net = nets["mixer" if kind == "mix" else "attacker"]
 
-    def fn(env, _net=net):
+    def fn(env, _net=net, _c=_center(ptr_center)):
         o = to_torch(env.obs_cb(), device)
         with torch.no_grad():
-            p = torch.softmax(_net.logits(o), -1)
+            p = torch.softmax(_net.logits(o, _c), -1)
         return p.argmax(-1).cpu().numpy(), p.cpu().numpy()
     return fn, f"{kind}({run})", info["nb"]
 
@@ -166,7 +173,9 @@ def episode_env(seq, nb=1, S=10, stability="com", min_support=None,
                 arm_cell_m=None, arm_moves=None, stack_cap=None,
                 stack_types=None, stack_side_cm=None, stack_allow_cm=None,
                 type_rule=None, soft_mix=None, outline_resort=None,
-                outline_when=None, outline_area=None):
+                outline_when=None, outline_area=None,
+                mixed_white_support=None, mixed_white_support_cm=None,
+                blue_support=None):
     """The one-bin env `play` packs `seq` in, reset to its first box.
 
     `S` is an int for a cube or an (Lx, Ly, Lz) triple.  `size_hi` bounds the
@@ -189,6 +198,9 @@ def episode_env(seq, nb=1, S=10, stability="com", min_support=None,
                    type_constraint=type_constraint, type_rule=type_rule,
                    soft_mix=soft_mix, outline_resort=outline_resort,
                    outline_when=outline_when, outline_area=outline_area,
+                   mixed_white_support=mixed_white_support,
+                   mixed_white_support_cm=mixed_white_support_cm,
+                   blue_support=blue_support,
                    arm_collision=arm_collision, arm_cell_m=arm_cell_m,
                    arm_moves=arm_moves, stack_cap=stack_cap,
                    stack_types=stack_types, stack_side_cm=stack_side_cm,

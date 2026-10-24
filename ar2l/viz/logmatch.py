@@ -340,7 +340,8 @@ def start(path, spec, p, cell_m, device, tol_cm=TOL_CM):
 def _run(job, steps, boxes, cell_m, device):
     p, S = job["p"], tuple(job["bin"])
     try:
-        policy, picker, label = X.packer(job["spec"], p["n_pick"], device)
+        policy, picker, label = X.packer(job["spec"], p["n_pick"], device,
+                                         p.get("ptr_center"))
         job["label"], job["policy"] = label, policy
         job["picker"] = ("its own selector" if picker is not None
                          else "the first in reach that fits"

@@ -2,10 +2,12 @@
 white and brown cartons.
 
 Blue (0), white (1) and brown (2) each go on the floor and on their own type --
-blue on blue only with all of its base on blue -- and across types:
+blue on blue only with (b) and white on white only with (w), when they are on
+-- and across types:
 
                        normally          else, soft mix off  else, soft mix on
-    blue on blue       all base on blue  fallback            fallback
+    blue on blue       (b)               fallback            fallback
+    white on white     (w)               fallback            fallback
     blue on white      (a)               fallback            last resort
     blue on brown      (a)               fallback            last resort
     white on blue      (a) or (d)        fallback            last resort
@@ -16,7 +18,10 @@ blue on blue only with all of its base on blue -- and across types:
 
 (a) its top within `mixed_top_gap_cm` of the lid; (c) a brown footprint at
 least `mixed_area_frac` of the small blue's; (d) no small blue box could still
-be put on that blue.  A fallback is a box's own, when it has no normal place;
+be put on that blue; (w) at least the small white's base, or all of its
+own when that is less, resting -- off here (`mixed_white_support=0`) unless a
+test turns it on; (b) all of its base on blue -- on here (`blue_support=1`)
+unless a test turns it off.  A fallback is a box's own, when it has no normal place;
 the last resort is the station's, when no box within reach has any place.
 
 "On" is what the box rests on under `mixed_touch`, and everything under its
@@ -42,7 +47,10 @@ CLASSES = [{"p": 1, "lo": [1, 1, 1], "hi": [3, 3, 3]},
            {"p": 1, "lo": [1, 2, 1], "hi": [3, 4, 3]}]
 
 RULE = dict(mixed_small_blue=(3, 2, 2), mixed_top_gap_cm=1,
-            mixed_area_frac=0.8, stack_cell_cm=1.0)
+            mixed_area_frac=0.8, stack_cell_cm=1.0, mixed_white_support=0,
+            blue_support=1)
+# (w) on: the small white is 3 x 2 cells, so it asks 6 cells of contact
+WHITE_ON = dict(mixed_white_support=(3, 2))
 
 
 @pytest.fixture(params=MIXED_RULES)
@@ -86,9 +94,9 @@ EVERYWHERE = (0, 8, 0, 8)
 # ------------------------------------------------------------------- tables
 def test_the_tables_say_who_may_go_on_whom():
     rule, fallback = mixed_tables(3)
-    # normal rules: own type -- blue on blue if all of its base is on blue --
-    # white and brown on blue under their conditions, the rest near the lid
-    assert rule[0].tolist() == [[IF, TOP, TOP],
+    # normal rules: own type -- (b) and (w) are not in the tables -- white
+    # and brown on blue under their conditions, the rest near the lid
+    assert rule[0].tolist() == [[YES, TOP, TOP],
                                 [IF, YES, TOP],
                                 [IF, NO, YES]]
     # a box's own fallback: blue and white on anything, brown on blue; and
@@ -98,17 +106,16 @@ def test_the_tables_say_who_may_go_on_whom():
                                 [YES, NO, YES]]
     assert (rule[2] == rule[1]).all()
     assert fallback.tolist() == [True, True, True]
-    # soft mix: the same normal rules, a fallback for blue on blue alone, and
-    # the station's last resort on every mix but brown on white
+    # soft mix: the same normal rules, no fallback in the tables -- (b)'s
+    # and (w)'s are their own -- and the station's last resort on every mix
+    # but brown on white
     soft, soft_fb = mixed_tables(3, soft=True)
     assert (soft[0] == rule[0]).all()
-    assert soft[1].tolist() == [[YES, TOP, TOP],
-                                [IF, YES, TOP],
-                                [IF, NO, YES]]
+    assert (soft[1] == soft[0]).all()
     assert soft[2].tolist() == [[YES, YES, YES],
                                 [YES, YES, YES],
                                 [YES, NO, YES]]
-    assert soft_fb.tolist() == [True, False, False]
+    assert soft_fb.tolist() == [False, False, False]
     # a fourth type keeps the `touch` rule, and two types still work
     r4, fb4 = mixed_tables(4)
     assert (r4[:, 3] == [NO, NO, NO, YES]).all()
@@ -145,6 +152,161 @@ def test_blue_goes_anywhere_once_nothing_else_is_left(rule):
     assert env.fallback()[0]
     assert offered(env, 0, 0), "part blue, part white"
     assert offered(env, 4, 4), "all white"
+
+
+def test_w_is_not_in_the_tables_but_gives_white_a_fallback():
+    """(w) is a rule of its own: the tables stay as they are, and a white box
+    has a fallback of its own with it on -- under soft mix too."""
+    for soft in (False, True):
+        env = mixed("mixed_touch", soft_mix=soft, **WHITE_ON)
+        assert (env._tables[soft][0] == mixed_tables(3, soft)[0]).all()
+        assert env._fallback_bins(np.array([WHITE])).all()
+        assert not mixed("mixed_touch", soft_mix=True)._fallback_bins(
+            np.array([WHITE])).any()
+
+
+def test_the_small_white_box_is_read_like_an_order_row():
+    """45 x 27 cm with the 4 cm padding on 4 cm cells: 12 x 8 cells, the
+    footprint nearly every white of the data grids to; 0 drops (w)."""
+    kw = dict(type_rule="mixed_touch", arm_collision=False, stack_cell_cm=4.0)
+    env = BPPBatch(1, **kw)
+    assert env.small_white == (12, 8) and env.white_area == 96
+    off = BPPBatch(1, mixed_white_support=0, **kw)
+    assert off.small_white == () and off.white_area == 0
+
+
+# ----------------------------------------------------------- white on white
+def test_white_on_white_needs_the_small_whites_base(rule):
+    """A 3 x 2 white needs all 6 cells -- a tower shifted by one is out."""
+    env = bin_with(rule, (3, 2, 1, WHITE), {(0, 3, 0, 2): (2, WHITE)},
+                   **WHITE_ON)
+    assert offered(env, 0, 0), "a white box exactly on a white one"
+    assert not offered(env, 1, 0), "shifted by one: 4 of 6 cells"
+    assert offered(env, 4, 4), "the floor"
+    assert not env.fallback()[0]
+
+
+def test_a_longer_white_may_hang_what_it_is_longer_by(rule):
+    """A 4 x 2 white on a 3 x 2: 6 of its 8 cells rest, which is the small
+    white's base -- one more cell of shift and it is not."""
+    env = bin_with(rule, (4, 2, 1, WHITE), {(0, 3, 0, 2): (2, WHITE)},
+                   **WHITE_ON)
+    assert offered(env, 0, 0)
+    assert not offered(env, 1, 0)
+
+
+def test_white_may_rest_on_two_whites(rule):
+    """Fully resting across two white boxes is not a shift that hangs."""
+    env = bin_with(rule, (3, 2, 1, WHITE), {(0, 2, 0, 2): (2, WHITE),
+                                            (2, 4, 0, 2): (2, WHITE)},
+                   **WHITE_ON)
+    assert offered(env, 1, 0)
+
+
+@pytest.mark.parametrize("soft", [False, True], ids=["hard", "soft"])
+def test_white_shifts_once_nothing_else_is_left(rule, soft):
+    """Whites in stripes of two heights cover the floor: no footprint rests
+    on 6 cells, so the box's own fallback opens -- soft mix or not -- and
+    the shifted places come back with only `min_support` to meet."""
+    cols = {(x, x + 1, 0, 8): (2 - x % 2, WHITE) for x in range(8)}
+    env = bin_with(rule, (3, 2, 1, WHITE), cols, soft_mix=soft, **WHITE_ON)
+    assert env.fallback()[0]
+    assert offered(env, 0, 0), "4 of 6 cells rest"
+
+
+# (w) is a rule of its own: the same under touch and column, and with the
+# type rule off, as under the mixed rules
+ANY_RULE = [dict(type_rule=r) for r in E.TYPE_RULES] + [
+    dict(type_rule="touch", type_constraint=False)]
+
+
+@pytest.mark.parametrize("kw", ANY_RULE,
+                         ids=list(E.TYPE_RULES) + ["no_type_rule"])
+def test_w_holds_under_every_rule(kw):
+    kw = dict(kw)        # the params are shared between the tests
+    rule = kw.pop("type_rule")
+    env = bin_with(rule, (3, 2, 1, WHITE), {(0, 3, 0, 2): (2, WHITE)},
+                   **WHITE_ON, **kw)
+    assert offered(env, 0, 0) and offered(env, 4, 4)
+    assert not offered(env, 1, 0), "shifted by one: 4 of 6 cells"
+    assert not env.fallback()[0]
+    # nothing else left: its own fallback lifts (w)
+    cols = {(x, x + 1, 0, 8): (2 - x % 2, WHITE) for x in range(8)}
+    env = bin_with(rule, (3, 2, 1, WHITE), cols, **WHITE_ON, **kw)
+    assert env.fallback()[0] and offered(env, 0, 0)
+    # and off, white on white is `min_support` alone again
+    env = bin_with(rule, (3, 2, 1, WHITE), {(0, 3, 0, 2): (2, WHITE)}, **kw)
+    assert offered(env, 1, 0) and not env.fallback()[0]
+
+
+@pytest.mark.parametrize("rule", ["touch", "column"])
+def test_w_leaves_the_other_types_alone(rule):
+    """Blue and brown never ask (w), and a white box resting on no white
+    -- here with the type rule off, on blue -- does not either.  (b) is off,
+    or it would hold the shifted blue back."""
+    for t in (BLUE, BROWN):
+        env = bin_with(rule, (3, 2, 1, t), {(0, 3, 0, 2): (2, t)},
+                       blue_support=0, **WHITE_ON)
+        assert offered(env, 1, 0)
+    env = bin_with(rule, (3, 2, 1, WHITE), {(0, 3, 0, 2): (2, BLUE)},
+                   type_constraint=False, **WHITE_ON)
+    assert offered(env, 1, 0)
+
+
+# ------------------------------------------------------------ blue on blue
+@pytest.mark.parametrize("kw", ANY_RULE,
+                         ids=list(E.TYPE_RULES) + ["no_type_rule"])
+def test_b_holds_under_every_rule(kw):
+    """(b), as (w): a blue box on blue rests with all of its base under
+    every rule, its own fallback lifts it, and off it is `min_support`."""
+    kw = dict(kw)        # the params are shared between the tests
+    rule = kw.pop("type_rule")
+    env = bin_with(rule, (3, 2, 1, BLUE), {(0, 3, 0, 2): (2, BLUE)}, **kw)
+    assert offered(env, 0, 0) and offered(env, 4, 4)
+    assert not offered(env, 1, 0), "shifted by one: 4 of 6 cells"
+    assert not env.fallback()[0]
+    cols = {(x, x + 1, 0, 8): (2 - x % 2, BLUE) for x in range(8)}
+    env = bin_with(rule, (3, 2, 1, BLUE), cols, **kw)
+    assert env.fallback()[0] and offered(env, 0, 0)
+    env = bin_with(rule, (3, 2, 1, BLUE), {(0, 3, 0, 2): (2, BLUE)},
+                   blue_support=0, **kw)
+    assert offered(env, 1, 0) and not env.fallback()[0]
+
+
+@pytest.mark.parametrize("rule", E.TYPE_RULES)
+def test_blue_may_rest_on_two_blues(rule):
+    env = bin_with(rule, (3, 2, 1, BLUE), {(0, 2, 0, 2): (2, BLUE),
+                                           (2, 4, 0, 2): (2, BLUE)})
+    assert offered(env, 1, 0)
+
+
+def test_b_leaves_the_other_types_alone():
+    """White and brown never ask (b), and with the type rule off a blue box
+    resting on no blue does not either."""
+    for t in (WHITE, BROWN):
+        env = bin_with("touch", (3, 2, 1, t), {(0, 3, 0, 2): (2, t)})
+        assert offered(env, 1, 0)
+    env = bin_with("touch", (3, 2, 1, BLUE), {(0, 3, 0, 2): (2, WHITE)},
+                   type_constraint=False)
+    assert offered(env, 1, 0)
+
+
+def test_b_off_frees_rule_d_too(rule):
+    """Off, the small blue box of rule (d) asks no more than `min_support`
+    either: blue in stripes of two heights takes no small blue with all of
+    its base, so (d) lets white on; off, a small blue rests on the tall
+    stripes, they stay open, and white goes on blue only by its fallback."""
+    cols = {(x, x + 1, 0, 8): (2 - x % 2, BLUE) for x in range(8)}
+    on = bin_with(rule, (3, 2, 1, WHITE), cols, soft_mix=False)
+    assert offered(on, 0, 0) and not on.fallback()[0]
+    off = bin_with(rule, (3, 2, 1, WHITE), cols, blue_support=0,
+                   soft_mix=False)
+    assert off.fallback()[0]
+
+
+def test_without_w_white_on_white_is_the_old_rule(rule):
+    env = bin_with(rule, (3, 2, 1, WHITE), {(0, 3, 0, 2): (2, WHITE)})
+    assert offered(env, 1, 0)
 
 
 # --------------------------------------------------- white and brown on blue
@@ -457,6 +619,131 @@ def test_the_game_explains_the_mixed_rule_without_contradicting_itself(rule):
         assert G.place(st["env"], int(r), int(x), int(y))
 
 
+def test_the_command_lines_hand_white_support_to_the_env():
+    """`--white_support` defaults to on with a size in the config, and 0 drops
+    (w) from training, evaluation and the run's recorded args alike."""
+    from ar2l import evaluate, train
+    base = ["--name", "t", "--type_rule", "mixed_column", "--n_env", "2"]
+    a = train.get_parser().parse_args(base)
+    assert a.white_support == 1
+    assert train.make_env(a, seed=0).white_area == 96
+    a = train.get_parser().parse_args(base + ["--white_support", "0"])
+    assert train.make_env(a, seed=0).white_area == 0
+    a = train.get_parser().parse_args(base + ["--white_support_cm", "50", "30"])
+    env = train.make_env(a, seed=0)
+    assert env.small_white == (13, 8) and env.small_white_cm == (50, 30)
+    assert evaluate.get_parser().parse_args([]).white_support == 1
+    assert evaluate.get_parser().parse_args(
+        ["--white_support_cm", "40", "25"]).white_support_cm == [40, 25]
+    assert evaluate.get_parser().parse_args(
+        ["--white_support", "0"]).white_support == 0
+
+
+def test_the_command_lines_hand_blue_support_to_the_env():
+    """`--blue_support` defaults to the config's 1, and 0 drops (b) from
+    training and evaluation alike."""
+    from ar2l import evaluate, train
+    base = ["--name", "t", "--type_rule", "touch", "--n_env", "2"]
+    a = train.get_parser().parse_args(base)
+    assert a.blue_support == 1 and train.make_env(a, seed=0).blue_support
+    a = train.get_parser().parse_args(base + ["--blue_support", "0"])
+    assert not train.make_env(a, seed=0).blue_support
+    assert evaluate.get_parser().parse_args([]).blue_support == 1
+    assert evaluate.get_parser().parse_args(
+        ["--blue_support", "0"]).blue_support == 0
+
+
+def test_the_game_hands_blue_support_to_the_env():
+    """Every tab's form carries the switch through `validate` to the env."""
+    from ar2l.viz import game as G
+    from ar2l.viz import agents as A
+    base = {"bin": [31, 27, 40], "size_lo": [2, 2, 2], "size_hi": [12, 12, 10],
+            "n_items": 30, "nb": 4, "n_pick": 2, "max_l": 256, "rot": 2,
+            "ems": 3, "stability": "com", "min_support": 0.8,
+            "source": "random", "type_rule": "touch", "arm_collision": 0}
+    for on in (0, 1):
+        p, err = G.validate(dict(base, blue_support=on))
+        assert not err, err
+        assert p["blue_support"] == on
+        env = A.episode_env(np.array([[12, 8, 4, 0]]), S=p["bin"],
+                            **G.stack_kw(p))
+        assert env.blue_support == bool(on)
+        assert G.board(G.new_game(3, "none", p,
+                                  human_pick=True)[1])["blue"] == bool(on)
+    assert G.validate(dict(base, blue_support=2))[1]
+    assert G.defaults()["blue_support"] == 1
+    assert "blue_support" in G.GAME_KEYS and "blue_support" in G.EXP_KEYS
+
+
+@pytest.mark.parametrize("rule", E.TYPE_RULES)
+def test_the_game_marks_what_b_blocks(rule):
+    """The page's (b) layer holds exactly the cells (b) takes away, under
+    every rule, and nothing once the box goes by its own fallback."""
+    from ar2l.viz import game as G
+    env = bin_with(rule, (3, 2, 1, BLUE), {(0, 3, 0, 2): (2, BLUE)})
+    feas, z, odims, _ = env._positions()
+    bb = G.blue_blocked(env, z[0], odims[0])
+    assert bb[0, 1, 0] and not bb[0, 0, 0] and not bb[0, 4, 4]
+    assert not (bb & feas[0]).any()
+    assert not G.blue_blocked(env, z[0], odims[0], fallback=True).any()
+
+
+def test_white_support_true_has_a_size_without_the_config(monkeypatch):
+    """The switch on with `mixed_white_support_cm: null` still means 45 x 27."""
+    monkeypatch.setitem(E.CFG["env"], "mixed_white_support_cm", None)
+    kw = dict(type_rule="mixed_touch", arm_collision=False, stack_cell_cm=4.0)
+    assert BPPBatch(1, **kw).white_area == 0
+    assert BPPBatch(1, mixed_white_support=True, **kw).small_white == (12, 8)
+    assert BPPBatch(1, mixed_white_support=False, **kw).white_area == 0
+
+
+def test_the_game_hands_white_support_to_the_env():
+    """Every tab's form carries the switch through `validate` to the env, and
+    a run from before the switch is played with it on."""
+    from ar2l.viz import game as G
+    from ar2l.viz import agents as A
+    base = {"bin": [31, 27, 40], "size_lo": [2, 2, 2], "size_hi": [12, 12, 10],
+            "n_items": 30, "nb": 4, "n_pick": 2, "max_l": 256, "rot": 2,
+            "ems": 3, "stability": "com", "min_support": 0.8,
+            "source": "random", "type_rule": "mixed_column",
+            "arm_collision": 0}
+    for on in (0, 1):
+        p, err = G.validate(dict(base, white_support=on))
+        assert not err, err
+        assert p["white_support"] == on
+        env = A.episode_env(np.array([[12, 8, 4, 1]]), S=p["bin"],
+                            **G.stack_kw(p))
+        assert env.white_area == (96 if on else 0)
+        b = G.board(G.new_game(3, "none", p, human_pick=True)[1])
+        assert b["white"] == ({"cells": [12, 8], "cm": [45, 27]} if on
+                              else None)
+    # the size is the form's too, typed as text or sent as a list
+    p, err = G.validate(dict(base, white_support=1, white_support_cm="50, 30"))
+    assert not err and p["white_support_cm"] == [50, 30]
+    b = G.board(G.new_game(3, "none", p, human_pick=True)[1])
+    assert b["white"] == {"cells": [13, 8], "cm": [50, 30]}
+    for bad in ("45", "45, 0", "a, b"):
+        assert G.validate(dict(base, white_support_cm=bad))[1]
+    assert G.defaults()["white_support"] == 1
+    assert G.defaults()["white_support_cm"] == [45, 27]
+    for k in ("white_support", "white_support_cm"):
+        assert k in G.GAME_KEYS and k in G.EXP_KEYS
+
+
+@pytest.mark.parametrize("rule", E.TYPE_RULES)
+def test_the_game_marks_what_w_blocks(rule):
+    """The page's (w) layer holds exactly the cells (w) takes away, under
+    every rule, and nothing once the box goes by its own fallback."""
+    from ar2l.viz import game as G
+    env = bin_with(rule, (3, 2, 1, WHITE), {(0, 3, 0, 2): (2, WHITE)},
+                   **WHITE_ON)
+    feas, z, odims, _ = env._positions()
+    wb = G.white_blocked(env, z[0], odims[0])
+    assert wb[0, 1, 0] and not wb[0, 0, 0] and not wb[0, 4, 4]
+    assert not (wb & feas[0]).any()
+    assert not G.white_blocked(env, z[0], odims[0], fallback=True).any()
+
+
 def test_the_command_lines_hand_soft_mix_to_the_env():
     from ar2l import evaluate, train
     a = train.get_parser().parse_args(["--name", "t", "--type_rule",
@@ -471,40 +758,50 @@ def test_the_command_lines_hand_soft_mix_to_the_env():
 # ------------------------------------------------------- against brute force
 def brute(env, b):
     """(R, Lx, Ly) what the mixed rule lets the head box of bin `b` do, read
-    from the env's own geometry with the type rule lifted and every condition
-    tested cell by cell -- on what the box rests on (`mixed_touch`), or on
+    from the env's own geometry with the type rule, (b) and (w) lifted and every
+    condition tested cell by cell -- on what the box rests on (`mixed_touch`), or on
     every type each column under it has held (`mixed_column`, from `smap`)."""
-    env.type_constraint = False
+    # (b) and (w) hold with the type rule off too, so they are lifted beside it
+    blue_on = env.blue_support
+    env.type_constraint, white_area = False, env.white_area
+    env.white_area, env.blue_support = 0, False
     env._invalidate(hmap=False)
     try:
         geo, _, odims, _ = (a.copy() for a in env._positions())
+        # where the small blue box stands by geometry alone: on `min_support`
+        sb = [(d, *(a[b] for a in env._feas_geo(np.tile(d, (env.n_env, 1)),
+                                                 outline=False)[:2]))
+              for d in {env.small_blue,
+                        env.small_blue[1::-1] + env.small_blue[2:]}]
     finally:
-        env.type_constraint = True
+        env.type_constraint, env.white_area = True, white_area
+        env.blue_support = blue_on
         env._invalidate(hmap=False)
     column, soft = env.type_rule == "mixed_column", env.soft_mix
     H, T, Sm, Lz = env.hmap[b], env.tmap[b], env.smap[b], env.Lz
     sbx, sby, sbz = env.small_blue
-    # a small blue box goes where it rests with all of its base on what the
-    # normal rules let blue onto -- blue, and near the lid white or brown too
-    # -- read by touch or by column; its blue cells open
+    # a small blue box goes where it rests -- with all of its base under (b)
+    # -- on what the normal rules let blue onto -- blue, and near the lid
+    # white or brown too -- read by touch or by column; the blue cells it
+    # rests on open
     open_ = np.zeros_like(H, bool)
-    for sx, sy in {(sbx, sby), (sby, sbx)}:
-        for x in range(env.Lx - sx + 1):
-            for y in range(env.Ly - sy + 1):
-                h, tt = H[x:x + sx, y:y + sy], T[x:x + sx, y:y + sy]
-                top = h.max()
-                if top == 0 or not (h == top).all() or top + sbz > Lz:
-                    continue
-                lid = top + sbz >= Lz - env.top_gap
-                if column:
-                    bits = int(np.bitwise_or.reduce(Sm[x:x + sx, y:y + sy],
-                                                    None))
-                    under = {u for u in range(env.n_types) if bits >> u & 1}
-                else:
-                    under = set(tt.ravel().tolist())
-                if all(u == BLUE or (lid and (BLUE, u) in E.TOP_PAIRS)
-                       for u in under):
-                    open_[x:x + sx, y:y + sy] |= tt == BLUE
+    for (sx, sy, _), ok, zz in sb:
+        for x, y in zip(*np.nonzero(ok)):
+            h, tt = H[x:x + sx, y:y + sy], T[x:x + sx, y:y + sy]
+            top = h.max()
+            assert top == zz[x, y]
+            rest = h == top
+            if top == 0 or (blue_on and not rest.all()) or top + sbz > Lz:
+                continue
+            lid = top + sbz >= Lz - env.top_gap
+            if column:
+                bits = int(np.bitwise_or.reduce(Sm[x:x + sx, y:y + sy], None))
+                under = {u for u in range(env.n_types) if bits >> u & 1}
+            else:
+                under = set(tt[rest].tolist())
+            if all(u == BLUE or (lid and (BLUE, u) in E.TOP_PAIRS)
+                   for u in under):
+                open_[x:x + sx, y:y + sy] |= (tt == BLUE) & rest
     t = int(env.head_item()[1][b])
 
     def legal(tier, x, y, sx, sy, sz):
@@ -521,10 +818,14 @@ def brute(env, b):
         else:
             on, seen = set(tt[contact].tolist()), contact
         for u in on:
+            if t == WHITE and u == WHITE and env.white_area:
+                if tier >= 2 or contact.sum() >= min(env.white_area, sx * sy):
+                    continue
+                return False
             if u == t and t != BLUE:
                 continue
             if t == BLUE and u == BLUE:
-                if tier >= 2 or contact.all():
+                if tier >= 2 or contact.all() or not blue_on:
                     continue
                 return False
             if tier == 3 and (t, u) in E.SOFT_PAIRS:     # the last resort
@@ -553,8 +854,10 @@ def brute(env, b):
     one = grid(1)
     if one.any():
         return one, False
-    # its own fallback: every type's, or blue's alone under soft mix
-    own = t == BLUE or not soft
+    # its own fallback: every type's, or under soft mix blue's with (b) on
+    # and white's with (w) on
+    own = ((t == BLUE and blue_on) or (t == WHITE and env.white_area > 0)
+           or not soft)
     hard = grid(2) if own else one
     if not soft or hard.any():
         return hard, own
@@ -604,12 +907,16 @@ def play_against_brute(env, steps=80, seed=7):
     return seen
 
 
+@pytest.mark.parametrize("blue", [1, 0], ids=["b", "no_b"])
+@pytest.mark.parametrize("white", [0, (3, 2)], ids=["no_w", "w"])
 @pytest.mark.parametrize("soft", [False, True], ids=["hard", "soft"])
-def test_random_play_matches_brute_force(rule, soft):
+def test_random_play_matches_brute_force(rule, soft, white, blue):
     """Cell for cell, under rotation, over whole episodes -- and every rule
     gets exercised, or the comparison proves little."""
     seen = play_against_brute(mixed(rule, 6, seed=7, rot=2, nb=1, n_items=60,
-                                    soft_mix=soft))
+                                    soft_mix=soft,
+                                    mixed_white_support=white,
+                                    blue_support=blue))
     assert seen["fallback"] > 5 and seen["cross"] > 50, seen
     assert seen["top_mix"] > 0 and seen["brown_on_white"] == 0, seen
 

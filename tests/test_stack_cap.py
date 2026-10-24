@@ -31,11 +31,13 @@ N = 8
 
 def capped(n_env=1, **kw):
     """Only the limit in play: every grid position is offered, no rotation,
-    no type rule, no support floor, no arm."""
+    no type rule, no white or blue towers (w, b), no support floor, no
+    arm."""
     kw.setdefault("S", (8, 8, 20))
     for k, v in dict(nb=1, n_items=N, rot=1, ems=0, stability="com",
                      min_support=0.0, n_types=3, types=CLASSES,
-                     type_constraint=False, arm_collision=False,
+                     type_constraint=False, mixed_white_support=False,
+                     blue_support=False, arm_collision=False,
                      stack_cap=True, stack_types=[2]).items():
         kw.setdefault(k, v)
     return BPPBatch(n_env, **{**RULE, **kw})

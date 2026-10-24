@@ -119,8 +119,22 @@ class Pointer(nn.Module):
     Eq. 28 made them.  Every candidate scoring alike then lands at 0, where
     the tanh is steepest, rather than at its flat end.
 
+    The mean does not help when the candidates are spread far apart rather
+    than shifted together.  The w128/l1 `column` selector learned to score
+    brown ~240 below blue and white; with brown in reach the mean sits between
+    the two groups, every blue and white box lands far past SAT, and they all
+    get the same logit +c -- a tie the policy can only break at random, and
+    learn nothing from.  `center` 2 subtracts the max instead: the best
+    candidate sits at 0 and its nearest rivals stay in the tanh's steep part,
+    so the top of the ranking is never tied.  Candidates far below still
+    saturate, at -c, where their probability is ~0 anyway.
+
     `sat` is the share of live candidates whose score sat past SAT on the last
     forward pass -- the training log's `*_sat` column.
+
+    `center` can also be given per call, overriding the one built in: it holds
+    no weights, so a viewer can play a checkpoint under another centering
+    without touching the net, which is shared between its sessions.
     """
 
     SAT = 3.0
@@ -134,10 +148,11 @@ class Pointer(nn.Module):
         self.q = nn.Linear(d, d)
         self.k = nn.Linear(d, d)
         self.c_temp, self.d, self.norm = c_temp, d, float(norm)
-        self.center = bool(center)
+        self.center = int(center)          # 0 off, 1 mean, 2 max
         self.sat = torch.zeros(())
 
-    def forward(self, xbar, nodes, mask):
+    def forward(self, xbar, nodes, mask, center=None):
+        center = self.center if center is None else int(center)
         q, k = self.q(xbar), self.k(nodes)
         if self.norm > 0:
             y = self.norm * torch.einsum("bd,bnd->bn", F.normalize(q, dim=-1),
@@ -145,8 +160,10 @@ class Pointer(nn.Module):
         else:
             y = torch.einsum("bd,bnd->bn", q, k) / math.sqrt(self.d)
         live = mask.to(y.dtype)
-        if self.center:
+        if center == 1:
             y = y - (y * live).sum(-1, keepdim=True) / live.sum(-1, keepdim=True).clamp(min=1)
+        elif center == 2:
+            y = y - y.masked_fill(~mask, NEG).amax(-1, keepdim=True)
         with torch.no_grad():
             self.sat = ((y.abs() > self.SAT).float() * live).sum() / live.sum().clamp(min=1)
         return self.c_temp * torch.tanh(y) + torch.where(mask, 0.0, NEG)
@@ -184,13 +201,13 @@ class PackNet(nn.Module):
         self.ptr = Pointer(self.enc.d, c_temp, ptr_norm, ptr_center)
         self.critic = Critic(d, n_head, n_layer, n_types, type_embed)
 
-    def logits(self, o):
+    def logits(self, o, center=None):
         x, xbar, _ = self.enc([o["c"], o["b"], o["l"]],
                               [o["c_mask"], o["b_mask"], o["l_mask"]],
                               [o["c_type"], o["b_type"], o["l_type"]],
                               pos_on={1})
         nl = o["l"].shape[1]
-        return self.ptr(xbar, x[:, -nl:], o["l_mask"])
+        return self.ptr(xbar, x[:, -nl:], o["l_mask"], center)
 
     def value(self, o):
         return self.critic(o)
@@ -224,13 +241,13 @@ class PermNet(nn.Module):
         self.ptr = Pointer(self.enc.d, c_temp, ptr_norm, ptr_center)
         self.critic = Critic(d, n_head, n_layer, n_types, type_embed)
 
-    def logits(self, o):
+    def logits(self, o, center=None):
         x, xbar, _ = self.enc([o["c"], o["b"]], [o["c_mask"], o["b_mask"]],
                               [o["c_type"], o["b_type"]], pos_on={1})
         nb = o["b"].shape[1]
         # a (C, B) dict built by hand -- the `approx` bootstrap -- may carry no
         # `b_pick`, and then every observable item is selectable, as before
-        return self.ptr(xbar, x[:, -nb:], o.get("b_pick", o["b_mask"]))
+        return self.ptr(xbar, x[:, -nb:], o.get("b_pick", o["b_mask"]), center)
 
     def value(self, o):
         return self.critic(o)

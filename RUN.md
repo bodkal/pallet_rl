@@ -126,6 +126,47 @@ still loads — `evaluate.load_nets` pads its narrow projections with zeros,
 which is the identity on the features it was trained with, and leaves the type
 embedding at its fresh initialisation.
 
+### White towers (w), under every box-type rule
+
+A white box (type 1) that rests on white must have at least the base of the
+small white box resting on the boxes below: `mixed_white_support_cm`,
+45 × 27 cm, which is 12 × 8 cells after the padding. A white box smaller
+than that needs all of its own base. This keeps white towers from shifting.
+A 12 × 8 white needs its whole base, and a longer 13 × 8 white may hang by
+one cell. Resting fully across two white boxes is allowed.
+
+- It applies under every `type_rule` (touch, column, mixed touch, mixed
+  column), and with `type_constraint: 0` too.
+- It comes on top of `min_support`, which every box still needs.
+- "On white" is read the way the type rule reads "on": what the box rests on
+  under touch, or anything under its footprint under column and mixed column.
+- When it leaves a white box no place at all (in any orientation, the arm
+  included), that box falls back to `min_support` alone, the same way blue
+  towers (b) do. Soft mix's last resort lifts it too.
+- Switch it with `--white_support 0/1` and set the size with
+  `--white_support_cm L W`, on `train` and `evaluate`. In the game, it's the
+  "white towers (w)" checkbox and the "small white" field in every settings
+  panel. `mixed_white_support_cm: null` in the config turns it off by default.
+
+### Blue towers (b), under every box-type rule
+
+A blue box (type 0) that rests on blue must rest on it with all of its base:
+every cell of its footprint at the height it lands at. Resting fully across
+two blue boxes is allowed. This keeps blue towers from shifting. It used to
+be part of the mixed rules only; now it holds the same way under every
+`type_rule`, and with `type_constraint: 0` too.
+
+- "On blue" is read as for (w): what the box rests on under touch, anything
+  under its footprint under column and mixed column.
+- When it leaves a blue box no place at all, that box falls back to
+  `min_support` alone. Soft mix's last resort lifts it too.
+- Off, blue on blue needs only `min_support` under every rule, the mixed
+  rules included, and the small blue box that rule (d) asks about is placed
+  on `min_support` too.
+- Switch it with `--blue_support 0/1` on `train` and `evaluate`
+  (`blue_support: 1` in the config). In the game, it's the "blue towers (b)"
+  checkbox in every settings panel.
+
 ### Stack height over small boxes
 
 A small box carries only a short stack, which is the cell's own rule (the C++
@@ -698,6 +739,9 @@ comparable to another trained with the same ones.
 | `--type_constraint` | `1` | `0` keeps `type_id` in the state but lets any box be stacked on any other |
 | `--type_rule` | `touch` | `touch`: a box may not rest on a foreign type; `column`: nor be anywhere over one, at any depth; `mixed_touch` / `mixed_column`: the cell's blue / white / brown rules on either reading (section 0a) |
 | `--soft_mix` | `0` | `1` under the mixed rules: a box's own fallback onto another type becomes the station's last resort, brown on blue gets one too, and (c) is dropped (section 0a) |
+| `--white_support` | `1` | `1`, under any box-type rule: white on white needs at least the small white box's base resting (w), else only as a fallback, so white towers don't shift; `0` turns it off (section 0a) |
+| `--white_support_cm L W` | `45 27` | the small white box of (w), in cm, padded and rounded like a box of the data (45 × 27 → 12 × 8 cells) |
+| `--blue_support` | `1` | `1`, under any box-type rule: blue on blue needs all of its base resting on blue (b), else only as a fallback, so blue towers don't shift; `0` leaves it `min_support` alone, mixed rules too (section 0a) |
 | `--outline_resort` | `0` | `1` under the mixed rules: when every other step leaves nothing, the same rules again over every point on a box's or the pallet's outline (section 0a) |
 | `--outline_when` | `station` | when the outline step opens: `station`, once no box within reach has a place; `box`, for each box that has none |
 | `--outline_area` | `outline` | where the outline step looks: `outline`, the outline points; `all`, every cell of the grid |
@@ -727,7 +771,7 @@ comparable to another trained with the same ones.
 | `--width` / `--heads` / `--layers` | `128` / `1` / `1` | the transformer, shared by all three networks. The paper's size is 64/1/1 (65k parameters each) |
 | `--c_temp` | `10.0` | pointer-head temperature `c` of Eq. 28 |
 | `--ptr_norm` | `3.0` | bounds the score inside Eq. 28's tanh to `ptr_norm * cos(q, k)`; `0` is the paper's unbounded `q·k/√d`, which can saturate (every candidate the same logit, no gradient, a policy that stops learning). Checkpoints from before the flag load and resume with `0`. The log's `pack_sat` / `mix_sat` is the share of saturated candidates, and training warns when it passes 90% |
-| `--ptr_center` | `0` | `1` subtracts the mean over the live candidates from the pointer score before the tanh. It removes the score every candidate shares -- what saturated the 256-wide selector -- and leaves the differences between candidates as they are, so unlike `--ptr_norm` it does not cap how sharp a choice can get. Use with `--ptr_norm 0`. Checkpoints from before the flag load and resume with `0` |
+| `--ptr_center` | `0` | `1` subtracts the mean over the live candidates from the pointer score before the tanh. It removes the score every candidate shares -- what saturated the 256-wide selector -- and leaves the differences between candidates as they are, so unlike `--ptr_norm` it does not cap how sharp a choice can get. `2` subtracts the max instead: the mean does not stop candidates that are spread far apart from saturating together (the w128/l1 `column` selector scored brown ~240 below blue/white, tying every blue/white box at `+c`), while at the max the best candidate sits where the tanh is steepest and the top of the ranking is never tied. The centering holds no weights, so the game's *pointer centering (agent)* field (setup and recalculate) plays any checkpoint under 0 / 1 / 2 without retraining; *as trained* is the default. Use with `--ptr_norm 0`. Checkpoints from before the flag load and resume with `0` |
 | `--type_embed` | `16` | width of the trainable box-type embedding, concatenated onto every node's physical features before its element-wise projection |
 
 **Logging and checkpoints** (`run:`)
@@ -767,6 +811,9 @@ Defaults from the `eval:` section, plus `env:` for `--rot` / `--min_support`.
 | `--type_constraint` | `1` | `0` scores the policy with the stacking rule lifted |
 | `--type_rule` | `touch` | `column` scores it with no box allowed anywhere over a foreign type, `mixed_touch` / `mixed_column` under the cell's blue / white / brown rules; **match the policy's** |
 | `--soft_mix` | `0` | `1` scores it with the mixed rules' soft mix: mixes only as the station's last resort; **match the policy's** |
+| `--white_support` | `1` | `1` scores it with white towers (w), under any box-type rule: white on white needs the small white's base; **match the policy's** |
+| `--white_support_cm L W` | `45 27` | the small white box of (w), in cm |
+| `--blue_support` | `1` | `1` scores it with blue towers (b), under any box-type rule: blue on blue needs all of its base; **match the policy's** |
 | `--outline_resort` / `--outline_when` / `--outline_area` | `0` / `station` / `outline` | score it with the mixed rules' outline step after every other; **match the policy's** |
 | `--seed` | `0` | which instances the β subsets pick |
 | `--out` | — | write the metrics to this JSON path |

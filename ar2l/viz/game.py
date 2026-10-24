@@ -86,8 +86,8 @@ import numpy as np
 from .. import pack_collision as PC
 from ..config import CFG
 from ..env import (BPPBatch, MIXED_RULES, OUTLINE_AREA, OUTLINE_WHEN,
-                   TYPE_FLOOR, TYPE_RULES, sample_items, stack_allowance,
-                   type_classes)
+                   TYPE_FLOOR, TYPE_RULES, WHITE_SUPPORT_CM, sample_items,
+                   stack_allowance, type_classes)
 from ..orders import (ROUNDING, box_divisor, load_orders, orders_bin,
                       randomize_order)
 from . import agents as A
@@ -112,12 +112,15 @@ CLI: dict = {}
 GAME_KEYS = ('bin', 'n_items', 'size_lo', 'size_hi', 'nb', 'n_pick',
              'max_l', 'rot', 'ems', 'stability', 'min_support',
              'n_types', 'type_constraint', 'type_rule', 'soft_mix',
+             'white_support', 'white_support_cm', 'blue_support',
              'outline_resort', 'outline_when', 'outline_area', 'arm_collision',
              'stack_cap', 'stack_cap_types', 'stack_cap_side_cm', 'stack_cap_allow_cm',
-             'base_x_moves')
-#: what a run does not record, so there is nothing to compare it on
+             'base_x_moves', 'ptr_center')
+#: what a run does not record, so there is nothing to compare it on.  The
+#: pointer centering is recorded, but its field defaults to -1, "as trained",
+#: which is never a drift
 UNRECORDED = ('base_x_moves', 'stack_cap_types', 'stack_cap_side_cm',
-              'stack_cap_allow_cm')
+              'stack_cap_allow_cm', 'ptr_center')
 TRIPLES = ('bin', 'size_lo', 'size_hi')
 
 #: where the boxes come from: the generator, or a file of real pallets and how
@@ -219,6 +222,10 @@ def defaults():
          'type_constraint': int(e['type_constraint']),
          'type_rule': str(e.get('type_rule', 'touch')),
          'soft_mix': int(e.get('soft_mix', 0)),
+         'white_support': int(e.get('mixed_white_support_cm') is not None),
+         'white_support_cm': [float(v) for v in
+                              e.get('mixed_white_support_cm') or WHITE_SUPPORT_CM],
+         'blue_support': int(e.get('blue_support', 1)),
          'outline_resort': int(e.get('outline_resort', 0)),
          'outline_when': str(e.get('outline_when', 'station')),
          'outline_area': str(e.get('outline_area', 'outline')),
@@ -227,7 +234,11 @@ def defaults():
          'stack_cap_types': [int(t) for t in e['stack_cap_types'] or []],
          'stack_cap_side_cm': [float(v) for v in e['stack_cap_side_cm']],
          'stack_cap_allow_cm': [float(v) for v in e['stack_cap_allow_cm']],
-         'base_x_moves': PC.base_x_moves(CFG['robot'])}
+         'base_x_moves': PC.base_x_moves(CFG['robot']),
+         # how the raced run's packer and picker centre their pointer scores
+         # (`Pointer`: 0 off, 1 mean, 2 max); -1 plays them as trained.  It
+         # holds no weights, so it can be moved without retraining
+         'ptr_center': -1}
     ev = CFG['eval']
     p.update({'source': 'orders' if t.get('data') else 'random',
               'data': str(t.get('data') or ''),
@@ -279,12 +290,17 @@ def run_params(spec):
     a = info['args']
     for k in ('n_items', 'max_l', 'rot', 'ems', 'stability', 'min_support',
               'nb', 'n_types', 'type_constraint', 'type_rule', 'soft_mix',
+              'white_support', 'white_support_cm', 'blue_support',
               'outline_resort', 'outline_when', 'outline_area', 'arm_collision',
               'stack_cap'):
         if a.get(k) is not None:
             p[k] = a[k]
     # a run from before --type_rule existed was trained under `touch`, and
-    # one from before --soft_mix, --outline_resort or --outline_area without it
+    # one from before --soft_mix, --outline_resort or --outline_area without it;
+    # one from before --white_support is played with the default, (w) on at
+    # the config's size, and one from before --blue_support with (b) on, the
+    # mixed rules' own then -- they only drop candidates, so the policy still
+    # reads the board it learned
     if a.get('type_rule') is None:
         p['type_rule'] = 'touch'
     if a.get('soft_mix') is None:
@@ -377,8 +393,11 @@ def validate(raw):
     p['type_constraint'] = whole('type_constraint', 0, 1, 'stacking rule')
     p['arm_collision'] = whole('arm_collision', 0, 1, 'robot-arm filter')
     p['soft_mix'] = whole('soft_mix', 0, 1, 'soft mix')
+    p['white_support'] = whole('white_support', 0, 1, 'white towers (w)')
+    p['blue_support'] = whole('blue_support', 0, 1, 'blue towers (b)')
     p['outline_resort'] = whole('outline_resort', 0, 1, 'outline step')
     p['stack_cap'] = whole('stack_cap', 0, 1, 'stack-height limit')
+    p['ptr_center'] = whole('ptr_center', -1, 2, 'pointer centering')
 
     def numbers(k, what, cast=float):
         """A list typed as "12, 30" (or sent as a list), as `cast`s."""
@@ -391,6 +410,12 @@ def validate(raw):
             err.append(f'{what}: expected numbers, got {v!r}')
             return p[k]
 
+    wcm = numbers('white_support_cm', 'small white (cm)')
+    if len(wcm) != 2 or not all(v > 0 for v in wcm):
+        err.append(f'small white (cm): give its length and width, both '
+                   f'above 0, got {wcm}')
+    else:
+        p['white_support_cm'] = wcm
     types = numbers('stack_cap_types', 'limited box types', int)
     # a type the boxes never carry simply never sets a limit, as in the env
     if any(t < 0 for t in types):
@@ -697,6 +722,30 @@ def type_blocked(env, z, odims, fallback=False, soft=False):
         env.ems = ems
 
 
+def blue_blocked(env, z, odims, fallback=False, soft=False):
+    """(R, S, S) the placements (b) rejects, under any `type_rule`: a blue box
+    on blue with less than all of its base resting.  Nothing where the box
+    goes by its own fallback or soft mix's last resort, which lift it."""
+    if fallback or soft or not env._blue_on():
+        return np.zeros(z.shape, bool)
+    t = env.head_item()[1]
+    return np.stack([~np.broadcast_to(
+        env._blue_ok(np.asarray(d)[None], zr[None], t), (1,) + zr.shape)[0]
+        for d, zr in zip(odims, z)])
+
+
+def white_blocked(env, z, odims, fallback=False, soft=False):
+    """(R, S, S) the placements (w) rejects, under any `type_rule`: a white box
+    on white with less than the small white's base resting.  Nothing where the
+    box goes by its own fallback or soft mix's last resort, which lift it."""
+    if fallback or soft or not env._white_on():
+        return np.zeros(z.shape, bool)
+    t = env.head_item()[1]
+    return np.stack([~np.broadcast_to(
+        env._white_ok(np.asarray(d)[None], zr[None], t), (1,) + zr.shape)[0]
+        for d, zr in zip(odims, z)])
+
+
 def arm_blocked(env, free):
     """(R, S, S) the placements the robot-arm filter alone rules out."""
     if not env.arm_collision:
@@ -849,6 +898,9 @@ def stack_kw(p):
     """The type rule and stack-height limit of a parameter set, as `BPPBatch`
     (and `agents.play`) take them."""
     return dict(type_rule=p['type_rule'], soft_mix=bool(p['soft_mix']),
+                mixed_white_support=bool(p['white_support']),
+                mixed_white_support_cm=p['white_support_cm'],
+                blue_support=bool(p['blue_support']),
                 outline_resort=bool(p['outline_resort']),
                 outline_when=p['outline_when'],
                 outline_area=p['outline_area'],
@@ -1013,8 +1065,10 @@ def board(st):
     nfree = int(free.sum())
     mixed = (env.type_rule in MIXED_RULES and env.type_constraint
              and env.n_types > 1)
-    fallback, soft = (free_rules(env) if mixed and not env.done[0]
-                      else (False, False))
+    # (b) and (w) give a box a fallback of its own under any rule
+    fallback, soft = (free_rules(env) if (mixed or env._blue_on()
+                                          or env._white_on())
+                      and not env.done[0] else (False, False))
     # the packer's candidates, by the env's own filter: from the outline step?
     outline = bool(mixed and not env.done[0] and env.outline()[0])
     return {
@@ -1043,6 +1097,11 @@ def board(st):
                    'outline_when': env.outline_when,
                    'outline_area': env.outline_area}
                   if mixed else None),
+        # (w), under any rule: the small white in cells and in cm
+        'white': ({'cells': list(env.small_white),
+                   'cm': list(env.small_white_cm or ())}
+                  if env._white_on() else None),
+        'blue': bool(env._blue_on()),                # (b), under any rule
         'arm_collision': bool(env.arm_collision),
         'floor_type': int(TYPE_FLOOR),
         'item': item[:3].tolist(),
@@ -1051,6 +1110,10 @@ def board(st):
         'free': free.astype(np.uint8).tolist(),      # everything you may click
         'armblock': arm_blocked(env, free).astype(np.uint8).tolist(),
         'typeblock': type_blocked(env, z, odims, fallback,
+                                  soft).astype(np.uint8).tolist(),
+        'whiteblock': white_blocked(env, z, odims, fallback,
+                                    soft).astype(np.uint8).tolist(),
+        'blueblock': blue_blocked(env, z, odims, fallback,
                                   soft).astype(np.uint8).tolist(),
         'zmap': z.astype(int).tolist(),
         'ncand': k,
@@ -1166,7 +1229,7 @@ def new_game(seed, attacker_spec, params, human_pick=True, opp_spec=None):
     # run's own picker scores the boxes in reach
     if opp_spec:
         try:
-            st['pol'] = A.load_policy(opp_spec, DEVICE)[0]
+            st['pol'] = A.load_policy(opp_spec, DEVICE, p['ptr_center'])[0]
             if att is None:
                 st['picker'], st['plabel'] = opp_permuter(st, opp_spec)
         except Exception:
@@ -1182,7 +1245,7 @@ def new_game(seed, attacker_spec, params, human_pick=True, opp_spec=None):
     return gid, st
 
 
-def opp_permuter(st, spec, n_pick=None):
+def opp_permuter(st, spec, n_pick=None, ptr_center=None):
     """Who chooses the agent's box: the attacker, or its own selector.
 
     A `select` run is trained *with* a permuter that hands it one of the `k`
@@ -1193,6 +1256,7 @@ def opp_permuter(st, spec, n_pick=None):
     `n_pick` is the reach of the replay being set up rather than the session's,
     because a recalculation may have changed it: a select run recalculated down
     to k = 1 has nothing left to select, and must not be handed its mixer.
+    `ptr_center` is the replay's too, for the same reason.
     """
     if st['att'] is not None:
         return st['att'], st['alabel']
@@ -1201,7 +1265,9 @@ def opp_permuter(st, spec, n_pick=None):
         run = spec.split(':')[1]
         info = A.run_info(run)
         if info and info['args'].get('algo') == 'select' and k > 1:
-            fn, lab, _ = A.load_attacker(f'mix:{run}', DEVICE)
+            c = (st['p'].get('ptr_center', -1) if ptr_center is None
+                 else ptr_center)
+            fn, lab, _ = A.load_attacker(f'mix:{run}', DEVICE, c)
             return fn, lab
     return None, None
 
@@ -1217,8 +1283,8 @@ def hand_over(st, spec, p, seq=None):
     replaces the stream when a recalculation re-read it at another padding.
     """
     seq = st['seq'] if seq is None else seq
-    policy, label, _ = A.load_policy(spec, DEVICE)
-    perm, plabel = opp_permuter(st, spec, p['n_pick'])
+    policy, label, _ = A.load_policy(spec, DEVICE, p['ptr_center'])
+    perm, plabel = opp_permuter(st, spec, p['n_pick'], p['ptr_center'])
     t0 = time.time()
     ep = A.play(seq, policy, perm, **play_kw(p))
     return {'label': label, 'util': ep['util'], 'items': ep['items'],
@@ -1355,7 +1421,8 @@ def track(st, side):
             raise ValueError('that recalculation is no longer kept')
         spec, p, out, seq = row
         key = f'r:{side}'
-    return {'key': key, 'p': p, 'seq': seq, 'pol': A.load_policy(spec, DEVICE)[0],
+    return {'key': key, 'p': p, 'seq': seq,
+            'pol': A.load_policy(spec, DEVICE, p.get('ptr_center'))[0],
             'steps': [{'prom': 0, 'pick': w['pick'], 'act': a}
                       for w, a in zip(out['windows'], out['taken'])],
             'prom': 0, 'placed': out['placed']}
@@ -1404,10 +1471,11 @@ def replay(st, tr, n):
 
 
 def turned_down(env, feas, z, odims):
-    """[[x, y, z, r]] every position the packer's action space offers the item
-    in front that the rules turn down -- the stability rule, the box-type
+    """[[x, y, z, r, why]] every position the packer's action space offers the
+    item in front that the rules turn down -- the stability rule, the box-type
     rule, the stack-height limit, the robot arm, the lid.  With `ems` 0 that
-    is every cell the footprint fits in."""
+    is every cell the footprint fits in.  `why` is the rule, as `down_why`
+    names it."""
     late = bool(env._pos_ol[0])                 # the outline step's positions
     item = env.head_item()[0][0]
     gx, gy = np.arange(env.Lx)[:, None], np.arange(env.Ly)[None, :]
@@ -1420,7 +1488,42 @@ def turned_down(env, feas, z, odims):
         space &= (gx + int(d[0, 0]) <= env.Lx) & (gy + int(d[0, 1]) <= env.Ly)
         xs, ys = np.nonzero(space & ~feas[0, r])
         out += [[int(x), int(y), int(z[0, r, x, y]), r] for x, y in zip(xs, ys)]
+    if out:
+        why = down_why(env, z[0].copy(), odims[0].copy())
+        for p in out:
+            p.append(why(*p))
     return out
+
+
+def down_why(env, z, odims):
+    """`why(x, y, z, r)`: the rule that turns the item in front down there,
+    in the order the Play tab's hover note asks them -- 'arm', 'lid', 'cap'
+    (the stack-height limit), 'white' (w), 'blue' (b), 'type', and 'support'
+    for what is left: it would not rest stably."""
+    mixed = (env.type_rule in MIXED_RULES and env.type_constraint
+             and env.n_types > 1)
+    fallback, soft = (free_rules(env) if mixed or env._blue_on()
+                      or env._white_on() else (False, False))
+    # resting there with the arm lifted: only the arm stands in the way
+    arm = (free_positions(env, arm=False) if env.arm_collision
+           else np.zeros(z.shape, bool))
+    cap = (np.stack([np.broadcast_to(
+               env._cap_ok(np.asarray(d)[None], zr[None]), (1,) + zr.shape)[0]
+               for d, zr in zip(odims, z)])
+           if env.stack_cap else np.ones(z.shape, bool))
+    typ = type_blocked(env, z, odims, fallback, soft)
+    wht = white_blocked(env, z, odims, fallback, soft)
+    blu = blue_blocked(env, z, odims, fallback, soft)
+
+    def why(x, y, zz, r):
+        return ('arm' if arm[r, x, y]
+                else 'lid' if zz + int(odims[r, 2]) > env.Lz
+                else 'cap' if not cap[r, x, y]
+                else 'white' if wht[r, x, y] and not typ[r, x, y]
+                else 'blue' if blu[r, x, y] and not typ[r, x, y]
+                else 'type' if typ[r, x, y]
+                else 'support')
+    return why
 
 
 def points(st, side, n, i):
@@ -1472,8 +1575,8 @@ def exp_params(raw):
 
 #: what the experiment's form carries, and so what drift is judged on there
 EXP_KEYS = ('nb', 'n_pick', 'max_l', 'rot', 'ems', 'stability', 'min_support',
-            'type_constraint', 'type_rule', 'soft_mix', 'outline_resort',
-            'outline_when', 'outline_area', 'arm_collision', 'stack_cap',
+            'type_constraint', 'type_rule', 'soft_mix', 'white_support',
+            'white_support_cm', 'blue_support', 'outline_resort', 'outline_when', 'outline_area', 'arm_collision', 'stack_cap',
             'pallet_cm',
             'box_pad_m', 'box_scale', 'box_round')
 

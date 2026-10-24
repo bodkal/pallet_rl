@@ -71,7 +71,8 @@ class Progress:
             self.bar.close()
 
 from .config import CFG, load as load_config
-from .env import BPPBatch, OUTLINE_AREA, OUTLINE_WHEN, TYPE_RULES
+from .env import (BPPBatch, OUTLINE_AREA, OUTLINE_WHEN, TYPE_RULES,
+                  WHITE_SUPPORT_CM)
 from .evaluate import attack_score, nominal_score
 from .orders import add_cm_args, load_orders, orders_bin
 from .heuristics import act as heur_act
@@ -285,6 +286,9 @@ def make_env(args, seed, pool=None):
                     n_types=args.n_types,
                     type_constraint=bool(args.type_constraint),
                     type_rule=args.type_rule, soft_mix=bool(args.soft_mix),
+                    mixed_white_support=bool(args.white_support),
+                    mixed_white_support_cm=args.white_support_cm,
+                    blue_support=bool(args.blue_support),
                     outline_resort=bool(args.outline_resort),
                     outline_when=args.outline_when,
                     outline_area=args.outline_area,
@@ -345,7 +349,7 @@ def build(args, device):
 # The pointer-score options, as (flag, Pointer attribute, type).  They hold no
 # weights, so a checkpoint loads under any of them; a run trained before one
 # existed was trained with 0.
-PTR_MODE = (("ptr_norm", "norm", float), ("ptr_center", "center", bool))
+PTR_MODE = (("ptr_norm", "norm", float), ("ptr_center", "center", int))
 
 
 def train(args):
@@ -577,6 +581,9 @@ def train(args):
                       type_constraint=bool(args.type_constraint),
                       type_rule=args.type_rule,
                       soft_mix=bool(args.soft_mix),
+                      white_support=bool(args.white_support),
+                      white_support_cm=args.white_support_cm,
+                      blue_support=bool(args.blue_support),
                       outline_resort=bool(args.outline_resort),
                       outline_when=args.outline_when,
                       outline_area=args.outline_area,
@@ -768,12 +775,14 @@ def get_parser():
                    help="bound the pointer score inside Eq. 28's tanh to "
                         "ptr_norm * cos(q, k); 0 = the paper's unbounded "
                         "q.k/sqrt(d), which can saturate and stop learning")
-    p.add_argument("--ptr_center", type=int, choices=(0, 1),
+    p.add_argument("--ptr_center", type=int, choices=(0, 1, 2),
                    default=m.get("ptr_center", 0),
                    help="1 subtracts the mean over the live candidates from "
                         "the pointer score before the tanh: the softmax is "
                         "unchanged up to the tanh, but a score shared by every "
-                        "candidate can no longer saturate it")
+                        "candidate can no longer saturate it.  2 subtracts the "
+                        "max instead, so the best candidate sits where the tanh "
+                        "is steepest and the top choices are never tied")
     p.add_argument("--init", default=None, help="start a new run from this checkpoint's weights (packer, "
                         "selector, attacker); iterations and optimiser start fresh")
     p.add_argument("--freeze_pack", action="store_true",
@@ -823,6 +832,24 @@ def get_parser():
                    help="1 under the mixed rules: a box's own fallback "
                         "onto another type becomes the station's last resort, "
                         "brown on blue gets one too, (c) is dropped")
+    p.add_argument("--white_support", type=int, choices=(0, 1),
+                   default=int(e.get("mixed_white_support_cm") is not None),
+                   help="1, under any box-type rule: white on white rests "
+                        "on at least the small white's base "
+                        "(mixed_white_support_cm), else only as a fallback "
+                        "-- a white tower does not shift (w)")
+    p.add_argument("--white_support_cm", type=float, nargs=2,
+                   metavar=("L", "W"),
+                   default=list(e.get("mixed_white_support_cm")
+                                or WHITE_SUPPORT_CM),
+                   help="the small white box of (w), length and width in "
+                        "cm, padded and rounded like a box of the data")
+    p.add_argument("--blue_support", type=int, choices=(0, 1),
+                   default=int(e.get("blue_support", 1)),
+                   help="1, under any box-type rule: blue on blue rests "
+                        "on blue with all of its base, else only as a "
+                        "fallback -- a blue tower does not shift (b); 0: "
+                        "min_support alone")
     p.add_argument("--outline_resort", type=int, choices=(0, 1),
                    default=e.get("outline_resort", 0),
                    help="1 under the mixed rules: when every other step "

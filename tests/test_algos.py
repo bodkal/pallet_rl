@@ -183,6 +183,46 @@ def test_pointer_center_revives_the_state_eq28_dies_in():
     assert lg.std(-1).min() > 0.1                 # not one logit for all
 
 
+def test_pointer_center_max_breaks_the_tie_a_spread_makes():
+    """The w128/l1 selector's state: two groups of candidates far apart.
+    Centred on the mean, every candidate of the upper group lands past tanh's
+    range and they tie at +c; centred on the max, the best of them sits at 0
+    and its rivals keep their order and a gradient.  Masked slots never set
+    the max."""
+    from ar2l.model import Pointer
+    p = Pointer(d=1, c_temp=10.0, norm=0.0, center=1)
+    with torch.no_grad():
+        p.q.weight.fill_(1.0); p.q.bias.zero_()
+        p.k.weight.fill_(1.0); p.k.bias.zero_()
+    xbar = torch.ones(1, 1)
+    nodes = torch.tensor([[-37.0, -38.0, -39.0, -270.0, 500.0]])[..., None]
+    mask = torch.tensor([[True, True, True, True, False]])
+    tied = p(xbar, nodes, mask)[0, :3]
+    assert torch.allclose(tied, tied[0].expand(3), atol=1e-4)
+    p.center = 2
+    lg = p(xbar, nodes, mask)
+    assert lg[0, 0] == 0.0 and lg[0, 0] > lg[0, 1] + 5 > lg[0, 2] + 5
+    assert lg[0, 3] < -9.9
+    lg[0, 1].backward()
+    assert p.k.weight.grad.abs().item() > 1e-3
+
+
+def test_pointer_center_per_call_overrides_without_touching_the_net():
+    """A viewer plays a shared, cached net under another centering: the call's
+    `center` must give what a net built with it gives, and leave the net's own."""
+    torch.manual_seed(0)
+    from ar2l.model import Pointer
+    xbar, nodes = torch.randn(3, 16), torch.randn(3, 6, 16)
+    mask = torch.ones(3, 6, dtype=torch.bool)
+    mask[:, 4:] = False
+    p = Pointer(d=16, c_temp=10.0, norm=0.0, center=1)
+    for c in (0, 1, 2):
+        ref = Pointer(d=16, c_temp=10.0, norm=0.0, center=c)
+        ref.load_state_dict(p.state_dict())
+        assert torch.equal(p(xbar, nodes, mask, center=c), ref(xbar, nodes, mask))
+    assert p.center == 1
+
+
 def test_checkpoints_without_ptr_center_load_uncentred(tmp_path):
     from ar2l.evaluate import load_nets
     kw = dict(d=32, n_head=1, n_layer=1, n_types=3, type_embed=16)
