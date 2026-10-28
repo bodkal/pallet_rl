@@ -391,7 +391,12 @@ details.cf>summary b{font-size:14px}
 #ptpop b{font-family:ui-monospace,monospace;font-weight:600}
 #ptpop .ph{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
 #ptpop .d{color:var(--dim);font-size:11px}
-#ptpop hr{border:0;border-top:1px solid var(--line);margin:6px 0}
+#ptpop .pt{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:4px}
+#ptpop .nav{margin-left:auto;display:flex;gap:3px}
+#ptpop .nav button{padding:0 8px;font-size:14px;line-height:20px;border-radius:5px}
+#ptpop .pe{border-top:1px solid var(--line);padding:5px 6px;margin:0 -6px;border-radius:6px}
+#ptpop .pe[data-k]{cursor:pointer}
+#ptpop .pe.on{background:color-mix(in srgb,var(--c1) 16%,transparent);border-top-color:transparent}
 #ttip b{font-family:ui-monospace,monospace;font-weight:600}
 #ttip .d{color:var(--dim);margin-top:4px;font-size:11px}
 :root{--tr:#279cc4;--ho:#c2850a}
@@ -472,6 +477,52 @@ details.cf>summary b{font-size:14px}
   background:color-mix(in srgb,var(--ho) 10%,transparent)}
 .tlead button.none{opacity:.55;border-style:dashed}
 .tlead button .its{opacity:.8;padding-left:6px;border-left:1px solid var(--line)}
+/* the hall of fame: three wide tiles, gold - silver - bronze */
+:root{--au:#f5c542;--ag:#c4ccd8;--cu:#d98b4e}
+:root[data-theme=light]{--au:#d9a514;--ag:#9aa4b2;--cu:#b8693a}
+#tfame{margin-bottom:12px;padding:10px 14px;position:relative;overflow:hidden}
+#tfame h2{margin-bottom:8px}
+.fpod{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:8px}
+.fpod+.fk{margin-top:8px}
+.fk{color:var(--dim);font-size:10px;text-transform:uppercase;letter-spacing:.55px;margin-bottom:4px}
+.fsp{display:grid;grid-template-columns:auto minmax(0,1fr);gap:1px 9px;align-items:center;min-width:0;
+  padding:6px 10px;border-radius:9px;cursor:pointer;--m:var(--cu);
+  border:1px solid color-mix(in srgb,var(--m) 45%,var(--line));
+  background:linear-gradient(90deg,color-mix(in srgb,var(--m) 16%,transparent),transparent 70%);
+  position:relative;overflow:hidden;animation:xin .45s both}
+.fsp.p1{--m:var(--au)} .fsp.p2{--m:var(--ag);animation-delay:.08s} .fsp.p3{animation-delay:.16s}
+.fsp.p1::after{content:'';position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(105deg,transparent 40%,color-mix(in srgb,var(--au) 30%,transparent) 50%,transparent 60%) no-repeat;
+  background-size:250% 100%;animation:xsheen 3.5s ease-in-out 1s infinite}
+.fsp:hover{border-color:var(--m)}
+.fsp .md{grid-row:1/3;font-size:20px;line-height:1}
+.fsp.p1 .md{animation:fbob 2.4s ease-in-out infinite}
+.fsp .nm{font-family:ui-monospace,monospace;font-weight:600;font-size:11px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.fsp .sc{grid-column:2;color:var(--dim);font-size:11px;font-variant-numeric:tabular-nums;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fsp .sc b{font-size:14px;font-weight:700;color:var(--m)}
+.fbtn{padding:1px 9px;font-size:10.5px;border-radius:7px;text-transform:none;letter-spacing:0;font-weight:500}
+#tfame.more .fbtn{color:var(--c0);border-color:var(--c0)}
+.fsp .ds{grid-column:2;color:var(--dim);font-size:10.5px;font-variant-numeric:tabular-nums;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:none}
+#tfame.more .fsp .ds{display:grid;grid-template-columns:auto minmax(0,1fr);gap:1px 12px;
+  margin:6px 0 2px;padding-top:6px;border-top:1px solid color-mix(in srgb,var(--m) 30%,var(--line))}
+.fsp .ds dd{margin:0;color:var(--fg);font-weight:600}
+#tfame.more .fsp{align-items:start}
+#tfame.more .fsp :is(.nm,.sc,.ds){white-space:normal;overflow:visible;overflow-wrap:anywhere}
+#tfame.more .fsp .md{grid-row:1/3}
+.fsp .tg{font-size:9px;padding:0 5px;border-radius:6px;margin-right:5px;border:1px solid var(--line);color:var(--dim)}
+.fsp .tg.live{color:var(--c2);border-color:color-mix(in srgb,var(--c2) 50%,var(--line))}
+.fsp .tg.live::before{content:'';display:inline-block;width:5px;height:5px;border-radius:50%;
+  background:var(--c2);margin-right:3px;vertical-align:1px;animation:xbeat 1.6s ease-in-out infinite}
+.fsp.empty{opacity:.4;cursor:default;border-style:dashed;background:none}
+.fmore{margin-top:5px;font-size:10.5px}
+.fconf{position:absolute;top:-10px;width:5px;height:8px;border-radius:1px;pointer-events:none;
+  animation:fdrop var(--d) cubic-bezier(.25,.6,.5,1) forwards}
+@keyframes fbob{50%{transform:translateY(-2px) rotate(-6deg)}}
+@keyframes fdrop{to{transform:translate(var(--x),150px) rotate(var(--r));opacity:0}}
+@media(prefers-reduced-motion:reduce){#tfame *,#tfame *::after,#tfame *::before{animation:none!important}}
 .chip.rk.lead{color:var(--ho);border-color:color-mix(in srgb,var(--ho) 55%,transparent);font-weight:600}
 .tjob pre{font:11px/1.4 ui-monospace,monospace;color:var(--dim);max-height:260px;overflow:auto;
   background:var(--bg);border-radius:8px;padding:8px;margin:6px 0 0;white-space:pre-wrap}
@@ -1324,6 +1375,11 @@ details.cf>summary b{font-size:14px}
     <h2><span class="live"></span>Machine load &mdash; live, whole machine</h2>
     <div class="sysg" id="tsysg"><div class="sub" id="tsysmsg">reading&hellip;</div></div>
   </div>
+  <div class="card" id="tfame" hidden>
+    <h2 class="row">Hall of fame &mdash; best held-out ever, every run<span class="spacer"></span>
+      <button id="tfmore" type="button" class="fbtn" title="show or hide each run's train util, size and settings">Details &#9662;</button></h2>
+    <div id="tfameb"></div>
+  </div>
   <div class="card" id="tjobcard" hidden>
     <h2>Runs started from this server &mdash; full loss curves in the Training tab</h2>
     <div id="tlead" hidden></div>
@@ -1339,7 +1395,7 @@ details.cf>summary b{font-size:14px}
     <div class="cbar" style="margin-top:10px">
       <select id="trun" style="flex:1;min-width:220px" title="a run under runs/, with the settings it was trained with"></select>
       <button id="tresume" type="button" disabled title="fill the form with this run's settings, its name, and --resume ticked">Resume it</button>
-      <button id="tcopy" type="button" disabled title="fill the form with this run's settings, for a new run under a new name">Copy its settings</button>
+      <button id="tcopy" type="button" disabled title="fill the form with this run's settings and name, for a new run once the name is changed">Copy its settings</button>
     </div>
     <div class="opt" id="trunmsg"></div>
     <div id="tform"></div>
@@ -1726,18 +1782,18 @@ function drawIso(cv, boxes, L, W, H, opts){
   }
 
   // ---- the box being placed, see-through, where the pointer would drop it ----
-  if(opts.ghost){
-    const [x,y,z,l,w,h] = opts.ghost.box, t = opts.ghost.type;
+  const seeThrough = ([x,y,z,l,w,h], t, i) => {
     const xf = st>=0 ? x+l : x, yf = ct>=0 ? y+w : y;
     const faces = [[P(x,y,z+h),P(x+l,y,z+h),P(x+l,y+w,z+h),P(x,y+w,z+h)],
                    [P(xf,y,z),P(xf,y+w,z),P(xf,y+w,z+h),P(xf,y,z+h)],
                    [P(x,yf,z),P(x+l,yf,z),P(x+l,yf,z+h),P(x,yf,z+h)]];
     g.globalAlpha = .45;
-    faces.forEach((f, k) => poly(f, boxColor(t, opts.ghost.i, [1,.84,.70][k])));
+    faces.forEach((f, k) => poly(f, boxColor(t, i, [1,.84,.70][k])));
     g.globalAlpha = 1; g.setLineDash([4,3]);
     faces.forEach(f => poly(f, null, css('--fg'), 1.2));
     g.setLineDash([]);
-  }
+  };
+  if(opts.ghost) seeThrough(opts.ghost.box, opts.ghost.type, opts.ghost.i);
 
   // ---- where the next box could go: one mark per candidate corner ----
   // orientation 1 a filled dot, orientation 2 a hollow diamond a size larger,
@@ -1747,8 +1803,9 @@ function drawIso(cv, boxes, L, W, H, opts){
   // packer's own sit on top of them.  `onlyRot` (0 or 1) draws one
   // orientation's marks alone; indices into `points` stay as they were.
   // `cv._marks` keeps where each mark landed on screen, for a click to find
-  // (`pickMark`); `cv._sel` is the one picked, ringed dashed and followed by
-  // its pop-up as the view turns.
+  // (`pickMark`); `cv._sel` is the ones picked, ringed dashed and followed
+  // by their pop-up as the view turns, and `cv._selAt` the one of them a
+  // dummy of the box stands at -- wherever it is, the rules or not.
   const shown = r => opts.onlyRot == null || (r ? 1 : 0) === opts.onlyRot;
   const marks = cv._marks = [];
   const nCand = opts.points ? opts.points.length : 0;
@@ -1798,13 +1855,21 @@ function drawIso(cv, boxes, L, W, H, opts){
     }
   }
   const sel = (cv._sel || []).map(q => marks.find(m => sameMark(m, q))).filter(Boolean);
-  for(const m of sel){
+  const at = sel.length ? Math.min(cv._selAt || 0, sel.length - 1) : -1;
+  const pb = opts.pointBox;
+  if(at >= 0 && pb){
+    const m = sel[at], [l, w, h] = pb.dims;
+    seeThrough([m.x, m.y, m.z, ...(m.r ? [w, l] : [l, w]), h],
+               opts.types ? pb.type : -1, boxes.length);
+  }
+  for(const [k, m] of sel.entries()){
     g.beginPath(); g.arc(m.px, m.py, m.R*2.6, 0, 7);
     g.strokeStyle = css('--bg'); g.lineWidth = 4; g.stroke();
-    g.setLineDash([3,2]); g.strokeStyle = css('--c1'); g.lineWidth = 2; g.stroke();
+    g.setLineDash(k === at ? [] : [3,2]); g.strokeStyle = css('--c1');
+    g.lineWidth = k === at ? 2.6 : 2; g.stroke();
     g.setLineDash([]);
   }
-  markPop(cv, sel);
+  markPop(cv, sel, at, pb && pb.dims);
 
   // ---- robot arm ----
   if(ARM){
@@ -1924,7 +1989,9 @@ function bindRotate(sel){
    and the agent's probability for it.  Every mark under the click is listed
    at once -- marks that overlap on screen, and the other orientation and
    kind at the same corner -- the nearest first.  One pop-up for the page;
-   the bin that owns it moves it as the view turns. */
+   the bin that owns it moves it as the view turns.  A dummy of the box
+   stands at the point picked: the arrows, ↑/↓, or a click on an entry move
+   it between them. */
 const POP = {cv: null};
 const sameMark = (a, b) => a.ok === b.ok && a.x === b.x && a.y === b.y && a.z === b.z && a.r === b.r;
 const DOWN_WHY = {
@@ -1942,6 +2009,7 @@ function pickMark(cv, e){
     .sort((u, v) => u.d - v.d || v.m.ok - u.m.ok);
   const m = near.length ? near[0].m : null;
   if (POP.cv && POP.cv !== cv) POP.cv._sel = null;
+  cv._selAt = 0;
   // the same mark again, or empty space, closes it
   const again = m && cv._sel && sameMark(cv._sel[0], m);
   cv._sel = m && !again ? [...near.map(o => o.m), ...cv._marks.filter(q =>
@@ -1959,7 +2027,7 @@ function markHtml(m){
      : `<div><span style="color:var(--c3)">&#10007; not valid</span> &mdash; ${DOWN_WHY[m.why] || 'the rules turn it down'}</div>`
        + `<div class="d">score: none &mdash; the packer is never offered it</div>`);
 }
-function markPop(cv, sel){
+function markPop(cv, sel, at, dims){
   let el = $('#ptpop');
   if (!sel.length){
     if (POP.cv === cv){ POP.cv = null; if (el) el.hidden = true; }
@@ -1967,21 +2035,42 @@ function markPop(cv, sel){
   }
   if (!el){
     el = document.createElement('div'); el.id = 'ptpop'; document.body.appendChild(el);
+    el.addEventListener('click', e => {
+      const t = e.target.closest('[data-k],[data-step]');
+      if (t) moveDummy(t.dataset.k != null ? {to: +t.dataset.k} : {by: +t.dataset.step});
+    });
   }
   POP.cv = cv;
-  el.innerHTML = (sel.length > 1 ? `<div class="d">${sel.length} points here</div>` : '')
-    + sel.map(markHtml).join('<hr>');
+  const many = sel.length > 1;
+  el.innerHTML = `<div class="pt">${dims ? `dummy box <b>${dims.join('×')}</b>` : 'no box to stand there'}${
+      many ? ` &middot; point <b>${at + 1}</b> of ${sel.length}
+        <span class="nav"><button data-step="-1" title="the point before (↑)">&lsaquo;</button><button
+          data-step="1" title="the next point (↓)">&rsaquo;</button></span>` : ''}</div>`
+    + sel.map((m, k) => `<div class="pe${k === at ? ' on' : ''}"${many ? ` data-k="${k}"` : ''}>${markHtml(m)}</div>`)
+         .join('');
   el.hidden = false;
-  const b = cv.getBoundingClientRect(), at = sel[0];
-  const left = Math.min(b.left + at.px + 16, innerWidth - el.offsetWidth - 8);
+  const b = cv.getBoundingClientRect(), o = sel[0];      // stays put as the dummy moves
+  const left = Math.min(b.left + o.px + 16, innerWidth - el.offsetWidth - 8);
   el.style.left = (scrollX + Math.max(8, left)) + 'px';
-  el.style.top = (scrollY + b.top + at.py + 14) + 'px';
+  el.style.top = (scrollY + b.top + o.py + 14) + 'px';
+}
+function moveDummy({to, by}){
+  const cv = POP.cv, n = cv && cv._sel ? cv._sel.length : 0;
+  if (n < 2) return;
+  cv._selAt = to != null ? to : ((cv._selAt || 0) + by + n) % n;
+  redrawIsos();
 }
 function closePop(){
   if (!POP.cv) return;
   POP.cv._sel = null; markPop(POP.cv, []); redrawIsos();
 }
-addEventListener('keydown', e => { if (e.key === 'Escape') closePop(); });
+addEventListener('keydown', e => {
+  if (e.key === 'Escape') closePop();
+  else if (POP.cv && (e.key === 'ArrowUp' || e.key === 'ArrowDown')
+           && !e.target.closest('input,select,textarea')){
+    moveDummy({by: e.key === 'ArrowUp' ? -1 : 1}); e.preventDefault();
+  }
+});
 // a press anywhere but a bin or the pop-up itself closes it
 addEventListener('pointerdown', e => {
   if (POP.cv && e.target !== POP.cv && !e.target.closest('#ptpop')) closePop();
@@ -2691,6 +2780,7 @@ function viewPoints(pid, side, n, redraw){
   const i = sel && sel.side === side && sel.n === n ? sel.i : Math.max(0, win.pick);
   const own = i === win.pick && side.cands && side.cands[n];
   const v = {i, n, own: i === win.pick, left: win.pick < 0,
+             box: win.w[i], btype: win.t ? win.t[i] : -1,
              pts: own ? side.cands[n] : null,
              probs: own && side.cand_probs ? side.cand_probs[n] : null,
              taken: own && side.taken ? side.taken[n] : -1, bad: null};
@@ -2717,6 +2807,7 @@ function isoPoints(v){
   if (!v || !v.pts) return {};
   const top = topPoints(v.pts, v.probs, NTOP);
   return {points: v.pts, pointsTaken: v.taken, bad: v.bad, pointProbs: v.probs,
+          pointBox: v.box ? {dims: v.box, type: v.btype} : null,
           pointRanks: new Map(top.map((t, k) => [t.i, k + 1])),
           onlyRot: PTSROT === 'all' ? null : +PTSROT};
 }
@@ -4105,7 +4196,6 @@ async function tFromRun(resume){
   if (res.error){ $('#trunmsg').textContent = res.error; return; }
   if (($('#tcfg').value.trim() || '') !== (res.config || '')){ $('#tcfg').value = res.config || ''; await tLoad(); $('#trun').value = name; tRunPick(); }
   const v = Object.assign({}, res.values, {resume: resume});
-  if (!resume){ v.name = ''; }
   TFORM.fields.forEach(f => {
     if (!(f.dest in v)) return;
     const e = $('#tf_' + f.dest);
@@ -4113,7 +4203,7 @@ async function tFromRun(resume){
   });
   TREF = Object.assign({}, res.values, {resume: resume, name: v.name});
   TLOADED = {run: r, resume: resume};
-  if (!resume) $('#tf_name').focus();
+  if (!resume){ $('#tf_name').focus(); $('#tf_name').select(); }
   tCheck();
   return true;
 }
@@ -4124,7 +4214,7 @@ function tRunMsg(){
   const r = TLOADED.run, it = r.it.toLocaleString(), want = +$('#tf_iters').value || 0;
   const same = $('#tf_name').value.trim() === r.name && $('#tf_resume').checked;
   $('#trunmsg').textContent = !TLOADED.resume
-    ? `${r.name}'s settings, for a new run: give it a name. Set --init to one of its checkpoints to start from its weights.`
+    ? `${r.name}'s settings and name, for a new run: change the name. Set --init to one of its checkpoints to start from its weights.`
     : !same ? `No longer resuming ${r.name}: the name or --resume was changed.`
     : want <= r.it ? `${r.name} already reached iteration ${it} — raise --iters above that to train it further.`
     : `Resumes ${r.name} from last.pt at iteration ${it} and trains on to ${want.toLocaleString()}. Marked fields differ from what it was trained with.`;
@@ -4407,8 +4497,93 @@ async function tPoll(){
     if (!$('#trn').hidden) tFill(c, j); else c._j = j;
   });
   tLead(jobs);
+  if (!$('#trn').hidden && Date.now() - FAME.t > 10000) tFame();
   if (live || !$('#trn').hidden) TPOLL = setTimeout(tPoll, live ? 2000 : 5000);
 }
+/* the hall of fame: every run's best held-out eval, the top three on a
+   podium.  A new champion -- one this browser has not crowned before -- gets
+   confetti */
+const FAME = {t: 0, sig: ''};
+async function tFame(){
+  FAME.t = Date.now();
+  let gs;
+  try { gs = await fetch('/api/train/fame').then(x => x.json()); } catch (e) { return; }
+  $('#tfame').hidden = !gs.length;
+  const sig = JSON.stringify(gs);
+  if (sig === FAME.sig) return;                 // nothing new: keep the animations still
+  FAME.sig = sig;
+  const num = v => v == null ? '—' : v.toFixed(1);
+  $('#tfameb').innerHTML = gs.map(g => {
+    const top = g.runs[0], medal = ['🥇', '🥈', '🥉'];
+    const spot = k => {
+      const r = g.runs[k];
+      if (!r) return `<div class="fsp p${k + 1} empty"><span class="md">${medal[k]}</span><span class="nm">up for grabs</span></div>`;
+      const arch = r.width ? `w${r.width} h${r.heads} l${r.layers}` : r.algo;
+      const tip = `${r.name}\nbest held-out ${tPct(r.best)} at it ${r.at.toLocaleString()} `
+        + `(${r.n_evals} evals, ${r.it.toLocaleString()} / ${(r.iters || 0).toLocaleString()} it)`
+        + `\ntrain ${tPct(r.train)} · ${num(r.train_items)} boxes/pallet (the iterations up to that eval)`
+        + `\nheld-out ${tPct(r.best)} · ${num(r.held_items)} boxes/pallet`
+        + `\n${arch}${r.params ? ` · ${r.params.toLocaleString()} params` : ''} · lr ${r.lr}`
+        + (r.init ? `\nwarm-started from ${r.init}` : '');
+      return `<div class="fsp p${k + 1}" data-name="${tEsc(r.name)}" title="${tEsc(tip)}">
+        <span class="md">${medal[k]}</span>
+        <span class="nm">${tEsc(r.name)}</span>
+        <div class="sc">held-out <b>${tPct(r.best)}</b> &middot; <b>${num(r.held_items)}</b> box/pallet</div>
+        <dl class="ds">${[
+          ['status', r.running ? '<span class="tg live">training</span>' : 'stopped'],
+          ['train util', tPct(r.train)],
+          ['train boxes per pallet', num(r.train_items)],
+          ['held-out util', tPct(r.best)],
+          ['held-out boxes per pallet', num(r.held_items)],
+          ['behind first place', k ? `${(100 * Math.abs(r.best - top.best)).toFixed(1)} pt` : null],
+          ['width', r.width], ['heads', r.heads], ['layers', r.layers],
+          ['parameters', r.params ? r.params.toLocaleString() : null],
+          ['learning rate', r.lr],
+          ['best at iteration', r.at.toLocaleString()],
+          ['iterations trained', `${r.it.toLocaleString()} / ${(r.iters || r.it).toLocaleString()}`],
+          ['warm-started from', r.init ? tEsc(r.init) : null],
+          ['data', r.data ? tEsc(r.data) : null],
+          ['train pallets', r.n_train != null ? r.n_train.toLocaleString() : null],
+          ['held-out pallets', r.n_holdout != null ? r.n_holdout.toLocaleString() : null],
+        ].filter(([, v]) => v != null).map(([kk, v]) => `<dt>${kk}</dt><dd>${v}</dd>`).join('')}</dl>
+      </div>`;
+    };
+    const label = gs.length > 1 ? `<div class="fk">${tEsc(g.key)}${g.lower_better ? ' (lower wins)' : ''}</div>` : '';
+    return label + `<div class="fpod">${[0, 1, 2].map(spot).join('')}</div>`
+      + (g.n > 3 ? `<div class="sub fmore">held-out util &middot; mean boxes per pallet, at each run's best eval &middot; out of ${g.n} runs</div>` : '');
+  }).join('');
+  // confetti for a champion this browser has not seen on top yet
+  let seen = {};
+  try { seen = JSON.parse(localStorage.getItem('ar2l.champ') || '{}'); } catch (e) {}
+  const fresh = gs.filter(g => g.runs.length && seen[g.key] !== g.runs[0].name);
+  fresh.forEach(g => { seen[g.key] = g.runs[0].name; });
+  try { localStorage.setItem('ar2l.champ', JSON.stringify(seen)); } catch (e) {}
+  if (fresh.length && !matchMedia('(prefers-reduced-motion: reduce)').matches) fConfetti();
+}
+function fConfetti(){
+  const card = $('#tfame'), cs = ['--au', '--c0', '--c2', '--c3', '--c4', '--c5'];
+  for (let i = 0; i < 40; i++){
+    const p = document.createElement('i');
+    p.className = 'fconf';
+    p.style.cssText = `left:${5 + Math.random() * 90}%;background:var(${cs[i % cs.length]});`
+      + `--x:${(Math.random() - .5) * 140}px;--r:${(Math.random() - .5) * 900}deg;`
+      + `--d:${1.6 + Math.random() * 1.4}s;animation-delay:${.6 + Math.random() * .5}s`;
+    card.appendChild(p);
+    p.addEventListener('animationend', () => p.remove());
+  }
+}
+try { $('#tfame').classList.toggle('more', localStorage.getItem('ar2l.fame.more') === '1'); } catch (e) {}
+$('#tfmore').addEventListener('click', () => {
+  const on = $('#tfame').classList.toggle('more');
+  try { localStorage.setItem('ar2l.fame.more', on ? '1' : '0'); } catch (e) {}
+});
+$('#tfameb').addEventListener('click', ev => {
+  const s = ev.target.closest('.fsp[data-name]');
+  if (!s) return;
+  const c = $(`#tjobs .tjob[data-name="${CSS.escape(s.dataset.name)}"]`);
+  if (c) c.scrollIntoView({block: 'start', behavior: 'smooth'});
+  else { $('#trun').value = s.dataset.name; tRunPick(); $('#trun').scrollIntoView({block: 'center', behavior: 'smooth'}); }
+});
 /* who is winning right now: the runs ranked by their latest held-out eval,
    one row per number they are judged on (an attacker wins when the packer it
    faces does worst), with a rank chip on each card.  Shown from two runs up */

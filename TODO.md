@@ -5,7 +5,7 @@ Packing"** — Pan, Chen & Lin, NeurIPS 2023
 ([arXiv:2310.04323](https://arxiv.org/abs/2310.04323)), and its extension to
 real orders, box types and the UR20 cell.
 
-*Last updated: 2026-10-24* — only open items are listed; finished work is in
+*Last updated: 2026-10-26* — only open items are listed; finished work is in
 the git history (the full list as of 2026-09-27 is `git show eb38e8c:TODO.md`).
 
 The official implementation is at <https://github.com/panyxy/ar2l_bpp>. **No
@@ -332,3 +332,128 @@ network or the deploy code, so it is the fastest to test. If the picker does
 not learn to avoid dead ends well enough, switch to the input; the two also
 combine -- the input says where the danger is, the penalty makes the picker
 care.
+
+### D.8 Inference server
+
+Serve the selector + packer to the cell over HTTP. The net alone is not
+enough: the candidate list `L` -- every rule, the arm check, fallbacks, the
+outline step -- is built by the env (`BPPBatch.obs`). Two ways to split the
+work:
+
+| | A: Python runs the env | B: C++ builds the inputs, Python runs only the net |
+|---|---|---|
+| Python side | env + net | net only, a few hundred lines |
+| Pallet sizes / rule settings | one, fixed by the server's config | any, per request |
+| Several pallets | loop, one env each | one batched forward pass, any mix of sizes |
+| Cost to build | small: reuses `place()`, no rules ported | large: every env rule ported to C++ |
+| Risk | replay latency | C++ and Python rules drifting apart |
+
+A is the quick path; B is where it ends up if the cell runs more than one
+pallet type.
+
+#### D.8.1 Approach A: Python runs the env (one pallet size, 1 cm grid)
+
+The server runs the env as well as the net. One pallet size only: 124 x 108 x 160 cm on a 1 cm grid
+(`eval.pallet_cm [124, 108, 160]`, `eval.box_scale 1`, `env.bin` the same,
+`env.types` lo/hi and `size_lo`/`size_hi` x4). The cm-based rules (mixed
+distances, small blue/white, stack cap, arm `cell_m`) follow by themselves.
+
+**Stateless; the client keeps the pallet.** Each request is one decision per
+pallet, several pallets per request:
+
+| Request, per pallet | |
+|---|---|
+| `pallet_id` | to match the reply |
+| `placed` | boxes on the pallet **in placement order**: size (sx, sy, sz, unrotated), type, and the server's own cell `x, y` and rotation `r` as it returned them -- no cm rounding on replay |
+| `queue` | the next up to `nb` = 10 boxes in real conveyor order, size and type; the first `n_pick` = 5 are within reach |
+
+| Response, per pallet | |
+|---|---|
+| `pick_index` | which reachable box (selector) |
+| `x, y, z, r` | cells, plus cm for the robot (padding included) |
+| `base_move` | the `base_x_moves` slot the arm needs |
+| `done` | no reachable box has a legal place: close the pallet |
+| `version` | git hash + checkpoint, so config drift shows |
+
+Per pallet: one-bin env, `reset(placed + queue)`, `place(r, x, y)`
+(`ar2l/viz/game.py:831`) for each placed box, then `obs` -> selector ->
+`permute` -> packer, greedy. A normal move is ~85 ms at 1 cm on one pallet
+(D.7 table); the replay is the cost to watch.
+
+- [ ] **Zero-shot at 1 cm**: `evaluate` the small (w128/l1) and big
+      (w256/l3, `ptr_center 2`) nets on the same `all_data.csv` pallets at
+      4 cm / box_scale 4 and at 1 cm / box_scale 1. Compare util, boxes a
+      pallet, candidate count p50/p90 against `max_l` (256), time per step
+- [ ] Time ~20 training iterations at 1 cm before committing to a long run
+- [ ] **Fine-tune at 1 cm**: ~1000 iterations `--init` from the big net's
+      `best.pt`, architecture and `ptr_norm`/`ptr_center` as the checkpoint,
+      `lr 1e-4`, `eval_every 100`; iteration 0's held-out score must match the
+      zero-shot eval. Extend with another `--init` if still rising
+- [ ] **The server**: one new file (or a route on the game server); env and
+      model untouched. Several pallets in a request: loop, no batching yet
+- [ ] Faster replay: `step` on the normal candidate list, `place()` only when
+      the cell is not in it; then, if needed, an `env_state`/`set_state`
+      cache keyed by pallet id + box count, so a call applies only the newest
+      box (the client stays the source of truth). Shares the snapshot work
+      with D.7
+- [ ] Reject the request, with the box named, when `place()` returns False
+      -- a box put down against the rules cannot be replayed
+- [ ] Ship `config.yaml` with the checkpoint; the rules define `L`, so a
+      drifted config feeds the net lists it never trained on
+
+#### D.8.2 Approach B: C++ builds the inputs, Python runs only the net
+
+The cell's C++ keeps the pallet and builds everything the net reads; Python
+gets token lists, not pallets. The net has no grid in it -- nodes are
+divided by the pallet's longest side, and padding is masked -- so one
+Python process can batch pallets of every size and rule setting in one
+forward pass. The rules only shape `L`; the net never sees them.
+
+What C++ has to produce is exactly `BPPBatch.obs`, per pallet:
+
+| Input | Contents | Notes |
+|---|---|---|
+| `C` | packed boxes: x, y, z, sx, sy, sz (as placed) + type | no positional encoding, so order does not matter |
+| `B` | the next `nb` = 10 boxes: sx, sy, sz (unrotated) + type, and `b_mask` | **order matters** (positional encoding on B); conveyor order, padding at the end |
+| `b_pick` | which of the first `n_pick` = 5 have a legal place | needs the full rule check per station box |
+| `L` | candidates for a box: x, y, z, sx, sy, sz (rotated) + type underneath (floor = `n_types`) | every rule, fallbacks, soft mix, outline step, stack cap, arm; at most `max_l`, keeping the lowest z when truncated, as `obs` does |
+| `scale` | the pallet's longest side, in cells | Python divides by it, so normalisation lives in one place |
+
+**The selector-before-packer problem.** `L` depends on which box goes
+next, and the selector chooses that box. To keep it at one round trip,
+C++ sends one `L` per station box (up to 5) -- it already runs the rule
+check for every station box to build `b_pick`, so the candidates are
+mostly computed anyway. Python runs the selector, moves the chosen box to
+the front of `B` (the others keep their order, as `permute` does), runs
+the packer on that box's `L`, and returns `(pick_index, candidate_index)`.
+C++ maps the index back to x, y, z, rotation and base move, and decides
+`done` itself (`b_pick` empty).
+
+**Models.** The net does not see pallet size or rules, so one checkpoint
+*can* serve them all, but quality is only known for the setting it trained
+on. Python keeps a registry: each request names a profile, which maps to
+a checkpoint, loaded once and cached. Different profiles go through
+different nets, and a new checkpoint can be swapped in without restarting.
+Profiles that share a net batch together.
+
+- [ ] **Golden-file parity test first**: dump `obs()` (`C`, `B`, `b_pick`,
+      and the `L` of every station box) from the Python env over a few
+      hundred states of `all_data.csv` at several pallet sizes and rule
+      settings; the C++ must reproduce them exactly, including `L`'s order
+      and truncation. Without this, B drifts silently from training
+- [ ] Port the rules to C++: the type rules (`mixed_column` and the rest),
+      blue/white towers, fallbacks, soft mix's last resort, the outline
+      step, `min_support` / com stability, EMS candidates (`ems: 3`). The
+      arm check and stack cap start from the cell's own C++
+      (`pack_collision.py` and `stack_cap` are ports of it). This is most
+      of the work
+- [ ] Python server: request = profile + per-pallet token lists; pad
+      across pallets, one selector pass, reorder `B`, gather the chosen
+      `L`, one packer pass, greedy; return indices. No env, no numpy rules
+- [ ] Model registry: profile -> checkpoint + the config it trained with,
+      hot reload, version in every response
+- [ ] Train for size variety if one net is to serve several sizes:
+      random `env.bin` per episode, or per-profile fine-tunes (D.8.1's
+      `--init` recipe)
+- [ ] Training keeps the Python env. Every rule change then lands twice,
+      and the parity test is rerun after each one

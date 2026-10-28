@@ -199,8 +199,10 @@ model:
   # the same logit and no gradient, and the policy is uniform for good: the
   # 256-wide, 3-layer selector died that way by iteration 2000.  Checkpoints
   # from before this option were trained with 0, and are loaded and resumed
-  # with 0 whatever this says.
-  ptr_norm: 3.0
+  # with 0 whatever this says.  0 by default: 3 capped the 128-wide packer's
+  # sharpness (0.55 held out against 0.60 with 0); fight saturation with
+  # ptr_center instead.
+  ptr_norm: 0.0
   # 1 subtracts the mean over the live candidates from that score before the
   # tanh.  What saturated the 256-wide selector was a score every candidate
   # shared; centred, that offset is gone and the differences the softmax reads
