@@ -20,11 +20,12 @@ others -- near the lid, where no blue box can go any more, and as a fallback
 where a box would otherwise have nowhere to go; see `BLUE`.
 
 A small box carries only a short stack.  Once a box of one of the
-`stack_cap_types` is placed, a later box may start over its footprint only
-below its top plus an allowance that grows with its shorter footprint side --
-the cell's own rule (its C++ `stable_grid`), set in real cm.  `cmap` holds
-the limit per column, `stack_allowance` the allowance, and `_cap_ok` drops
-the placements that break it.
+`stack_cap_types` is placed, a later box may start on its stack only below
+its top plus an allowance that grows with its shorter footprint side -- the
+cell's own rule (its C++ `stable_grid`), set in real cm, except that only the
+cells a box rests on count, not those it overhangs.  `cmap` holds the limit
+per column, `stack_allowance` the allowance, and `_cap_ok` drops the
+placements that break it.
 
 and the packing action picks one l in L_t.  A placement is an (orientation,
 x, y) triple: with `rot = 2` the leading item is offered both as (w, l, h) and
@@ -1785,26 +1786,32 @@ class BPPBatch:
                         (m % (self.n_types + 1) - 1).astype(np.int8))
 
     def _cap_ok(self, dims, z):
-        """(n, Lx, Ly): may a box start at `z` over every cell of the footprint?
+        """(n, Lx, Ly): may a box start at `z` on every cell it rests on?
 
-        The limit that binds is the lowest `cmap` under the footprint, cells
-        the box only overhangs included, as on the cell.  The sweeps take
-        maxima, so they run on `-cmap`; the y-sweep depends on the bin alone
-        and is kept until the next `step`.  Until a small box has limited some
-        column of the batch every answer is yes and nothing is swept.
+        Only the cells the box stands on count -- those of the footprint at
+        `z`, the top of its stack -- so a box that merely overhangs a small
+        box's stack lower down is not limited by it.  A resting cell breaks
+        the rule exactly when its own top has reached its limit, so the sweep
+        runs on those tops (-1 elsewhere): its max over the footprint is `z`
+        when one of them is under the box, and below `z` otherwise.  The
+        y-sweep depends on the bin alone and is kept until the next `step`.
+        Until some column of the batch has reached its limit every answer is
+        yes and nothing is swept.
         """
         if self._cap_cache is None:
-            capped = bool((self.cmap < NO_CAP).any())
-            self._cap_cache = (capped, _win_max(-self.cmap, 2, self.Ly,
-                                                self.sidey) if capped else None)
+            full = self.hmap >= self.cmap
+            capped = bool(full.any())
+            self._cap_cache = (capped, _win_max(
+                np.where(full, self.hmap, -1).astype(np.int16), 2, self.Ly,
+                self.sidey) if capped else None)
         capped, by = self._cap_cache
         if not capped:
             return True
         cx = np.minimum(dims[:, 0], self.sidex)
         cy = np.minimum(dims[:, 1], self.sidey)
-        lowest = -_win_max(by[cy - 1, self._ar], 1, self.Lx,
-                           _widest(cx, self.sidex))[cx - 1, self._ar]
-        return z < lowest
+        top = _win_max(by[cy - 1, self._ar], 1, self.Lx,
+                       _widest(cx, self.sidex))[cx - 1, self._ar]
+        return top < z
 
     def _feas_one(self, dims, types=None, arm=True, tier=1, outline=None):
         """Feasible (x, y) grid and landing height for one orientation.
@@ -2022,9 +2029,12 @@ class BPPBatch:
                                             box.astype(np.int64)])[order]
         return move[inv]
 
-    #: candidate cells per (bin, grid) `_arm_any` arm-checks before it falls
-    #: back to all of them; nearly every bin has a clear one among the first
+    #: candidate cells per (bin, grid) `_arm_any` arm-checks first; nearly
+    #: every bin has a clear one among them.  Where none is, it asks
+    #: `ARM_GROW` times as many next, and so on until one is clear or the
+    #: grid runs out -- a full grid (`ems` 0) can be thousands of cells
     ARM_PROBE = 4
+    ARM_GROW = 8
 
     def _arm_any(self, grids):
         """(n, G): does grid g leave bin b a placement the arm can make?
@@ -2033,8 +2043,8 @@ class BPPBatch:
         gives them.  The arm filter is a per-cell AND applied after every
         other rule, so this is `_arm_clear(dims, z, feas).any((1, 2))` per
         grid -- without arm-checking whole grids: `ARM_PROBE` cells of each
-        (bin, grid) first, the remaining cells only where none of those was
-        clear, every grid in the same batch.
+        (bin, grid) first, then rounds `ARM_GROW` times larger only where
+        none so far was clear, every grid in the same batch.
         """
         n, G = self.n_env, len(grids)
         out = np.zeros((n, G), bool)
@@ -2053,12 +2063,13 @@ class BPPBatch:
         grp, b, x, y, sz, zz = (a[o] for a in (grp, b, x, y, sz, zz))
         rank = np.arange(len(grp)) - np.searchsorted(grp, grp)
         flat = out.reshape(-1)                # a view: (bin, grid) -> b * G + g
-        probe = rank < self.ARM_PROBE
-        for sel in (probe, ~probe):
-            sel = sel & ~flat[grp]
+        lo, hi, last = 0, self.ARM_PROBE, rank.max()
+        while lo <= last:
+            sel = (rank >= lo) & (rank < hi) & ~flat[grp]
             if sel.any():
                 ok = self._arm_moves(b[sel], x[sel], y[sel], sz[sel], zz[sel]) >= 0
                 flat[grp[sel][ok]] = True
+            lo, hi = hi, hi * self.ARM_GROW
         return out
 
     def _keep_arm(self, keys, move, box, x, y, sx, sy, placed):

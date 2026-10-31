@@ -1326,6 +1326,22 @@ details.cf>summary b{font-size:14px}
         <div class="isorow"><div class="rpts" id="pts-l"></div>
           <div class="isocv"><canvas id="iso-l"></canvas></div></div>
         <div class="rwin" id="win-l"></div>
+        <div class="row" style="margin-top:6px;gap:6px;flex-wrap:wrap"
+             title="a box that was never in the log, put in front of the station at this step: where it could go, the packer's odds and the points the rules turn down -- it is not packed, and nothing the run did changes">
+          <span>test box</span>
+          <select id="ltbox">
+            <option value="">none &mdash; the station's own boxes</option>
+            <option value="0,50,30,18">blue 50&times;30&times;18</option>
+            <option value="0,50,30,28">blue 50&times;30&times;28</option>
+            <option value="1,46,28,18">white 46&times;28&times;18</option>
+            <option value="1,46,28,25">white 46&times;28&times;25</option>
+            <option value="2">brown &mdash; sides &rarr;</option>
+          </select>
+          <input type="number" id="ltl" value="40" min="1" step="1" style="width:56px" title="length, cm" disabled>&times;
+          <input type="number" id="ltw" value="30" min="1" step="1" style="width:56px" title="width, cm" disabled>&times;
+          <input type="number" id="lth" value="20" min="1" step="1" style="width:56px" title="height, cm" disabled>
+          <span class="sub">cm, padded and gridded as a log box</span>
+        </div>
       </div>
     </div>
     <div class="sub" id="lrnote" style="margin-top:8px"></div>
@@ -1997,7 +2013,7 @@ const sameMark = (a, b) => a.ok === b.ok && a.x === b.x && a.y === b.y && a.z ==
 const DOWN_WHY = {
   arm: 'the robot arm would hit the pack placing it here, or cannot reach it',
   lid: 'it would poke out through the lid',
-  cap: 'the stack-height limit: a small box below caps how high another may start over it',
+  cap: 'the stack-height limit: a small box in the stack it rests on caps how high it may start',
   white: "white on white must rest on at least a small white box's base (w)",
   blue: 'blue on blue must rest on it with all of its base (b)',
   type: 'the box-type rule: it may not rest on what is under it',
@@ -2071,9 +2087,10 @@ addEventListener('keydown', e => {
     moveDummy({by: e.key === 'ArrowUp' ? -1 : 1}); e.preventDefault();
   }
 });
-// a press anywhere but a bin or the pop-up itself closes it
+// a press anywhere but a bin, the pop-up itself or an arm base bar --
+// which moves the arm placing the picked point -- closes it
 addEventListener('pointerdown', e => {
-  if (POP.cv && e.target !== POP.cv && !e.target.closest('#ptpop')) closePop();
+  if (POP.cv && e.target !== POP.cv && !e.target.closest('#ptpop, .basebar')) closePop();
 });
 
 /* ---- the robot arm ------------------------------------------------------
@@ -2096,6 +2113,8 @@ function drawPlay3d(){
            ghost: ok ? {box: [...ARM.pos, ...ARM.size], i: B.items,
                         type: typed() ? B.item_type : -1} : null});
   $('#armlg').hidden = !(ok && ARM.reachable);
+  baseBar('iso3d', G.params.base_x_moves, G.params, [LX, LY, LZ], ok ? ARM : null,
+          $('#showarm').checked);
 }
 
 function armText(){
@@ -2119,7 +2138,8 @@ async function fetchArm(){
   const q = ++ARMQ;
   if (!armWanted()){ ARM = null; armText(); if (B) drawPlay3d(); return; }
   const key = `${ORIENT},${HOVER.x},${HOVER.y}`;
-  const r = await api('/api/arm', {gid: G.gid, r: ORIENT, x: HOVER.x, y: HOVER.y});
+  const r = await api('/api/arm', {gid: G.gid, r: ORIENT, x: HOVER.x, y: HOVER.y,
+                                   moves: baseMoves(G.params.base_x_moves)});
   if (q !== ARMQ) return;                     // the pointer has moved on
   ARM = r.error ? null : {...r, key};
   if (r.error) $('#arminfo').textContent = '⚠ arm: ' + r.error; else armText();
@@ -2146,19 +2166,110 @@ function stepArm(key, placed, n, bin, redraw, moves, via){
   return null;
 }
 
+/* `sides` are [who, placed, arm, at], `at` -- {n, what} -- where that side's
+   arm places a picked point's dummy (`viewArm`) rather than box n */
 function armReplayText(sel, n, sides, show = '#showarm', lg = '.armlg-r'){
   const on = $(show).checked;
   document.querySelectorAll(lg).forEach(el => el.hidden = !on);
   if (!on || n < 1){ $(sel).innerHTML = ''; return; }
-  $(sel).innerHTML = 'arm placing box ' + n + ': ' + sides.map(([who, placed, a]) => {
-    const say = placed.length < n ? '<span style="color:var(--dim)">—</span>'
+  // the base move it stood at, where it is not the first
+  const mv = a => a.base_move ? ` (base moved ${a.base_move > 0 ? '+' : ''}${a.base_move})` : '';
+  const any = sides.some(s => s[3]);
+  $(sel).innerHTML = (any ? 'arm placing &mdash; ' : `arm placing box ${n}: `)
+    + sides.map(([who, placed, a, at]) => {
+    const say = placed.length < (at ? at.n : n) ? '<span style="color:var(--dim)">—</span>'
       : !a ? '<span style="color:var(--dim)">…</span>'
       : !a.reachable ? '<span style="color:var(--c3)">out of reach</span>'
       : a.hit ? `<span style="color:var(--c3)">the ${a.caps.filter(c => c.hit)
-                  .map(c => c.name).join(', ')} hits the pack</span>`
-      : '<span style="color:var(--c2)">clear</span>';
-    return `${who} ${say}`;
+                  .map(c => c.name).join(', ')} hits the pack${mv(a)}</span>`
+      : `<span style="color:var(--c2)">clear${mv(a)}</span>`;
+    return any ? `${who}: ${at ? at.what : 'box ' + n}, ${say}` : `${who} ${say}`;
   }).join(' &middot; ');
+}
+
+/* ---- the arm base: one setting for every 3D bin ---------------------------
+   Auto asks a bin's arm from each of its own base x moves in turn, the first
+   that clears the pack standing, as the valid and red points do; off, the
+   base stands at `v`, cleared or not -- in a bin whose moves lack `v`, at the
+   one of them nearest it.  Each bin has a bar under it (`baseBar`), and the
+   bars all follow each other, as the `.ptsrot` menus do. */
+const BASE = {auto: true, v: 0};
+const nearestMove = (ms, v) => ms.reduce((a, b) => Math.abs(b - v) < Math.abs(a - v) ? b : a);
+/* the moves a bin's arm is asked from, out of that bin's own */
+function baseMoves(moves){
+  const ms = moves && moves.length ? moves : [0];
+  return BASE.auto ? ms : [nearestMove(ms, BASE.v)];
+}
+/* what a pinned base adds to an arm's cache key */
+const baseKey = moves => BASE.auto ? '' : `:b${baseMoves(moves)[0]}`;
+for (const id of ['iso3d', 'iso-h', 'iso-a', 'iso-rc0', 'iso-rc1', 'iso-l']){
+  const cv = $('#' + id);
+  (cv.closest('.isorow') || cv).insertAdjacentHTML('afterend', `<div class="row basebar" id="base-${id}" hidden
+      style="gap:8px;margin-top:4px" title="where the robot's base stands for the arm drawn: auto takes the first of the base x moves that clears the pack, as the valid and red points do; off, the slider pins the base at one of them, cleared or not -- every 3D bin follows it">
+    <label style="cursor:pointer;white-space:nowrap"><input type="checkbox" class="baseauto" checked> auto base</label>
+    <input type="range" class="basesl" min="0" max="0" step="1" value="0" disabled style="flex:1;min-width:80px">
+    <span class="sub baselab" style="white-space:nowrap;font-variant-numeric:tabular-nums"></span></div>`);
+}
+/* bin `id`'s bar: over its base x `moves` in order along the pallet's y,
+   each sliding the base half the pallet's y side per 1 from where
+   `robot.base_from_box_tf` stands it; labelled with where its arm `a`
+   stood under auto.  Hidden while `on` -- its arm checkbox -- is off. */
+function baseBar(id, moves, p, bin, a, on){
+  const bar = $('#base-' + id);
+  bar.hidden = !on;
+  if (!on) return;
+  const ms = [...new Set(moves && moves.length ? moves : [0])].sort((x, y) => x - y);
+  const sl = bar.querySelector('.basesl');
+  bar._moves = ms;
+  sl.max = ms.length - 1;
+  sl.value = ms.indexOf(nearestMove(ms, BASE.v));
+  sl.disabled = BASE.auto;
+  bar.querySelector('.baseauto').checked = BASE.auto;
+  const ycm = bin[1] * p.cell_cm * Math.max(1, p.box_scale || 1);
+  const say = v => {
+    const cm = Math.round(v * ycm / 2);
+    return `${v > 0 ? '+' : ''}${v} (${cm ? `${cm > 0 ? '+' : ''}${cm} cm along pallet y` : 'the tf\'s own'})`;
+  };
+  bar.querySelector('.baselab').textContent = !BASE.auto ? 'base ' + say(nearestMove(ms, BASE.v))
+    : a && a.base_move != null ? 'auto: base ' + say(a.base_move) : 'auto';
+}
+document.addEventListener('input', e => {
+  if (!e.target.matches('.basesl')) return;
+  BASE.v = e.target.closest('.basebar')._moves[+e.target.value];
+  baseChanged();
+});
+document.addEventListener('change', e => {
+  if (!e.target.matches('.baseauto')) return;
+  BASE.auto = e.target.checked;
+  baseChanged();
+});
+function baseChanged(){
+  redrawIsos();
+  if (!$('#play').hidden && B && HOVER) fetchArm();
+}
+
+/* the point picked in a bin, as the box [x, y, z, l, w, h] its dummy
+   stands for there -- null when none is, or it is not one of `v`'s */
+function pickedBox(cv, v){
+  const sel = cv._sel;
+  if (!sel || !sel.length || !v || !v.box) return null;
+  const m = sel[Math.min(cv._selAt || 0, sel.length - 1)];
+  const same = p => p[0] === m.x && p[1] === m.y && p[2] === m.z && !p[3] === !m.r;
+  if (!((m.ok ? v.pts : v.bad) || []).some(same)) return null;
+  const [l, w, h] = v.box;
+  return [m.x, m.y, m.z, ...(m.r ? [w, l] : [l, w]), h];
+}
+/* The arm a replay bin `cv` draws after n boxes, from the shared base:
+   placing the dummy of the point picked there when one is -- on the pack
+   of this step, as the replay puts box n down -- else placing box n.
+   -> {arm, key, placed, at}, `at` as `armReplayText` takes it. */
+function viewArm(key, cv, v, placed, n, bin, moves, redraw, via){
+  const pick = pickedBox(cv, v);
+  const pl = pick ? [...placed.slice(0, n), pick] : placed, an = pick ? n + 1 : n;
+  const k = key + (pick ? `:at:${pick.join(',')}` : '') + baseKey(moves);
+  const at = pick && {n: an, what: `${v.test ? 'the test box' : v.own ? `box ${n + 1}` : `#${v.i + 1}`}`
+                                   + ` at (${pick[0]}, ${pick[1]}) z ${pick[2]}`};
+  return {arm: stepArm(k, pl, an, bin, redraw, baseMoves(moves), via), key: k, placed: pl, at};
 }
 
 // ---- the box you are placing -------------------------------------------
@@ -2775,6 +2886,9 @@ function viewPoints(pid, side, n, redraw){
   const step = ws[n] ? n : last && last.pick < 0 ? ws.length - 1 : -1;
   const win = ws[step];
   const show = side._show || SHOWPTS;
+  // a test box (`side._test`), never in the log, asked in front of the station
+  const test = side._test && side._test();
+  if (test && $(show.pts).checked && win) return testPoints(side, n, step, test, show, redraw);
   if (!$(show.pts).checked || !win || !win.w.length) return null;
   const sel = BOXSEL.get(pid);
   const i = sel && sel.side === side && sel.n === n ? sel.i : Math.max(0, win.pick);
@@ -2801,6 +2915,24 @@ function viewPoints(pid, side, n, redraw){
   v.capped = r.capped;
   return v;
 }
+/* `viewPoints` for a test box: every answer comes from the server, which
+   also says what the sides come to in cells */
+function testPoints(side, n, step, test, show, redraw){
+  const v = {i: -1, n, test, btype: test.type, box: null, pts: null, probs: null,
+             taken: -1, bad: null};
+  const key = `${side._pk}:${step}:T${test.type}:${test.cm.join('x')}`;
+  if (!PTSC.has(key)){
+    PTSC.set(key, null);
+    side._ask(step, 0, test).then(r => { PTSC.set(key, r); redraw(); })
+      .catch(() => PTSC.delete(key));
+  }
+  const r = PTSC.get(key);
+  if (!r){ v.wait = true; return v; }
+  if (r.error){ v.error = r.error; return v; }
+  Object.assign(v, {box: r.box, pts: r.cands, probs: r.probs, capped: r.capped});
+  if ($(show.bad).checked) v.bad = r.bad;
+  return v;
+}
 
 /* those points as `drawIso` takes them */
 function isoPoints(v){
@@ -2818,7 +2950,9 @@ function isoPoints(v){
 function drawPoints(el, v){
   if (!v){ el.innerHTML = ''; return; }
   const top = topPoints(v.pts, v.probs, NTOP);
-  const box = v.left ? `#${v.i + 1}, left over` : v.own ? `box ${v.n + 1}`
+  const box = v.test ? `test ${PTNAME[v.test.type]} ${v.test.cm.join('×')} cm${
+              v.box ? ` (${v.box.join('×')})` : ''}`
+            : v.left ? `#${v.i + 1}, left over` : v.own ? `box ${v.n + 1}`
             : `box ${v.n + 1}, #${v.i + 1} instead`;
   el.innerHTML = (top.length
     ? `<div class="rwh">${box} &middot; top ${top.length}</div><ol class="plist short">`
@@ -2896,25 +3030,28 @@ function boxClicks(pid, el, redraw){
 function drawReplay(n){
   const h = RES.human.placed.slice(0, n), a = RES.agent.placed.slice(0, n);
   const again = () => drawReplay(parseInt($('#scrub').value, 10));
-  const ah = stepArm('h:' + n, RES.human.placed, n, [LX, LY, LZ], again),
-        aa = stepArm('a:' + n, RES.agent.placed, n, [LX, LY, LZ], again);
   const vh = RES.human.skipped ? null : viewPoints('h', RES.human, n, again),
         va = viewPoints('a', RES.agent, n, again);
+  const bin = [LX, LY, LZ], moves = G.params.base_x_moves, on = $('#showarm').checked;
+  const ah = viewArm('h:' + n, $('#iso-h'), vh, RES.human.placed, n, bin, moves, again),
+        aa = viewArm('a:' + n, $('#iso-a'), va, RES.agent.placed, n, bin, moves, again);
   drawIso($('#iso-h'), h, LX, LY, LZ,
-          {highlight: h.length - 1, height: 290, arm: ah,
+          {highlight: h.length - 1, height: 290, arm: ah.arm,
            types: typed() ? RES.human.placed_types : null,
            ...isoPoints(vh)});
   drawIso($('#iso-a'), a, LX, LY, LZ,
-          {highlight: a.length - 1, height: 290, arm: aa,
+          {highlight: a.length - 1, height: 290, arm: aa.arm,
            types: typed() ? RES.agent.placed_types : null,
            ...isoPoints(va)});
+  baseBar('iso-h', moves, G.params, bin, ARMC.get(ah.key), on && !RES.human.skipped);
+  baseBar('iso-a', moves, G.params, bin, ARMC.get(aa.key), on);
   drawWindow($('#win-h'), RES.human, n, G.params.n_pick, vh);
   drawWindow($('#win-a'), RES.agent, n, G.params.n_pick, va);
   drawPoints($('#pts-h'), vh);
   drawPoints($('#pts-a'), va);
+  const side = (who, A) => [who, A.placed, ARMC.get(A.key), A.at];
   armReplayText('#scrubarm', n,
-                RES.human.skipped ? [['agent', RES.agent.placed, aa]]
-                                  : [['you', RES.human.placed, ah], ['agent', RES.agent.placed, aa]]);
+                RES.human.skipped ? [side('agent', aa)] : [side('you', ah), side('agent', aa)]);
   $('#scrublab').textContent = n === 0 ? 'empty bins — drag to replay'
     : RES.human.skipped ? `after box ${n}:  agent ${a.length} placed`
     : `after box ${n}:  you ${h.length} placed`
@@ -3086,19 +3223,20 @@ function showRecalc(i){
 
 function drawRcReplay(n){
   if (!RCSEL || !RCROWS[RCSEL]) return;
-  const sides = [RCROWS[0], RCROWS[RCSEL]];
+  const sides = [RCROWS[0], RCROWS[RCSEL]], arms = [];
+  const again = () => drawRcReplay(parseInt($('#rcscrub').value, 10));
   sides.forEach((r, k) => {
     const pl = r.placed.slice(0, n), [bx, by, bz] = r.params.bin;
     r._aid = r._aid || ++ARMRID;              // rows are replaced, not edited
-    const arm = stepArm(`rc${r._aid}:${n}`, r.placed, n, [bx, by, bz],
-                        () => drawRcReplay(parseInt($('#rcscrub').value, 10)),
-                        r.params.base_x_moves);
-    const v = viewPoints('rc' + k, r, n,
-                         () => drawRcReplay(parseInt($('#rcscrub').value, 10)));
+    const v = viewPoints('rc' + k, r, n, again);
+    const A = arms[k] = viewArm(`rc${r._aid}:${n}`, $('#iso-rc' + k), v, r.placed, n,
+                                [bx, by, bz], r.params.base_x_moves, again);
     drawIso($('#iso-rc' + k), pl, bx, by, bz,
-            {highlight: pl.length - 1, height: 290, arm,
+            {highlight: pl.length - 1, height: 290, arm: A.arm,
              types: typed() ? r.placed_types : null,
              ...isoPoints(v)});
+    baseBar('iso-rc' + k, r.params.base_x_moves, r.params, [bx, by, bz], ARMC.get(A.key),
+            $('#showarm').checked);
     drawWindow($('#win-rc' + k), r, n, r.params.n_pick, v);
     drawPoints($('#pts-rc' + k), v);
     $('#rcs' + k).textContent = `${(r.util * 100).toFixed(1)}% filled · `
@@ -3110,7 +3248,7 @@ function drawRcReplay(n){
     + ((sides[1].changed || []).length ? ' \u00b7 ' + rcsay(sides[1].changed) : '');
   const [a, b] = sides.map(r => Math.min(n, r.placed.length));
   armReplayText('#rcscrubarm', n, sides.map((r, k) =>
-    [k ? `row ${RCSEL}` : 'this game', r.placed, ARMC.get(`rc${r._aid}:${n}`)]));
+    [k ? `row ${RCSEL}` : 'this game', arms[k].placed, ARMC.get(arms[k].key), arms[k].at]));
   $('#rcscrublab').textContent = n === 0 ? 'empty bins \u2014 drag to replay'
     : `after box ${n}:  this game ${a} placed`
       + (a < n ? ' (had already stopped)' : '')
@@ -3797,8 +3935,8 @@ async function lOpen(k){
   if (!job || k < 0 || k >= n) return;
   const pal = await api('/api/log/pallet', {job, i: k});
   if (pal.error){ $('#lmsg').textContent = pal.error; return; }
-  Object.assign(pal, {_pk: `L${job}:${k}`, _show: LSHOW, _typed: true,
-    _ask: (step, i) => api('/api/log/points', {job, pallet: k, n: step, i}),
+  Object.assign(pal, {_pk: `L${job}:${k}`, _show: LSHOW, _typed: true, _test: lTest,
+    _ask: (step, i, test) => api('/api/log/points', {job, pallet: k, n: step, i, test}),
     _via: {show: '#lshowarm',
            post: (placed, bin, moves) => api('/api/log/arm', {job, placed, bin, moves})}});
   LRES = {job, k, pal};
@@ -3903,14 +4041,16 @@ function lWinHead(win, reach){
 function lDraw(n){
   if (!LRES) return;
   const pal = LRES.pal, [bx, by, bz] = pal.bin, again = () => lDraw(lNow());
-  const arm = stepArm(`${pal._pk}:${n}`, pal.placed, n, pal.bin, again,
-                      pal.params.base_x_moves, pal._via);
   const v = viewPoints('L', pal, n, again);
+  const A = viewArm(`${pal._pk}:${n}`, $('#iso-l'), v, pal.placed, n, pal.bin,
+                    pal.params.base_x_moves, again, pal._via);
   drawIso($('#iso-l'), pal.placed.slice(0, n), bx, by, bz,
-          {highlight: n - 1, height: 400, arm, types: pal.placed_types, ...isoPoints(v)});
+          {highlight: n - 1, height: 400, arm: A.arm, types: pal.placed_types, ...isoPoints(v)});
+  baseBar('iso-l', pal.params.base_x_moves, pal.params, pal.bin, ARMC.get(A.key),
+          $('#lshowarm').checked);
   drawWindow($('#win-l'), pal, n, pal.params.n_pick, v);
   drawPoints($('#pts-l'), v);
-  armReplayText('#lscrubarm', n, [['agent', pal.placed, ARMC.get(`${pal._pk}:${n}`)]],
+  armReplayText('#lscrubarm', n, [['agent', A.placed, ARMC.get(A.key), A.at]],
                 '#lshowarm', '.armlg-l');
   lReal(n);
   const na = Math.min(n, pal.placed.length), w0 = pal.windows[na - 1];
@@ -3974,6 +4114,26 @@ $('#lscrub').oninput = e => lDraw(parseInt(e.target.value, 10));
 $('#lshowarm').onchange = () => lDraw(lNow());
 $('#lshowpts').onchange = e => { $('#lshowbad').disabled = !e.target.checked; lDraw(lNow()); };
 $('#lshowbad').onchange = () => lDraw(lNow());
+/* the test box under the station: one of the log's own blue and white
+   sizes, or a brown of any sides; null for none */
+function lTest(){
+  const v = $('#ltbox').value;
+  if (!v) return null;
+  const [t, ...cm] = v.split(',').map(Number);
+  const own = cm.length ? cm : ['#ltl', '#ltw', '#lth'].map(s => parseFloat($(s).value));
+  return own.every(c => c > 0) ? {type: t, cm: own} : null;
+}
+$('#ltbox').onchange = () => {
+  const brown = $('#ltbox').value === '2';
+  for (const s of ['#ltl', '#ltw', '#lth']) $(s).disabled = !brown;
+  BOXSEL.delete('L');
+  lDraw(lNow());
+};
+for (const s of ['#ltl', '#ltw', '#lth']) $(s).addEventListener('change', () => lDraw(lNow()));
+// a click on a station box goes back to the station's own boxes
+$('#win-l').addEventListener('click', e => {
+  if (e.target.closest('.rwt.pk') && $('#ltbox').value){ $('#ltbox').value = ''; $('#ltbox').onchange(); }
+});
 boxClicks('L', $('#win-l'), () => lDraw(lNow()));
 /* ================= compare the reports =================
    The server reads the reports with `ar2l.viz.compare`, the parser the

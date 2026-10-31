@@ -299,7 +299,7 @@ def load_data(args, out):
     """`--data` as (train pool, held-out set), or (None, None) without one.
 
     Resolves the bin from `--pallet_cm` for an orders CSV, splits off
-    `--holdout` of the pallets with the run's seed, writes the split beside
+    `--holdout` of the pallets with `--split_seed`, writes the split beside
     the run, and records the file's fingerprint in `args` so `--resume`
     can refuse a file that changed under it.
     """
@@ -320,7 +320,7 @@ def load_data(args, out):
     if not 0.0 <= args.holdout < 1.0:
         raise ValueError(f"--holdout is a share of the pallets in [0, 1), "
                          f"got {args.holdout}")
-    order = np.random.default_rng(args.seed).permutation(len(seqs))
+    order = np.random.default_rng(args.split_seed).permutation(len(seqs))
     n_held = int(round(len(seqs) * args.holdout))
     if args.holdout and n_held == 0:
         n_held = 1
@@ -359,6 +359,15 @@ def train(args):
     torch.manual_seed(args.seed); np.random.seed(args.seed)
     out = os.path.join("runs", args.name)
     os.makedirs(out, exist_ok=True)
+    # a resume keeps the split it was trained on, or its held-out pallets
+    # would leak into training; runs before --split_seed split with --seed
+    if args.resume and os.path.exists(os.path.join(out, "args.json")):
+        old = json.load(open(os.path.join(out, "args.json")))
+        was = old.get("split_seed", old.get("seed", 0))
+        if was != args.split_seed:
+            print(f"[{args.name}] --split_seed {args.split_seed} ignored: "
+                  f"resuming a run split with {was}", flush=True)
+            args.split_seed = was
     pool, held_out = load_data(args, out)
     json.dump(vars(args), open(os.path.join(out, "args.json"), "w"), indent=1)
 
@@ -708,6 +717,10 @@ def get_parser():
     p.add_argument("--holdout", type=float, default=t["holdout"],
                    help="with --data: share of pallets kept for the held-out "
                         "evals that select best.pt")
+    p.add_argument("--split_seed", type=int, default=t["split_seed"],
+                   help="with --data: seed of the train / held-out split, "
+                        "kept apart from --seed so every seed scores on the "
+                        "same held-out pallets")
     p.add_argument("--order_random", type=float, default=t["order_random"],
                    help="with --data: randomise each drawn pallet's box order, "
                         "0 = file order, 1 = fully random")

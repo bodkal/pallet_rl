@@ -48,7 +48,7 @@ CLASSES = [{"p": 1, "lo": [1, 1, 1], "hi": [3, 3, 3]},
 
 RULE = dict(mixed_small_blue=(3, 2, 2), mixed_top_gap_cm=1,
             mixed_area_frac=0.8, stack_cell_cm=1.0, mixed_white_support=0,
-            blue_support=1)
+            blue_support=1, soft_mix=0)   # soft mix has its own tests
 # (w) on: the small white is 3 x 2 cells, so it asks 6 cells of contact
 WHITE_ON = dict(mixed_white_support=(3, 2))
 

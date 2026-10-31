@@ -547,34 +547,78 @@ def pallet(jid, k):
         "real_pallets": job["real_pallets"]}
 
 
-def points(jid, k, n, i):
+def test_item(test, job):
+    """A test box the page asks about -- `{"cm": [L, W, H], "type": t}` --
+    as a conveyor row, gridded as a log box is."""
+    p = job["p"]
+    try:
+        cm = [float(v) for v in test["cm"]]
+        t = int(test["type"])
+    except (KeyError, TypeError, ValueError):
+        raise ValueError("a test box is its three sides in cm and a type") from None
+    if len(cm) != 3 or not all(0 < v <= 1000 for v in cm):
+        raise ValueError("a test box's sides are three lengths in cm, 0 to 1000")
+    if not 0 <= t < p["n_types"]:
+        raise ValueError(f"a test box's type is 0 to {p['n_types'] - 1}")
+    c = cells(cm, p)
+    if not G.fits(c, tuple(job["bin"]), p["rot"]):
+        raise ValueError(f"a {'x'.join(map(str, c))} box does not fit the "
+                         f"{'x'.join(map(str, job['bin']))} pallet")
+    return np.array(tuple(c) + (t,), np.int16)
+
+
+def points(jid, k, n, i, test=None):
     """Where box `i` of the station could go at step `n` of pallet `k`, as
     `game.points` answers it for a game: the packer's candidates, its odds
     over them, and the positions its action space offers that the rules
-    turn down.  The step past the last box is the station it was closed on."""
+    turn down.  The step past the last box is the station it was closed on.
+
+    With `test` (`test_item`) it is asked of a box that was never in the log
+    instead: put in front of the station as it stood, the rest behind it, and
+    taken out again -- nothing the run packed changes."""
     job = get(jid)
     try:
         pal = job["full"][int(k)]
     except (IndexError, TypeError, ValueError):
         raise ValueError(f"no pallet {k} in that run") from None
+    item = None if test is None else test_item(test, job)
     with job["lock"]:
         snaps, env = pal["snaps"], pal["env"]
         n = max(0, min(int(n), len(snaps) - 1))
         G.set_state(env, snaps[n])
-        i = int(i)
-        reach = min(env.n_pick, env.nb, int(env.length[0] - env.head[0]))
-        if not 0 <= i < reach:
-            raise ValueError(f"box {i + 1} is not within reach at that step")
         env.done[:] = False
-        env.permute(np.array([i]))
-        cands = G.cand_points(env)
-        feas, z, odims, _ = env._positions()
-        bad = G.turned_down(env, feas, z, odims)
-        probs = (G.rounded(job["policy"](env)[1][0][:len(cands)])
-                 if cands else None)
-        capped = int(feas.sum()) - len(cands)
+        side = env.sidex, env.sidey
+        try:
+            if item is None:
+                i = int(i)
+                reach = min(env.n_pick, env.nb, int(env.length[0] - env.head[0]))
+                if not 0 <= i < reach:
+                    raise ValueError(f"box {i + 1} is not within reach at that step")
+                env.permute(np.array([i]))
+            else:
+                # the conveyor table holds no more rows than the log has boxes,
+                # so one at its very end may drop off behind the test box
+                h, i = int(env.head[0]), -1
+                rest = env.seq[0, h:env.length[0]][:env.n_items - h - 1]
+                load(env, [item, *rest])
+                # a footprint wider than any log box needs wider sweeps
+                env._set_side(item[None, None])
+                env.sidex, env.sidey = (max(a, b) for a, b in
+                                        zip(side, (env.sidex, env.sidey)))
+                env._invalidate()
+            cands = G.cand_points(env)
+            feas, z, odims, _ = env._positions()
+            bad = G.turned_down(env, feas, z, odims)
+            probs = (G.rounded(job["policy"](env)[1][0][:len(cands)])
+                     if cands else None)
+            capped = int(feas.sum()) - len(cands)
+        finally:
+            if (env.sidex, env.sidey) != side:
+                env.sidex, env.sidey = side
+                env._invalidate()
     return {"n": n, "i": i, "cands": cands, "probs": probs, "bad": bad,
-            "capped": capped}
+            "capped": capped,
+            "box": None if item is None else item[:3].tolist()}
 
 
 def arm(jid, placed, S, moves=None):

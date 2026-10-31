@@ -874,15 +874,16 @@ def arm_checker(st):
     return st['arm']
 
 
-def arm_view(st, r, x, y):
-    """The arm placing the held box at (orientation r, x, y), for the 3D view."""
+def arm_view(st, r, x, y, moves=None):
+    """The arm placing the held box at (orientation r, x, y), for the 3D view,
+    from `moves` as `arm_pose` takes them."""
     env = st['env']
     _, z, odims, _ = env._positions()
     if not (0 <= r < odims.shape[1] and 0 <= x < env.Lx and 0 <= y < env.Ly):
         return {'error': 'no such placement'}
     size = [int(v) for v in odims[0, r]]
     pos = [int(x), int(y), int(z[0, r, x, y])]
-    return arm_pose(st, env.hmap[0].astype(int), size, pos)
+    return arm_pose(st, env.hmap[0].astype(int), size, pos, moves)
 
 
 def replay_hmap(placed, S):
@@ -1944,7 +1945,8 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json(LM.pallet(body.get('job'), body.get('i', 0)))
                 if p == '/api/log/points':
                     return self._json(LM.points(body.get('job'), body.get('pallet', 0),
-                                                body.get('n', 0), body.get('i', 0)))
+                                                body.get('n', 0), body.get('i', 0),
+                                                body.get('test')))
                 if p == '/api/log/arm':
                     return self._json(LM.arm(body.get('job'), body.get('placed'),
                                              body.get('bin'), body.get('moves')))
@@ -1991,7 +1993,7 @@ class Handler(BaseHTTPRequestHandler):
             except (KeyError, TypeError, ValueError):
                 return self._json({'error': 'an arm pose is r, x and y'}, 400)
             try:
-                return self._json(arm_view(st, r, x, y))
+                return self._json(arm_view(st, r, x, y, body.get('moves')))
             except Exception as e:
                 return self._json({'error': f'{type(e).__name__}: {e}'}, 500)
         if p == '/api/arm_replay':

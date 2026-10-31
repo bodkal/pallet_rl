@@ -1,5 +1,6 @@
 """The big experiment: a folder of pallet files, each packed onto as many
 pallets as it takes, with a heuristic so nothing loads a checkpoint."""
+import itertools
 import time
 
 from ar2l.viz import experiment as X
@@ -12,7 +13,8 @@ HEAD = ("TRAN_DATE,TRAN_HOUR,CONTAINER_ID,PALLET_ID,FROM_LOC_ID,"
 def params(**over):
     p, err = G.exp_params(dict(G.defaults(), bin=[10, 10, 6], pallet_cm=None,
                                cell_cm=1.0, box_scale=1.0, nb=3, n_pick=1,
-                               max_l=64, arm_collision=0, order_random=0.0) | over)
+                               max_l=64, arm_collision=0, order_random=0.0,
+                               box_pad_m=0.0) | over)
     assert not err, err
     return p
 
@@ -23,13 +25,16 @@ def write(path, rows):
         for i, (pid, l, w, h, t) in enumerate(rows)))
 
 
+_names = itertools.count()
+
+
 def run(tmp_path, rows, spec="heur:dbl", run_kw=None, **over):
     src = tmp_path / "in"
     src.mkdir(parents=True)
     write(src / "day.csv", rows)
     p = params(**over)
     j = X.start(str(src), str(tmp_path / "out"), spec, p, G.cell_m(p), "cpu",
-                **(run_kw or {}))
+                **({"name": f"t{next(_names)}"} | (run_kw or {})))
     while X.status(j)["state"] == "running":
         time.sleep(0.05)
     return X.status(j)

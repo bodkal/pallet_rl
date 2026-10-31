@@ -277,7 +277,7 @@ def orders_csv(tmp_path, rows=None):
 
 ORD = dict(BASE, source="orders", pallet=-1, cell_cm=2.0,
            pallet_cm=[60, 50, 80], box_scale=0, box_round="up",
-           order_random=0.0, n_types=3, type_constraint=1)
+           order_random=0.0, n_types=3, type_constraint=1, box_pad_m=0.0)
 
 
 def test_an_orders_file_fixes_the_bin_the_bounds_and_the_length(tmp_path):
