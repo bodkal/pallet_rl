@@ -120,6 +120,20 @@ def test_holdout_split_is_disjoint_seeded_and_written(tmp_path):
     assert a.data_sha1 and a.data_sha1 == b.data_sha1
 
 
+def test_split_follows_split_seed_not_seed(tmp_path):
+    csv = write_csv(tmp_path)
+
+    def held_ids(name, **kw):
+        out = tmp_path / name; out.mkdir()
+        T.load_data(args_for(tmp_path, csv, holdout=0.3, pallet_cm=None, bin=S,
+                             **kw), str(out))
+        return (out / "holdout_ids.txt").read_text().split()
+
+    base = held_ids("s0", seed=0, split_seed=0)
+    assert held_ids("s7", seed=7, split_seed=0) == base
+    assert any(held_ids(f"p{k}", seed=0, split_seed=k) != base for k in (1, 2, 3))
+
+
 def test_pallet_cm_sets_the_bin(tmp_path):
     out = tmp_path / "run"; out.mkdir()
     a = args_for(tmp_path, write_csv(tmp_path), pallet_cm=[120, 80, 180],

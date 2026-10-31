@@ -51,10 +51,21 @@ def _has(run):
     ({"min_support": 3.0}, "support floor"),
     ({"rot": 5}, "orientations"),
     ({"bin": [G.MAX_AXIS + 1, 4, 4]}, "between 1 and"),
+    ({"ptr_center": 3}, "pointer centering"),
 ])
 def test_the_form_refuses_what_the_simulator_could_not_run(bad, why):
     _, err = G.validate(dict(BASE, **bad))
     assert err and any(why in e for e in err), (bad, err)
+
+
+def test_pointer_centering_defaults_to_as_trained_and_is_never_drift():
+    """-1 plays the run as it was trained; the field is still a recalc knob."""
+    p, err = G.validate(dict(BASE))
+    assert not err and p["ptr_center"] == -1
+    assert "ptr_center" not in G.compared_keys(p)
+    assert "ptr_center" in G.RECALC_KEYS
+    for c in (-1, 0, 1, 2):
+        assert G.validate(dict(BASE, ptr_center=c))[0]["ptr_center"] == c
 
 
 def test_anything_the_form_accepts_the_simulator_accepts():
@@ -266,7 +277,7 @@ def orders_csv(tmp_path, rows=None):
 
 ORD = dict(BASE, source="orders", pallet=-1, cell_cm=2.0,
            pallet_cm=[60, 50, 80], box_scale=0, box_round="up",
-           order_random=0.0, n_types=3, type_constraint=1)
+           order_random=0.0, n_types=3, type_constraint=1, box_pad_m=0.0)
 
 
 def test_an_orders_file_fixes_the_bin_the_bounds_and_the_length(tmp_path):

@@ -20,11 +20,12 @@ others -- near the lid, where no blue box can go any more, and as a fallback
 where a box would otherwise have nowhere to go; see `BLUE`.
 
 A small box carries only a short stack.  Once a box of one of the
-`stack_cap_types` is placed, a later box may start over its footprint only
-below its top plus an allowance that grows with its shorter footprint side --
-the cell's own rule (its C++ `stable_grid`), set in real cm.  `cmap` holds
-the limit per column, `stack_allowance` the allowance, and `_cap_ok` drops
-the placements that break it.
+`stack_cap_types` is placed, a later box may start on its stack only below
+its top plus an allowance that grows with its shorter footprint side -- the
+cell's own rule (its C++ `stable_grid`), set in real cm, except that only the
+cells a box rests on count, not those it overhangs.  `cmap` holds the limit
+per column, `stack_allowance` the allowance, and `_cap_ok` drops the
+placements that break it.
 
 and the packing action picks one l in L_t.  A placement is an (orientation,
 x, y) triple: with `rot = 2` the leading item is offered both as (w, l, h) and
@@ -143,8 +144,8 @@ COLUMN_RULES = ("column", "mixed_column")
 
 # `type_rule: mixed_touch` / `mixed_column` is the cell's own rule for its
 # three cartons, by the type ids the orders data gives them.  A box goes on
-# the floor and on its own type -- blue on blue only with all of its base on
-# blue -- and across types by these conditions:
+# the floor and on its own type -- blue on blue by (b), white on white by (w),
+# where they are on -- and across types by these conditions:
 #
 #   (a)  its top ends within `mixed_top_gap_cm` of the lid
 #   (c)  a brown footprint at least `mixed_area_frac` of the small blue's
@@ -152,7 +153,7 @@ COLUMN_RULES = ("column", "mixed_column")
 #        for want of height or of a pose the arm can make
 #
 #                      normally          else, soft mix off  else, soft mix on
-#   blue on blue       all base on blue  fallback            fallback
+#   blue on blue       (b)               fallback            fallback
 #   blue on white      (a)               fallback            last resort
 #   blue on brown      (a)               fallback            last resort
 #   white on blue      (a) or (d)        fallback            last resort
@@ -163,7 +164,7 @@ COLUMN_RULES = ("column", "mixed_column")
 #
 # A fallback is a box's own: it opens when that box has no placement under
 # the normal rules at all, in any orientation, the arm included -- blue on
-# blue then needs only `min_support`.  The last resort is the station's: it
+# blue then needs only `min_support`, without (b).  The last resort is the station's: it
 # opens when no box within reach has a placement by the rules before it
 # (`_stuck`).
 #
@@ -176,6 +177,27 @@ COLUMN_RULES = ("column", "mixed_column")
 # pairs, `_type_ok` the conditions, `_open_sweep` the cells of rule (d).
 MIXED_RULES = ("mixed_touch", "mixed_column")
 BLUE, WHITE, BROWN = 0, 1, 2
+
+# (w), white towers, is a rule of its own: it holds under every `type_rule`,
+# and with the type rule off too, wherever it is switched on.  A white box
+# that rests on white rests on at least the base of the small white box
+# (`mixed_white_support_cm`) -- on all of its own when that is less -- so a
+# white tower does not shift.  It comes on top of `min_support`.  "On white"
+# is read as the type rule reads "on": resting on it, or under `column` and
+# `mixed_column` anywhere under the footprint.  Where it leaves a white box no
+# placement at all, in any orientation, the arm included, the box's own
+# fallback lifts it, as it lifts (b), and so does soft mix's last resort.
+# `_white_ok` tests it.
+#
+# (b), blue towers, is the same for blue, and was the mixed rules' own before
+# it held under every rule: a blue box that rests on blue rests on it with all
+# of its base -- every cell of its footprint at the landing height, so fully
+# across two blues is fine.  "On blue" is read as for (w), and the box's own
+# fallback and soft mix's last resort lift it alike.  With it off, blue on
+# blue needs only `min_support` under every rule, and the small blue box of
+# rule (d) asks no more either.  `_blue_ok` tests it.
+# (w)'s small white box, length and width in cm, where the config gives none
+WHITE_SUPPORT_CM = (45, 27)
 # What a mixed rule says of a box of one type on a box of another: it may
 # not, it may, it may if the pair's own condition holds, or it may if its top
 # ends near the lid -- rule (a) alone (`mixed_tables`)
@@ -184,7 +206,7 @@ NO, YES, IF, TOP = 0, 1, 2, 3
 TOP_PAIRS = ((BLUE, WHITE), (BLUE, BROWN), (WHITE, BROWN))
 # What soft mix's last resort lets on, with no condition, once no box within
 # reach has any other placement: every mix but brown on white.  Soft mix
-# keeps no fallback of a box's own but blue on blue's.
+# keeps no fallback of a box's own but (b)'s and (w)'s.
 SOFT_PAIRS = ((BLUE, WHITE), (BLUE, BROWN), (WHITE, BLUE), (WHITE, BROWN),
               (BROWN, BLUE))
 
@@ -246,13 +268,14 @@ def mixed_tables(n_types, soft=False):
     `rule[k, t, u]` is what a box of type `t` may do on one of type `u` under
     the normal rules (`k = 0`), a box's own fallback (`k = 1`) or the
     station's last resort (`k = 2`): `NO`, `YES`, `IF` the pair's own
-    condition holds -- all of its base on blue for blue on blue; (a) or (d)
-    for white on blue, and (a), (c) or (d) for brown on blue, (c) dropped
-    under soft mix -- or `TOP`, if its top ends near the lid, (a);
-    `_type_ok` tests the conditions.  Types past brown keep the `touch` rule.
-    Without `soft` (`soft_mix`) blue and white fall back onto anything,
-    brown onto blue, and there is no last resort beyond that; with it only
-    blue on blue keeps a fallback, and the last resort opens `SOFT_PAIRS`.  `fallback[t]` is
+    condition holds -- (a) or (d) for white on blue, and (a), (c) or (d) for
+    brown on blue, (c) dropped under soft mix -- or `TOP`, if its top ends
+    near the lid, (a); `_type_ok` tests the conditions.  Types past brown
+    keep the `touch` rule.  Without `soft` (`soft_mix`) blue and white fall
+    back onto anything, brown onto blue, and there is no last resort beyond
+    that; with it no type keeps a fallback here, and the last resort opens
+    `SOFT_PAIRS`.  (b) and (w) are not in the tables (`_blue_ok`,
+    `_white_ok`), and neither are their fallbacks.  `fallback[t]` is
     whether a box's own fallback gives type `t` anything the normal rules do
     not.
     """
@@ -264,17 +287,16 @@ def mixed_tables(n_types, soft=False):
         for t, u in pairs:
             if max(t, u) < T:
                 rule[ks, t, u] = v
-    put([0], ((BLUE, BLUE), (WHITE, BLUE), (BROWN, BLUE)), IF)
+    put([0], ((WHITE, BLUE), (BROWN, BLUE)), IF)
     put([0], TOP_PAIRS, TOP)
     if soft:
-        # a fallback for blue on blue alone, then the station's last resort
+        # no fallback, then the station's last resort
         rule[1] = rule[2] = rule[0]
-        put([1, 2], ((BLUE, BLUE),), YES)
         put([2], SOFT_PAIRS, YES)
     else:
         # blue and white on anything, brown on blue; no last resort
         rule[1] = rule[2] = rule[0]
-        put([1, 2], ((BLUE, BLUE), (BLUE, WHITE), (BLUE, BROWN),
+        put([1, 2], ((BLUE, WHITE), (BLUE, BROWN),
                      (WHITE, BLUE), (WHITE, BROWN), (BROWN, BLUE)), YES)
     return rule, (rule[0] != rule[1]).any(1)
 
@@ -450,7 +472,9 @@ class BPPBatch:
                  stack_cap=None, stack_types=None, stack_side_cm=None,
                  stack_allow_cm=None, stack_cell_cm=None,
                  mixed_top_gap_cm=None, mixed_area_frac=None,
-                 mixed_small_blue=None, soft_mix=None, outline_resort=None,
+                 mixed_small_blue=None, mixed_white_support=None,
+                 mixed_white_support_cm=None, blue_support=None,
+                 soft_mix=None, outline_resort=None,
                  outline_when=None, outline_area=None):
         # `None` means "whatever config.yaml says"; an explicit argument wins
         e = CFG["env"]
@@ -573,13 +597,18 @@ class BPPBatch:
             e["stack_cap_side_cm"] if stack_side_cm is None else stack_side_cm,
             e["stack_cap_allow_cm"] if stack_allow_cm is None
             else stack_allow_cm, cell_cm)
-        # The thresholds of the `MIXED_RULES`, in real units read onto the
+        # The thresholds of the `MIXED_RULES` and of (w), in real units read onto the
         # grid with the same cell size: (a) the gap under the lid, rounded
         # down to whole cells; (c) the share of the small blue box's footprint
         # a brown box needs; (d) the small blue box itself, given in cm as an
         # order row is -- padded by `eval.box_pad_m` and rounded by
         # `eval.box_round` like every box of the data -- unless
-        # `mixed_small_blue` hands it over in cells.
+        # `mixed_small_blue` hands it over in cells; (w) the small white box's
+        # footprint, read the same way unless `mixed_white_support` hands it
+        # over as (sx, sy) cells.  False -- or None with null in the config --
+        # drops (w); True turns it on (the `--white_support` switch).  The
+        # size is `mixed_white_support_cm` when given (`--white_support_cm`),
+        # else the config's, else `WHITE_SUPPORT_CM`.
         self.cell_cm = cell_cm
         gap = float(e.get("mixed_top_gap_cm", 5) if mixed_top_gap_cm is None
                     else mixed_top_gap_cm)
@@ -600,8 +629,32 @@ class BPPBatch:
                 dict(zip("lwh", cm)), cell_cm, "mixed_small_blue_cm", 1.0,
                 box_rounding(), box_pad_cm(), "lwh")
         self.small_blue = _triple(mixed_small_blue)
+        self.small_white_cm = None
+        if mixed_white_support is None or mixed_white_support is True:
+            cm = (e.get("mixed_white_support_cm")
+                  if mixed_white_support_cm is None else mixed_white_support_cm)
+            if cm is None and mixed_white_support is True:
+                cm = WHITE_SUPPORT_CM
+            if cm is None:
+                mixed_white_support = 0
+            else:
+                if len(cm) != 2:
+                    raise ValueError(f"mixed_white_support_cm is the length "
+                                     f"and width of a box, got {cm}")
+                from .orders import box_cells, box_pad_cm, box_rounding
+                self.small_white_cm = tuple(float(v) for v in cm)
+                mixed_white_support = box_cells(
+                    dict(zip("lw", cm)), cell_cm, "mixed_white_support_cm",
+                    1.0, box_rounding(), box_pad_cm(), "lw")
+        # (sx, sy) in cells, or () with (w) off
+        self.small_white = (tuple(int(v) for v in mixed_white_support)
+                            if np.any(mixed_white_support) else ())
+        self.white_area = int(np.prod(self.small_white)) if self.small_white else 0
+        # (b): blue on blue with all of its base on blue (`--blue_support`)
+        self.blue_support = bool(e.get("blue_support", 1) if blue_support
+                                 is None else blue_support)
         # `soft_mix`: the mixed rules trade a box's own fallback -- all but
-        # blue on blue's -- for the station's last resort (`SOFT_PAIRS`,
+        # (b)'s and (w)'s -- for the station's last resort (`SOFT_PAIRS`,
         # `_stuck`), and drop (c).  Both tables are kept, so a caller may
         # switch it on an existing env.
         self.soft_mix = bool(e.get("soft_mix", 0) if soft_mix is None
@@ -630,8 +683,9 @@ class BPPBatch:
                              f"{self.outline_area!r}")
         self._ol = False
         # the contact count costs a second sweep, so only pay for it when a
-        # rule actually reads it -- the `MIXED_RULES` do too, for blue on blue,
-        # which `_sweeps` asks as it goes, as a caller may switch the rule
+        # rule actually reads it -- (b) and (w) do too, and the `MIXED_RULES`
+        # for rule (d), which `_sweeps` asks as it goes, as a caller may
+        # switch them
         self._needs_count = (self.stability != "com"
                              or self.min_support > 0.0)
         # `pool`: a fixed set of instances -- real orders -- that every episode
@@ -1081,7 +1135,8 @@ class BPPBatch:
         """`([feas], [z])` per orientation, before the arm filter, for each
         `(dims, types)` in `items` -- one box per bin each.
 
-        Under the `MIXED_RULES` a box whose type has fallback rules goes by
+        Under the `MIXED_RULES` -- and for a blue box under (b) and a white
+        one under (w), whatever the rule -- a box whose type has fallback rules goes by
         them in the bins where the normal rules leave it no placement at all
         -- in no orientation, the arm included.  `_arm_any` asks the arm that
         for every item in one batch, and only as far as it takes to find a
@@ -1093,7 +1148,7 @@ class BPPBatch:
             fb = self._fallback_bins(types)
             if fb.any():
                 geo = [self._feas_geo(d) for d in orients]
-                fs = [g & self._type_ok(d, z, types, 1, full)
+                fs = [g & self._rules_ok(d, z, types, 1, full)
                       for d, (g, z, full) in zip(orients, geo)]
                 zs = [z for _, z, _ in geo]
                 wait[j] = (len(grids), orients, types, fb, geo)
@@ -1113,24 +1168,32 @@ class BPPBatch:
             if late.any():
                 fs, zs = out[j]
                 out[j] = ([np.where(late[:, None, None],
-                                    g & self._type_ok(d, z, types, 2, full), f)
+                                    g & self._rules_ok(d, z, types, 2, full), f)
                            for d, f, (g, z, full) in zip(orients, fs, geo)],
                           zs)
         return out
 
     def _fallback_bins(self, types):
-        """(n,) the bins whose box, of `types`, has fallback rules at all."""
-        if not (self._mixed and self.type_constraint and self.n_types > 1):
-            return np.zeros(self.n_env, bool)
-        return self._tables[self.soft_mix][1][np.asarray(types, np.int64)]
+        """(n,) the bins whose box, of `types`, has fallback rules at all:
+        the mixed rules' own, a blue box's under (b) and a white box's under
+        (w)."""
+        t = np.asarray(types, np.int64)
+        fb = np.zeros(self.n_env, bool)
+        if self._mixed and self.type_constraint and self.n_types > 1:
+            fb = self._tables[self.soft_mix][1][t]
+        if self._blue_on():
+            fb = fb | (t == BLUE)
+        if self._white_on():
+            fb = fb | (t == WHITE)
+        return fb
 
     def fallback(self):
         """(n,) does the leading item go by the mixed rules' fallback?
 
         True where its type has them and the normal rules leave it no
         placement -- the choice `_slot_grids` makes, asked again for a caller
-        that has to say why a cell is or is not legal.  False under every
-        other rule.
+        that has to say why a cell is or is not legal.  Under the other rules
+        only a blue box under (b) and a white box under (w) have one.
         """
         item, types = self.head_item()
         fb = self._fallback_bins(types)
@@ -1440,7 +1503,8 @@ class BPPBatch:
         x-window maxima.
         """
         if self._sweep_cache is None:
-            if self._needs_count or self._mixed:
+            if (self._needs_count or self._mixed or self.white_area
+                    or self._blue_on()):
                 my, myc = _win_maxcount(self.hmap, None, 2, self.Ly, self.sidey)
             else:
                 my, myc = _win_max(self.hmap, 2, self.Ly, self.sidey), None
@@ -1494,13 +1558,11 @@ class BPPBatch:
             self._type_cache[key] = _win_max(bad, 2, self.Ly, self.sidey)
         return self._type_cache[key]
 
-    def _type_ok(self, dims, z, types, tier=1, full=None):
+    def _type_ok(self, dims, z, types, tier=1):
         """(n, Lx, Ly): may an item of this type rest on this footprint?
 
         `tier` 2 asks a box's own fallback under the `MIXED_RULES` rather
-        than their normal rules, and 3 soft mix's last resort.  `full` --
-        every cell of the footprint reaches `z` -- is what blue on blue asks;
-        `_feas_one` has it at hand, and without it it is swept here.
+        than their normal rules, and 3 soft mix's last resort.
         """
         cx = np.minimum(dims[:, 0], self.sidex)
         cy = np.minimum(dims[:, 1], self.sidey)
@@ -1518,26 +1580,60 @@ class BPPBatch:
             by = self._type_sweep(types, tier, strict=True)[cy - 1, self._ar]
             ok &= near | (_win_max(by, 1, self.Lx, _widest(cx, self.sidex))
                           [cx - 1, self._ar] < z)
-        # the bins whose box may be on blue only if its pair's condition holds
-        cond = rows[:, BLUE] == IF
-        blue = cond & (t == BLUE)
-        if blue.any():
-            # blue on blue rests on blue with all of its base; on the floor
-            # the whole base rests anyway.  Where blue may be on nothing but
-            # blue that is any blue box off the floor; with a `TOP` pair a
-            # blue box near the lid may be on white or brown alone, which
-            # asks nothing of its base, so ask where it is on blue
-            full = self._full(dims) if full is None else full
-            if (rows == TOP).any():
-                full = full | ~self._on_type(dims, z, BLUE)
-            ok &= ~blue[:, None, None] | full
         # white or brown on blue: its top near the lid (a), a large brown (c)
         # -- not under soft mix -- or on blue that no small blue box could
         # still go on (d), which with no blue under the footprint it is
         big = (t == BROWN) & self._big_brown(dims) & (not self.soft_mix)
-        need = cond & (t != BLUE) & ~big
+        need = (rows[:, BLUE] == IF) & ~big
         if need.any():
             ok &= ~need[:, None, None] | near | ~self._on_open_blue(dims, z)
+        return ok
+
+    def _blue_on(self):
+        """Is (b) in force -- switched on, with types to tell blue by?"""
+        return self.blue_support and self.n_types > 1
+
+    def _blue_ok(self, dims, z, types, full=None):
+        """(n, Lx, Ly), or True where no bin has a blue box: does (b) let
+        the item rest here?  A blue box on blue rests on it with all of its
+        base; a footprint on no blue asks nothing, and one on the floor rests
+        with all of its base anyway.  `full` -- every cell of the footprint
+        reaches `z` -- is at hand in `_feas_one`; without it it is swept."""
+        blue = np.asarray(types) == BLUE
+        if not blue.any():
+            return True
+        full = self._full(dims) if full is None else full
+        return ~blue[:, None, None] | ~self._on_type(dims, z, BLUE) | full
+
+    def _white_on(self):
+        """Is (w) in force -- switched on, with a white type to ask about?"""
+        return self.white_area > 0 and self.n_types > WHITE
+
+    def _white_ok(self, dims, z, types):
+        """(n, Lx, Ly), or True where no bin has a white box: does (w) let
+        the item rest here?  A white box on white rests on at least the small
+        white's base, or on all of its own when that is less; a footprint on
+        no white asks nothing, and one on the floor rests with all of its
+        base anyway."""
+        white = np.asarray(types) == WHITE
+        if not white.any():
+            return True
+        need = np.minimum(self.white_area,
+                          dims[:, 0].astype(np.int32) * dims[:, 1])
+        return (~white[:, None, None] | ~self._on_type(dims, z, WHITE)
+                | (self._contact(dims) >= need[:, None, None]))
+
+    def _rules_ok(self, dims, z, types, tier=1, full=None):
+        """(n, Lx, Ly), or True: the box-type rule at `tier`, when it is on,
+        and (b) and (w) under the normal rules -- a box's own fallback (`tier`
+        2) and soft mix's last resort (3) lift them."""
+        ok = True
+        if self.type_constraint and self.n_types > 1:
+            ok = self._type_ok(dims, z, types, tier)
+        if tier == 1 and self._blue_on():
+            ok = ok & self._blue_ok(dims, z, types, full)
+        if tier == 1 and self._white_on():
+            ok = ok & self._white_ok(dims, z, types)
         return ok
 
     def _on_type(self, dims, z, u):
@@ -1561,17 +1657,22 @@ class BPPBatch:
         # `z` is a cell the box rests on
         return top >= 0 if self._column else top == z
 
-    def _full(self, dims):
-        """(n, Lx, Ly): does every cell of the footprint reach the landing
-        height -- is the count of cells attaining the maximum the whole
-        base?"""
+    def _contact(self, dims):
+        """(n, Lx, Ly): how many cells of the footprint reach the landing
+        height -- the count of cells attaining the maximum."""
         my, myc, _ = self._sweeps()
         cx = np.minimum(dims[:, 0], self.sidex)
         cy = np.minimum(dims[:, 1], self.sidey)
         _, cxy = _win_maxcount(my[cy - 1, self._ar], myc[cy - 1, self._ar], 1,
                                self.Lx, _widest(cx, self.sidex))
+        return cxy[cx - 1, self._ar]
+
+    def _full(self, dims):
+        """(n, Lx, Ly): does every cell of the footprint reach the landing
+        height -- is the count of cells attaining the maximum the whole
+        base?"""
         base = dims[:, 0].astype(np.int32) * dims[:, 1]
-        return cxy[cx - 1, self._ar] == base[:, None, None]
+        return self._contact(dims) == base[:, None, None]
 
     def _big_brown(self, dims):
         """(n,) is the footprint at least `area_frac` of the small blue's?
@@ -1605,9 +1706,10 @@ class BPPBatch:
 
         A blue cell is open when the small blue box of rule (d) could still go
         on it: some placement the normal rules allow it -- every filter
-        passed, the arm's included -- rests on the cell with all of its base.
-        Blue on blue asks that anyway; near the lid it may go on white or
-        brown too (`TOP_PAIRS`), and then only its blue cells open.  A cell closes when the small blue no longer fits under the lid
+        passed, the arm's included -- rests on the cell, with all of its base
+        under (b) and on `min_support` without it.  Near the lid it may go on
+        white or brown too (`TOP_PAIRS`), and then only its blue cells open.
+        A cell closes when the small blue no longer fits under the lid
         there, or the arm cannot put one there.  It depends on the bin alone,
         so it is kept until the next `step` -- per `ems` mode, since the
         candidate filter decides which placements there are.
@@ -1622,14 +1724,23 @@ class BPPBatch:
                     break                     # a square turns into itself
                 # by the `ems` candidates alone, in the outline step's pass too
                 f, z = self._feas_one(d, blue, arm=False, outline=False)
-                # all of its base rests, so the cells it covers are the cells
-                # it rests on
-                grids.append((d, z, f & (z > 0) & self._full(d)))
+                # under (b) all of its base rests, so the cells it covers are
+                # the cells it rests on
+                f = f & (z > 0)
+                grids.append((d, z, f & self._full(d) if self._blue_on()
+                              else f))
             fs = ([f for _, _, f in grids] if not self.arm_collision
                   else self._arm_clear_many(grids))
             cover = np.zeros((n, self.Lx, self.Ly), bool)
-            for (d, _, _), f in zip(grids, fs):
-                cover |= _covered(f, int(d[0, 0]), int(d[0, 1]))
+            for (d, z, _), f in zip(grids, fs):
+                sx, sy = int(d[0, 0]), int(d[0, 1])
+                if self._blue_on():
+                    cover |= _covered(f, sx, sy)
+                    continue
+                # without it, of the cells it covers only those at the height
+                # it lands at are the cells it rests on
+                for v in np.unique(z[f]):
+                    cover |= _covered(f & (z == v), sx, sy) & (self.hmap == v)
             cover &= self.tmap == BLUE
             self._open_cache[self.ems] = (
                 _win_max(np.where(cover, self.hmap, np.int16(-1)), 2, self.Ly,
@@ -1675,26 +1786,32 @@ class BPPBatch:
                         (m % (self.n_types + 1) - 1).astype(np.int8))
 
     def _cap_ok(self, dims, z):
-        """(n, Lx, Ly): may a box start at `z` over every cell of the footprint?
+        """(n, Lx, Ly): may a box start at `z` on every cell it rests on?
 
-        The limit that binds is the lowest `cmap` under the footprint, cells
-        the box only overhangs included, as on the cell.  The sweeps take
-        maxima, so they run on `-cmap`; the y-sweep depends on the bin alone
-        and is kept until the next `step`.  Until a small box has limited some
-        column of the batch every answer is yes and nothing is swept.
+        Only the cells the box stands on count -- those of the footprint at
+        `z`, the top of its stack -- so a box that merely overhangs a small
+        box's stack lower down is not limited by it.  A resting cell breaks
+        the rule exactly when its own top has reached its limit, so the sweep
+        runs on those tops (-1 elsewhere): its max over the footprint is `z`
+        when one of them is under the box, and below `z` otherwise.  The
+        y-sweep depends on the bin alone and is kept until the next `step`.
+        Until some column of the batch has reached its limit every answer is
+        yes and nothing is swept.
         """
         if self._cap_cache is None:
-            capped = bool((self.cmap < NO_CAP).any())
-            self._cap_cache = (capped, _win_max(-self.cmap, 2, self.Ly,
-                                                self.sidey) if capped else None)
+            full = self.hmap >= self.cmap
+            capped = bool(full.any())
+            self._cap_cache = (capped, _win_max(
+                np.where(full, self.hmap, -1).astype(np.int16), 2, self.Ly,
+                self.sidey) if capped else None)
         capped, by = self._cap_cache
         if not capped:
             return True
         cx = np.minimum(dims[:, 0], self.sidex)
         cy = np.minimum(dims[:, 1], self.sidey)
-        lowest = -_win_max(by[cy - 1, self._ar], 1, self.Lx,
-                           _widest(cx, self.sidex))[cx - 1, self._ar]
-        return z < lowest
+        top = _win_max(by[cy - 1, self._ar], 1, self.Lx,
+                       _widest(cx, self.sidex))[cx - 1, self._ar]
+        return top < z
 
     def _feas_one(self, dims, types=None, arm=True, tier=1, outline=None):
         """Feasible (x, y) grid and landing height for one orientation.
@@ -1706,8 +1823,8 @@ class BPPBatch:
         `outline` as `_feas_geo` takes it.
         """
         feas, z, full = self._feas_geo(dims, outline)
-        if self.type_constraint and self.n_types > 1 and types is not None:
-            feas &= self._type_ok(dims, z, types, tier, full)
+        if types is not None:
+            feas &= self._rules_ok(dims, z, types, tier, full)
         if self.arm_collision and arm:
             feas = self._arm_clear(dims, z, feas)
         return feas, z
@@ -1715,8 +1832,8 @@ class BPPBatch:
     def _feas_geo(self, dims, outline=None):
         """`_feas_one` short of the type rule and the arm: `(feas, z, full)`.
 
-        `full` -- every cell of the footprint reaches `z` -- is what blue on
-        blue asks under the `MIXED_RULES`, and None under the other rules.
+        `full` -- every cell of the footprint reaches `z` -- is what (b) and
+        rule (d) ask, and None where neither is in force.
         `outline` adds the outline positions to the `ems` candidates
         (`_outline_mask`); None reads it off the pass in force (`_outline`).
         """
@@ -1787,7 +1904,7 @@ class BPPBatch:
         if self.stack_cap:
             feas &= self._cap_ok(dims, z)
         full = None
-        if self._mixed:
+        if self._mixed or self._blue_on():
             full = cxy[cx - 1, ar] == (sx.astype(np.int32) * sy)[:, None, None]
         return feas, z, full
 
@@ -1912,9 +2029,12 @@ class BPPBatch:
                                             box.astype(np.int64)])[order]
         return move[inv]
 
-    #: candidate cells per (bin, grid) `_arm_any` arm-checks before it falls
-    #: back to all of them; nearly every bin has a clear one among the first
+    #: candidate cells per (bin, grid) `_arm_any` arm-checks first; nearly
+    #: every bin has a clear one among them.  Where none is, it asks
+    #: `ARM_GROW` times as many next, and so on until one is clear or the
+    #: grid runs out -- a full grid (`ems` 0) can be thousands of cells
     ARM_PROBE = 4
+    ARM_GROW = 8
 
     def _arm_any(self, grids):
         """(n, G): does grid g leave bin b a placement the arm can make?
@@ -1923,8 +2043,8 @@ class BPPBatch:
         gives them.  The arm filter is a per-cell AND applied after every
         other rule, so this is `_arm_clear(dims, z, feas).any((1, 2))` per
         grid -- without arm-checking whole grids: `ARM_PROBE` cells of each
-        (bin, grid) first, the remaining cells only where none of those was
-        clear, every grid in the same batch.
+        (bin, grid) first, then rounds `ARM_GROW` times larger only where
+        none so far was clear, every grid in the same batch.
         """
         n, G = self.n_env, len(grids)
         out = np.zeros((n, G), bool)
@@ -1943,12 +2063,13 @@ class BPPBatch:
         grp, b, x, y, sz, zz = (a[o] for a in (grp, b, x, y, sz, zz))
         rank = np.arange(len(grp)) - np.searchsorted(grp, grp)
         flat = out.reshape(-1)                # a view: (bin, grid) -> b * G + g
-        probe = rank < self.ARM_PROBE
-        for sel in (probe, ~probe):
-            sel = sel & ~flat[grp]
+        lo, hi, last = 0, self.ARM_PROBE, rank.max()
+        while lo <= last:
+            sel = (rank >= lo) & (rank < hi) & ~flat[grp]
             if sel.any():
                 ok = self._arm_moves(b[sel], x[sel], y[sel], sz[sel], zz[sel]) >= 0
                 flat[grp[sel][ok]] = True
+            lo, hi = hi, hi * self.ARM_GROW
         return out
 
     def _keep_arm(self, keys, move, box, x, y, sx, sy, placed):

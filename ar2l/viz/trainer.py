@@ -50,7 +50,8 @@ SKIP = ('help', 'config')
 #: the config section each flag's default comes from, where its name does not
 #: say -- `add_cm_args` reads the eval section
 SECTION = {'cell_cm': 'eval', 'pallet_cm': 'eval', 'box_scale': 'eval',
-           'box_round': 'eval', 'box_pad_m': 'eval', 'seed': 'run'}
+           'box_round': 'eval', 'box_pad_m': 'eval', 'seed': 'run',
+           'white_support': 'env', 'white_support_cm': 'env'}
 ORDER = ('run name', 'train', 'env', 'ppo', 'model', 'eval', 'run', 'other')
 
 _CFG_LOCK = threading.RLock()
@@ -185,6 +186,94 @@ def runs():
                     'mtime': os.path.getmtime(a)})
     out.sort(key=lambda r: -r['mtime'])
     return out
+
+
+_FAME = {}          # log.jsonl -> ((mtime, size), its evals, ...)
+_NPARAM = {}        # best.pt -> (mtime, parameter count)
+
+
+def _nparam(d, algo):
+    """Parameters in the nets a run trains, read off its best.pt: the packer,
+    and the picker or the attacker beside it."""
+    p = os.path.join(d, 'best.pt')
+    try:
+        mt = os.path.getmtime(p)
+    except OSError:
+        return None
+    if _NPARAM.get(p, (None,))[0] != mt:
+        n = None
+        try:
+            import torch
+            ck = torch.load(p, map_location='cpu', weights_only=False)
+            nets = ['pack'] + {'select': ['mixer'], 'attack': ['attacker']}.get(algo, [])
+            n = sum(t.numel() for k in nets for t in ck.get(k, {}).values()
+                    if hasattr(t, 'numel'))
+        except Exception:
+            pass
+        _NPARAM[p] = (mt, n)
+    return _NPARAM[p][1]
+
+
+def fame(n=3):
+    """The best runs of all time: every run under runs/, ranked by the best
+    held-out eval it ever reached, the top `n` per number they are judged
+    on -- whether this server started them or not.  With each, the train
+    util over the eval_every iterations up to that eval, and the boxes per
+    pallet both sides packed."""
+    groups = {}
+    for a in glob.glob(os.path.join(ROOT, 'runs', '*', 'args.json')):
+        d = os.path.dirname(a)
+        name, jsonl = os.path.basename(d), os.path.join(d, 'log.jsonl')
+        try:
+            args = json.load(open(a))
+            st = os.stat(jsonl)
+        except (OSError, ValueError):
+            continue
+        key = HELD.get(args.get('algo'), 'nom_util')
+        sign = -1 if args.get('algo') == 'attack' else 1
+        sig = (st.st_mtime, st.st_size)
+        if _FAME.get(jsonl, (None,))[0] != sig:
+            rows, _ = _rows(jsonl, 0)
+            every = args.get('eval_every') or 1
+            ikey = key.replace('_util', '_items')
+            evals, prev = [], None
+            for i, r in enumerate(rows):
+                v = r.get(key)
+                if v is not None and v != prev:
+                    # the training side over the same stretch: the rows of the
+                    # eval_every iterations up to this eval
+                    tr = [q for q in rows[max(0, i - 400):i + 1]
+                          if q.get('it', 0) > r['it'] - every and 'util' in q]
+                    mean = lambda f: (sum(q[f] for q in tr if f in q)
+                                      / max(1, sum(f in q for q in tr))) if tr else None
+                    evals.append([r['it'], v, r.get(ikey), mean('util'), mean('items')])
+                prev = v
+            _FAME[jsonl] = (sig, evals, rows[-1].get('it', 0) if rows else 0)
+        _, evals, it = _FAME[jsonl]
+        if not evals:
+            continue
+        best = max(evals, key=lambda e: sign * e[1])
+        with _JOBS_LOCK:
+            j = _JOBS.get(name)
+        g = groups.setdefault(key, {'key': key, 'lower_better': sign < 0, 'runs': []})
+        g['runs'].append({'name': name, 'best': best[1], 'at': best[0],
+                          'held_items': best[2], 'train': best[3], 'train_items': best[4],
+                          'it': it, 'iters': args.get('iters'), 'n_evals': len(evals),
+                          'init': args.get('init'), 'when': st.st_mtime,
+                          'algo': args.get('algo'), 'width': args.get('width'),
+                          'heads': args.get('heads'), 'layers': args.get('layers'),
+                          'lr': args.get('lr'), 'data': args.get('data'),
+                          'n_train': args.get('n_train'), 'n_holdout': args.get('n_holdout'),
+                          'running': bool(j and j['proc'].poll() is None)})
+    out = []
+    for g in groups.values():
+        s = -1 if g['lower_better'] else 1
+        g['runs'].sort(key=lambda r: (-s * r['best'], r['at']))
+        top = g['runs'][:n]
+        for r in top:
+            r['params'] = _nparam(os.path.join(ROOT, 'runs', r['name']), r['algo'])
+        out.append(dict(g, n=len(g['runs']), runs=top))
+    return sorted(out, key=lambda g: -g['n'])
 
 
 def run_values(name, config_path=None):

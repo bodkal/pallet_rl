@@ -5,7 +5,7 @@ Packing"** — Pan, Chen & Lin, NeurIPS 2023
 ([arXiv:2310.04323](https://arxiv.org/abs/2310.04323)), and its extension to
 real orders, box types and the UR20 cell.
 
-*Last updated: 2026-10-12* — only open items are listed; finished work is in
+*Last updated: 2026-10-26* — only open items are listed; finished work is in
 the git history (the full list as of 2026-09-27 is `git show eb38e8c:TODO.md`).
 
 The official implementation is at <https://github.com/panyxy/ar2l_bpp>. **No
@@ -111,6 +111,16 @@ which is roughly half the shortfall at `N_B = 10` and almost none of it at
 - [ ] `pct_nb1` + its attackers, to fill the missing PCT row of Table 1
 - [ ] Table 1 at `N_B = 10, 15` (currently only 5 and 20)
 
+- [ ] Pointer saturation penalty: `--ptr_center 2` (max) only stops the top
+      choice tying; candidates far below the best still sit past tanh's range
+      with no gradient (68% of the w128/l1 `column` selector's on pallet
+      13689113, and on 23 of 32 steps every rival of the top box), because the
+      raw score is unbounded -- brown drifted ~240 below blue/white.  Add
+      `coef * mean(relu(|y| - 3)^2)` over the live candidates to the pointer
+      losses (selector first, then packer) so scores stay where the tanh still
+      answers; compare `mix_sat` / `mix_kl` and held-out util against
+      `--ptr_center 2` alone
+
 ### D.3 Not started
 
 - [ ] Continuous setting and its Intersection-Points candidate generator
@@ -180,3 +190,270 @@ the whole grid (`outline_area: all`) would have rescued none -- the rules are.
       own limit. **Waiting on operations**: it puts more on a small brown
       box than the cell's C++ `stable_grid` allows, and the real cell would
       refuse the placement unless that rule changes too
+
+### D.7 Picker lookahead (search over the station)
+
+Idea: before the picker (`PermNet`) chooses, search a few picks ahead and
+keep it off boxes that lead to a stuck station. Each branch picks a station
+box, places it at the **packer's top-1 position** (no branching over
+placements), and checks whether the station is then stuck -- the same check
+`step` already ends with under `pick_feasible`, which is this search at depth
+0. The station refills from the preview after every pick, so each level has
+`n_pick` = 5 choices: 5 branches at depth 1, 5 + 25 = 30 at depth 2,
+155 at depth 3. Only as deep as the visible conveyor (`nb` = 10); past it
+the boxes are unknown. A box is bad only if **every** branch under it gets
+stuck -- "any branch" would block nearly every box, since one bad placement
+is always possible; the fraction stuck is the soft version.
+
+Three ways to use the result:
+
+| | Search in training | Search at deploy | Picker learns |
+|---|---|---|---|
+| Mask | yes | yes | can't pick a dead box |
+| Penalty | yes | no | to avoid dead picks, from the reward |
+| Input feature (4th number per box: dead-end risk) | yes | yes, always -- an input missing at deploy breaks the net | to weigh the risk itself |
+
+A fourth, free: a **hindsight penalty** on the last 1-3 picks of an episode
+that ended stuck -- no search, but no idea which pick would have saved it.
+
+Measured 2026-10-21 on `all_data.csv` (`mixed_column`, arm on), with another
+training run sharing the machine. One branch = deepcopy + permute + `obs` +
+packer forward + `step`:
+
+| | One branch | Normal move | Depth 1 | Depth 2 | Depth 3 |
+|---|---|---|---|---|---|
+| 1 pallet, 4 cm grid (31x27x40) | ~18 ms | ~30 ms | 0.09 s | 0.54 s | 2.8 s |
+| 1 pallet, 2 cm grid (62x54x80) | ~32 ms | ~45 ms | 0.16 s | 0.96 s | 5.0 s |
+| 1 pallet, 1 cm grid (124x108x160) | ~69 ms | ~85 ms | 0.35 s | 2.1 s | 10.7 s |
+| 64 bins, 4 cm (training, per move) | ~0.37 s | ~0.4 s | 1.9 s | 11 s | 57 s |
+
+A 4x finer grid costs ~4x, not 16x: `ems: 3` keeps the candidates to
+corners. At 1 cm the p90 `step` is ~2x its mean. In training, depth 1 adds
+~55 s to a ~35 s iteration (T = 30) and depth 2 ~5.5 min -- 20,000 iterations
+at depth 2 is months -- so the search is cheap at deploy and dear in training.
+
+- [ ] **Measure first**: on the held-out pallets, how many episodes end with
+      the station stuck vs the pallet full, and how many of the stuck ones a
+      different pick 1-2 moves earlier would have saved. That is the most
+      any form of this can gain
+- [ ] **Deploy-time mask, no retraining**: in `evaluate.py`, drop station
+      boxes whose depth-2 search is stuck on every branch before the trained
+      picker chooses; compare boxes packed with and without. Safe because a
+      mask changes the choices, not what the net sees. Also bounds what a
+      search-trained picker could gain
+- [ ] An env snapshot/restore cheaper than `deepcopy` (copy the maps and the
+      sequence, rebuild or keep the caches) -- ~20 ms of the 69 ms branch at
+      1 cm
+- [ ] Training with it, if the mask pays: depth 1, all 5 branches batched as
+      one 320-bin env, and only when the station is at risk (<= 2 boxes with
+      a place, or a brown in reach). Penalty first; input feature if the
+      picker does not pick it up; hindsight penalty as the free baseline
+
+#### D.7.1 Review of the idea (2026-10-21)
+
+It is a good idea, and the codebase already has the first level of it.
+`pick_feasible` (`ar2l/env.py:866`) removes a station box from the picker's
+mask when it has no legal place right now; this idea is that check, looking
+`n` steps further ahead. It targets the real failure mode: an episode ends
+when the whole station is blocked (`ar2l/env.py:2239`), and the stuck-station
+experiments say the main cause is the type rule (brown-on-white), not the
+pallet being full. Picking in the wrong order can create those dead ends, so
+a lookahead could see them coming.
+
+Four things to change or check before building it:
+
+1. **"All branches die", not "one branch dies".** At each later step the
+   packer has many placements and the picker several boxes, so some branch
+   almost always dies -- a bad placement is always possible. If one dead
+   branch blocked a box, nearly every box would be blocked. Box *i* is bad
+   only if **every** continuation dies within `n` steps. The softer version is
+   the fraction of branches that die, as a penalty or an extra input.
+2. **Prune the tree.** Unpruned, each level is up to 5 boxes x ~32 feasible
+   placements (p90), ~160 branches a level and ~25,000 at depth 2, each
+   needing a feasibility sweep with the arm check -- the expensive part of
+   this env. So:
+   - expand only the packer's top 1-3 placements, not all of them -- which
+     also tests whether *our* packer gets stuck, the question that matters;
+   - stay within what the cell can see: the station plus the preview. Past
+     that the boxes are unknown;
+   - depth 2 probably catches most cases: "pick A, and then the other four
+     are all blocked" is the typical stuck pattern.
+3. **Mask or penalty** -- they differ at deploy:
+   - mask: a hard constraint, but the search runs on the real cell at every
+     pick, adding latency;
+   - penalty in training only: the picker learns to avoid dead ends and no
+     search runs at deploy. Keep it small, or make it an auxiliary loss, so it
+     does not swamp the main objective of packing more boxes;
+   - input feature: give the search result to `PermNet` as one more number
+     per box ("dead-end risk") and let the network learn how far to trust it.
+4. **Measure the problem first.** Count how many episodes end with the
+   station stuck vs the pallet actually full, then replay the stuck ones and
+   ask whether a different pick 1-2 moves earlier would have avoided the dead
+   end. That is the most this idea can gain. The experiments so far give only
+   partial bounds (cap-at-stuck +0.4 boxes, arm-off +2.2).
+
+Implementation cost: the env has no clone or snapshot method and keeps a lot
+of cached state (`_pos_cache`, `_slot_geo`, ...). The lookahead needs a safe
+way to copy one env, try steps on the copy and throw it away, so that comes
+first.
+
+#### D.7.2 Top-1 packer position, and the input-feature option
+
+With only the packer's recommended position, the tree branches only on which
+box is picked. The station refills from the preview after every pick, so
+every level has 5 choices: 5 + 25 = 30 branches at depth 2, 155 at depth 3
+(an earlier estimate of 20 and 60 assumed the station shrinks; it does not)
+-- small enough to run at every pick on one pallet (D.7 table).
+
+The input-feature option gives each conveyor box a 4th number. Today
+`PermNet` sees each box as 3 numbers (its size) plus its type
+(`ar2l/model.py:225`, encoder `[6, 3]`); the 4th is its dead-end risk from
+the search:
+
+- 0: picking it leaves a way to keep packing for the next `n` steps;
+- 1: every branch after picking it gets stuck;
+- in between: the fraction of branches that get stuck.
+
+The picker then decides how much to trust that number instead of being
+forced by a mask. It has to be computed **always** -- in training, in
+evaluation and on the real cell: whatever the network sees as input in
+training must be there at deploy. Computed in training only, the network
+learns to rely on it, and at deploy the number is missing (or 0) and it
+behaves badly.
+
+| Option | Search in training | Search at deploy | How the picker learns |
+|---|---|---|---|
+| 1. Mask | yes | yes | can't pick a dead box at all |
+| 2. Penalty | yes | no | from punishment, to avoid dead picks |
+| 3. Extra input | yes | yes | sees the risk and decides itself |
+
+For training, start with the penalty: it changes only the reward, not the
+network or the deploy code, so it is the fastest to test. If the picker does
+not learn to avoid dead ends well enough, switch to the input; the two also
+combine -- the input says where the danger is, the penalty makes the picker
+care.
+
+### D.8 Inference server
+
+Serve the selector + packer to the cell over HTTP. The net alone is not
+enough: the candidate list `L` -- every rule, the arm check, fallbacks, the
+outline step -- is built by the env (`BPPBatch.obs`). Two ways to split the
+work:
+
+| | A: Python runs the env | B: C++ builds the inputs, Python runs only the net |
+|---|---|---|
+| Python side | env + net | net only, a few hundred lines |
+| Pallet sizes / rule settings | one, fixed by the server's config | any, per request |
+| Several pallets | loop, one env each | one batched forward pass, any mix of sizes |
+| Cost to build | small: reuses `place()`, no rules ported | large: every env rule ported to C++ |
+| Risk | replay latency | C++ and Python rules drifting apart |
+
+A is the quick path; B is where it ends up if the cell runs more than one
+pallet type.
+
+#### D.8.1 Approach A: Python runs the env (one pallet size, 1 cm grid)
+
+The server runs the env as well as the net. One pallet size only: 124 x 108 x 160 cm on a 1 cm grid
+(`eval.pallet_cm [124, 108, 160]`, `eval.box_scale 1`, `env.bin` the same,
+`env.types` lo/hi and `size_lo`/`size_hi` x4). The cm-based rules (mixed
+distances, small blue/white, stack cap, arm `cell_m`) follow by themselves.
+
+**Stateless; the client keeps the pallet.** Each request is one decision per
+pallet, several pallets per request:
+
+| Request, per pallet | |
+|---|---|
+| `pallet_id` | to match the reply |
+| `placed` | boxes on the pallet **in placement order**: size (sx, sy, sz, unrotated), type, and the server's own cell `x, y` and rotation `r` as it returned them -- no cm rounding on replay |
+| `queue` | the next up to `nb` = 10 boxes in real conveyor order, size and type; the first `n_pick` = 5 are within reach |
+
+| Response, per pallet | |
+|---|---|
+| `pick_index` | which reachable box (selector) |
+| `x, y, z, r` | cells, plus cm for the robot (padding included) |
+| `base_move` | the `base_x_moves` slot the arm needs |
+| `done` | no reachable box has a legal place: close the pallet |
+| `version` | git hash + checkpoint, so config drift shows |
+
+Per pallet: one-bin env, `reset(placed + queue)`, `place(r, x, y)`
+(`ar2l/viz/game.py:831`) for each placed box, then `obs` -> selector ->
+`permute` -> packer, greedy. A normal move is ~85 ms at 1 cm on one pallet
+(D.7 table); the replay is the cost to watch.
+
+- [ ] **Zero-shot at 1 cm**: `evaluate` the small (w128/l1) and big
+      (w256/l3, `ptr_center 2`) nets on the same `all_data.csv` pallets at
+      4 cm / box_scale 4 and at 1 cm / box_scale 1. Compare util, boxes a
+      pallet, candidate count p50/p90 against `max_l` (256), time per step
+- [ ] Time ~20 training iterations at 1 cm before committing to a long run
+- [ ] **Fine-tune at 1 cm**: ~1000 iterations `--init` from the big net's
+      `best.pt`, architecture and `ptr_norm`/`ptr_center` as the checkpoint,
+      `lr 1e-4`, `eval_every 100`; iteration 0's held-out score must match the
+      zero-shot eval. Extend with another `--init` if still rising
+- [ ] **The server**: one new file (or a route on the game server); env and
+      model untouched. Several pallets in a request: loop, no batching yet
+- [ ] Faster replay: `step` on the normal candidate list, `place()` only when
+      the cell is not in it; then, if needed, an `env_state`/`set_state`
+      cache keyed by pallet id + box count, so a call applies only the newest
+      box (the client stays the source of truth). Shares the snapshot work
+      with D.7
+- [ ] Reject the request, with the box named, when `place()` returns False
+      -- a box put down against the rules cannot be replayed
+- [ ] Ship `config.yaml` with the checkpoint; the rules define `L`, so a
+      drifted config feeds the net lists it never trained on
+
+#### D.8.2 Approach B: C++ builds the inputs, Python runs only the net
+
+The cell's C++ keeps the pallet and builds everything the net reads; Python
+gets token lists, not pallets. The net has no grid in it -- nodes are
+divided by the pallet's longest side, and padding is masked -- so one
+Python process can batch pallets of every size and rule setting in one
+forward pass. The rules only shape `L`; the net never sees them.
+
+What C++ has to produce is exactly `BPPBatch.obs`, per pallet:
+
+| Input | Contents | Notes |
+|---|---|---|
+| `C` | packed boxes: x, y, z, sx, sy, sz (as placed) + type | no positional encoding, so order does not matter |
+| `B` | the next `nb` = 10 boxes: sx, sy, sz (unrotated) + type, and `b_mask` | **order matters** (positional encoding on B); conveyor order, padding at the end |
+| `b_pick` | which of the first `n_pick` = 5 have a legal place | needs the full rule check per station box |
+| `L` | candidates for a box: x, y, z, sx, sy, sz (rotated) + type underneath (floor = `n_types`) | every rule, fallbacks, soft mix, outline step, stack cap, arm; at most `max_l`, keeping the lowest z when truncated, as `obs` does |
+| `scale` | the pallet's longest side, in cells | Python divides by it, so normalisation lives in one place |
+
+**The selector-before-packer problem.** `L` depends on which box goes
+next, and the selector chooses that box. To keep it at one round trip,
+C++ sends one `L` per station box (up to 5) -- it already runs the rule
+check for every station box to build `b_pick`, so the candidates are
+mostly computed anyway. Python runs the selector, moves the chosen box to
+the front of `B` (the others keep their order, as `permute` does), runs
+the packer on that box's `L`, and returns `(pick_index, candidate_index)`.
+C++ maps the index back to x, y, z, rotation and base move, and decides
+`done` itself (`b_pick` empty).
+
+**Models.** The net does not see pallet size or rules, so one checkpoint
+*can* serve them all, but quality is only known for the setting it trained
+on. Python keeps a registry: each request names a profile, which maps to
+a checkpoint, loaded once and cached. Different profiles go through
+different nets, and a new checkpoint can be swapped in without restarting.
+Profiles that share a net batch together.
+
+- [ ] **Golden-file parity test first**: dump `obs()` (`C`, `B`, `b_pick`,
+      and the `L` of every station box) from the Python env over a few
+      hundred states of `all_data.csv` at several pallet sizes and rule
+      settings; the C++ must reproduce them exactly, including `L`'s order
+      and truncation. Without this, B drifts silently from training
+- [ ] Port the rules to C++: the type rules (`mixed_column` and the rest),
+      blue/white towers, fallbacks, soft mix's last resort, the outline
+      step, `min_support` / com stability, EMS candidates (`ems: 3`). The
+      arm check and stack cap start from the cell's own C++
+      (`pack_collision.py` and `stack_cap` are ports of it). This is most
+      of the work
+- [ ] Python server: request = profile + per-pallet token lists; pad
+      across pallets, one selector pass, reorder `B`, gather the chosen
+      `L`, one packer pass, greedy; return indices. No env, no numpy rules
+- [ ] Model registry: profile -> checkpoint + the config it trained with,
+      hot reload, version in every response
+- [ ] Train for size variety if one net is to serve several sizes:
+      random `env.bin` per episode, or per-profile fine-tunes (D.8.1's
+      `--init` recipe)
+- [ ] Training keeps the Python env. Every rule change then lands twice,
+      and the parity test is rerun after each one

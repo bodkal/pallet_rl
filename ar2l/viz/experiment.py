@@ -112,18 +112,19 @@ def read_file(path, S, p):
     return seq, len(ids), len(seq) + skipped, skipped
 
 
-def packer(spec, n_pick, device):
+def packer(spec, n_pick, device, ptr_center=None):
     """-> (policy, picker, label): who places, and who picks from the reach.
 
     A `select` run gets its own selector back, as the game hands it one.
+    `ptr_center` overrides the pointer centering both were trained with.
     """
-    policy, label, _ = A.load_policy(spec, device)
+    policy, label, _ = A.load_policy(spec, device, ptr_center)
     picker = None
     if spec.startswith("run:") and n_pick > 1:
         run = spec.split(":")[1]
         info = A.run_info(run)
         if info and info["args"].get("algo") == "select":
-            picker = A.load_attacker(f"mix:{run}", device)[0]
+            picker = A.load_attacker(f"mix:{run}", device, ptr_center)[0]
     return policy, picker, label
 
 
@@ -136,6 +137,11 @@ def pallet_env(seq, S, p, cell_m):
                    type_constraint=bool(p["type_constraint"]),
                    type_rule=p.get("type_rule", "touch"),
                    soft_mix=bool(p.get("soft_mix", 0)),
+                   mixed_white_support=(None if p.get("white_support") is None
+                                        else bool(p["white_support"])),
+                   mixed_white_support_cm=p.get("white_support_cm"),
+                   blue_support=(None if p.get("blue_support") is None
+                                 else bool(p["blue_support"])),
                    outline_resort=bool(p.get("outline_resort", 0)),
                    outline_when=p.get("outline_when", "station"),
                    outline_area=p.get("outline_area", "outline"),
@@ -192,6 +198,9 @@ def params_text(spec, p, S):
            f"n_types={p['n_types']} type_constraint={p['type_constraint']} "
            f"type_rule={p.get('type_rule', 'touch')} "
            f"soft_mix={int(p.get('soft_mix', 0))} "
+           f"white_support={p.get('white_support', 'config')} "
+           f"white_support_cm={j(p['white_support_cm']) if p.get('white_support_cm') else 'config'} "
+           f"blue_support={p.get('blue_support', 'config')} "
            f"outline_resort={int(p.get('outline_resort', 0))} "
            f"outline_when={p.get('outline_when', 'station')} "
            f"outline_area={p.get('outline_area', 'outline')} "
@@ -303,7 +312,8 @@ def start(folder, out, spec, p, cell_m, device, name="", seed=0):
 def _run(job, dst, spec, p, S, cell_m, device):
     try:
         os.makedirs(dst, exist_ok=True)
-        policy, picker, label = packer(spec, p["n_pick"], device)
+        policy, picker, label = packer(spec, p["n_pick"], device,
+                                       p.get("ptr_center"))
         job["label"] = label
         env_f, data_f = params_text(spec, p, S)
         if p.get("order_random"):

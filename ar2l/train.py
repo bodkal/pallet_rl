@@ -71,7 +71,8 @@ class Progress:
             self.bar.close()
 
 from .config import CFG, load as load_config
-from .env import BPPBatch, OUTLINE_AREA, OUTLINE_WHEN, TYPE_RULES
+from .env import (BPPBatch, OUTLINE_AREA, OUTLINE_WHEN, TYPE_RULES,
+                  WHITE_SUPPORT_CM)
 from .evaluate import attack_score, nominal_score
 from .orders import add_cm_args, load_orders, orders_bin
 from .heuristics import act as heur_act
@@ -285,6 +286,9 @@ def make_env(args, seed, pool=None):
                     n_types=args.n_types,
                     type_constraint=bool(args.type_constraint),
                     type_rule=args.type_rule, soft_mix=bool(args.soft_mix),
+                    mixed_white_support=bool(args.white_support),
+                    mixed_white_support_cm=args.white_support_cm,
+                    blue_support=bool(args.blue_support),
                     outline_resort=bool(args.outline_resort),
                     outline_when=args.outline_when,
                     outline_area=args.outline_area,
@@ -295,7 +299,7 @@ def load_data(args, out):
     """`--data` as (train pool, held-out set), or (None, None) without one.
 
     Resolves the bin from `--pallet_cm` for an orders CSV, splits off
-    `--holdout` of the pallets with the run's seed, writes the split beside
+    `--holdout` of the pallets with `--split_seed`, writes the split beside
     the run, and records the file's fingerprint in `args` so `--resume`
     can refuse a file that changed under it.
     """
@@ -316,7 +320,7 @@ def load_data(args, out):
     if not 0.0 <= args.holdout < 1.0:
         raise ValueError(f"--holdout is a share of the pallets in [0, 1), "
                          f"got {args.holdout}")
-    order = np.random.default_rng(args.seed).permutation(len(seqs))
+    order = np.random.default_rng(args.split_seed).permutation(len(seqs))
     n_held = int(round(len(seqs) * args.holdout))
     if args.holdout and n_held == 0:
         n_held = 1
@@ -337,8 +341,15 @@ def load_data(args, out):
 def build(args, device):
     kw = dict(d=args.width, n_head=args.heads, n_layer=args.layers,
               c_temp=args.c_temp, n_types=args.n_types,
-              type_embed=args.type_embed)
+              type_embed=args.type_embed, ptr_norm=args.ptr_norm,
+              ptr_center=args.ptr_center)
     return PackNet(**kw).to(device), PermNet(**kw).to(device), PermNet(**kw).to(device)
+
+
+# The pointer-score options, as (flag, Pointer attribute, type).  They hold no
+# weights, so a checkpoint loads under any of them; a run trained before one
+# existed was trained with 0.
+PTR_MODE = (("ptr_norm", "norm", float), ("ptr_center", "center", int))
 
 
 def train(args):
@@ -348,6 +359,15 @@ def train(args):
     torch.manual_seed(args.seed); np.random.seed(args.seed)
     out = os.path.join("runs", args.name)
     os.makedirs(out, exist_ok=True)
+    # a resume keeps the split it was trained on, or its held-out pallets
+    # would leak into training; runs before --split_seed split with --seed
+    if args.resume and os.path.exists(os.path.join(out, "args.json")):
+        old = json.load(open(os.path.join(out, "args.json")))
+        was = old.get("split_seed", old.get("seed", 0))
+        if was != args.split_seed:
+            print(f"[{args.name}] --split_seed {args.split_seed} ignored: "
+                  f"resuming a run split with {was}", flush=True)
+            args.split_seed = was
     pool, held_out = load_data(args, out)
     json.dump(vars(args), open(os.path.join(out, "args.json"), "w"), indent=1)
 
@@ -372,6 +392,22 @@ def train(args):
         pack.load_state_dict(resumed["pack"])
         attacker.load_state_dict(resumed["attacker"])
         mixer.load_state_dict(resumed["mixer"])
+        # the pointer mode has no weights of its own, so a mismatch would load
+        # silently and then read the trained q/k in a way they never learned;
+        # a resume carries on with what the run was trained with
+        changed = False
+        for flag, attr, cast in PTR_MODE:
+            was = resumed.get("args", {}).get(flag, 0)
+            if cast(was) != cast(getattr(args, flag)):
+                print(f"[{args.name}] --{flag} {getattr(args, flag)} ignored: "
+                      f"resuming a run trained with {was}", flush=True)
+                setattr(args, flag, was)
+                for net in (pack, attacker, mixer):
+                    setattr(net.ptr, attr, cast(was))
+                changed = True
+        if changed:
+            json.dump(vars(args), open(os.path.join(out, "args.json"), "w"),
+                      indent=1)
         start = resumed["it"] + 1
         # without the old high-water mark the first save after a resume always
         # "wins" and overwrites a better best.pt
@@ -402,6 +438,13 @@ def train(args):
         for key, net in (("pack", pack), ("attacker", attacker), ("mixer", mixer)):
             if key in init:
                 net.load_state_dict(init[key])
+        for flag, _, cast in PTR_MODE:
+            was = init.get("args", {}).get(flag, 0)
+            if cast(was) != cast(getattr(args, flag)):
+                print(f"[{args.name}] note: --init was trained with --{flag} "
+                      f"{was}, this run uses {getattr(args, flag)}; its pointer "
+                      f"heads start from weights read a different way",
+                      flush=True)
     if args.freeze_pack:
         for p in pack.parameters():
             p.requires_grad_(False)
@@ -425,6 +468,7 @@ def train(args):
     nom = {"nom_util": 0.0, "nom_items": 0.0}
     t0, done_it = time.time(), 0
     prog = Progress(args.iters, start, args.progress)
+    saturated = set()               # nets already warned about, once each
     stop = StopAsked(args.name)
 
     for it in range(start, args.iters + 1):
@@ -546,6 +590,9 @@ def train(args):
                       type_constraint=bool(args.type_constraint),
                       type_rule=args.type_rule,
                       soft_mix=bool(args.soft_mix),
+                      white_support=bool(args.white_support),
+                      white_support_cm=args.white_support_cm,
+                      blue_support=bool(args.blue_support),
                       outline_resort=bool(args.outline_resort),
                       outline_when=args.outline_when,
                       outline_area=args.outline_area,
@@ -567,6 +614,19 @@ def train(args):
             rec = {"it": it, "util": u, "items": k, "t": time.time() - t0, **nom,
                    **{f"{a}_{b}": v for a, d in stats.items() for b, v in d.items()}}
             log.write(json.dumps(rec) + "\n"); log.flush()
+            # centred, a score past the range is a candidate far from the
+            # mean -- a confident choice, not the shared offset that kills it
+            for key, d in stats.items():
+                if (d.get("sat", 0.0) > 0.9 and key not in saturated
+                        and not args.ptr_center):
+                    saturated.add(key)
+                    prog.write(
+                        f"[{args.name}] WARNING it {it}: the {key} pointer is "
+                        f"saturated ({d['sat']*100:.0f}% of candidates past "
+                        f"tanh's range) -- every choice gets the same logit and "
+                        f"no gradient, so it has stopped learning.  Restart "
+                        f"with --ptr_center 1 (or --ptr_norm > 0); resuming "
+                        f"will not revive it.")
             held = _held(nom)
             tag = {"attack": "attacked",
                    "select": "selected"}.get(args.algo, "nominal")
@@ -657,6 +717,10 @@ def get_parser():
     p.add_argument("--holdout", type=float, default=t["holdout"],
                    help="with --data: share of pallets kept for the held-out "
                         "evals that select best.pt")
+    p.add_argument("--split_seed", type=int, default=t["split_seed"],
+                   help="with --data: seed of the train / held-out split, "
+                        "kept apart from --seed so every seed scores on the "
+                        "same held-out pallets")
     p.add_argument("--order_random", type=float, default=t["order_random"],
                    help="with --data: randomise each drawn pallet's box order, "
                         "0 = file order, 1 = fully random")
@@ -720,6 +784,18 @@ def get_parser():
     p.add_argument("--c_temp", type=float, default=m["c_temp"],
                    help="pointer-head temperature (c in Eq. 28): the logits are "
                         "squashed into [-c, c], so bigger = sharper choices")
+    p.add_argument("--ptr_norm", type=float, default=m["ptr_norm"],
+                   help="bound the pointer score inside Eq. 28's tanh to "
+                        "ptr_norm * cos(q, k); 0 = the paper's unbounded "
+                        "q.k/sqrt(d), which can saturate and stop learning")
+    p.add_argument("--ptr_center", type=int, choices=(0, 1, 2),
+                   default=m.get("ptr_center", 0),
+                   help="1 subtracts the mean over the live candidates from "
+                        "the pointer score before the tanh: the softmax is "
+                        "unchanged up to the tanh, but a score shared by every "
+                        "candidate can no longer saturate it.  2 subtracts the "
+                        "max instead, so the best candidate sits where the tanh "
+                        "is steepest and the top choices are never tied")
     p.add_argument("--init", default=None, help="start a new run from this checkpoint's weights (packer, "
                         "selector, attacker); iterations and optimiser start fresh")
     p.add_argument("--freeze_pack", action="store_true",
@@ -769,6 +845,24 @@ def get_parser():
                    help="1 under the mixed rules: a box's own fallback "
                         "onto another type becomes the station's last resort, "
                         "brown on blue gets one too, (c) is dropped")
+    p.add_argument("--white_support", type=int, choices=(0, 1),
+                   default=int(e.get("mixed_white_support_cm") is not None),
+                   help="1, under any box-type rule: white on white rests "
+                        "on at least the small white's base "
+                        "(mixed_white_support_cm), else only as a fallback "
+                        "-- a white tower does not shift (w)")
+    p.add_argument("--white_support_cm", type=float, nargs=2,
+                   metavar=("L", "W"),
+                   default=list(e.get("mixed_white_support_cm")
+                                or WHITE_SUPPORT_CM),
+                   help="the small white box of (w), length and width in "
+                        "cm, padded and rounded like a box of the data")
+    p.add_argument("--blue_support", type=int, choices=(0, 1),
+                   default=int(e.get("blue_support", 1)),
+                   help="1, under any box-type rule: blue on blue rests "
+                        "on blue with all of its base, else only as a "
+                        "fallback -- a blue tower does not shift (b); 0: "
+                        "min_support alone")
     p.add_argument("--outline_resort", type=int, choices=(0, 1),
                    default=e.get("outline_resort", 0),
                    help="1 under the mixed rules: when every other step "

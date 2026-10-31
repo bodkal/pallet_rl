@@ -43,8 +43,8 @@ env:
   # across any gap, so the overhang that touch allows is blocked too.
   # mixed_touch / mixed_column: the cell's rules for blue (type 0), white (1)
   # and brown (2), with "on" read as touch / as column reads it.  A box goes
-  # on the floor and its own type -- blue on blue with all of its base on
-  # blue -- and across types:
+  # on the floor and its own type -- blue on blue by (b), white on white by
+  # (w), below -- and across types:
   #                    normally          else          else, soft_mix: 1
   #   blue on white    (a)               fallback      last resort
   #   blue on brown    (a)               fallback      last resort
@@ -57,7 +57,7 @@ env:
   # box (mixed_small_blue_cm) could still go on that blue -- no height left
   # under the lid, the arm cannot put one there, or (column) a box covers it.
   # A fallback is a box's own: when that box has no normal place at all;
-  # blue on blue with less than all of its base is one, soft mix or not.
+  # blue on blue without (b) is one, soft mix or not.
   # Either way it only drops candidate placements; the reward is not touched.
   type_rule: mixed_column       # touch | column | mixed_touch | mixed_column
   # Soft mix, read by the mixed rules only: 1 trades a box's own fallback
@@ -88,6 +88,29 @@ env:
   mixed_top_gap_cm: 5
   mixed_area_frac: 0.8
   mixed_small_blue_cm: [50, 30, 18]
+  # White towers (w), under every type_rule and with type_constraint 0 too:
+  # a white box resting on white rests on at least the small white box's base
+  # -- on all of its own when that is less -- on top of min_support, so a
+  # white tower does not shift.  "On white" is read as the type rule reads
+  # "on" (column / mixed_column: anywhere under the footprint).  Where that
+  # leaves a white box no place at all it is the box's own fallback, as for
+  # (b); soft mix's last resort lifts it too.  Length and width of
+  # the small white, padded and rounded like the small blue: 45 x 27 cm ->
+  # 12 x 8 cells, so a 12 x 8 white needs all of its base and a 13 x 8 one
+  # may hang one cell.  null drops (w).  The command line's --white_support
+  # 0/1 and --white_support_cm L W override it, and so do the game's
+  # checkbox and field.
+  mixed_white_support_cm: [45, 27]
+  # Blue towers (b), under every box-type rule and with type_constraint 0
+  # too: 1 makes a blue box resting on blue rest on it with all of its base
+  # -- every cell of its footprint at the landing height, so fully across two
+  # blues is fine -- so a blue tower does not shift.  "On blue" is read as
+  # for (w).  Where that leaves a blue box no place at all it is the box's
+  # own fallback, with min_support alone; soft mix's last resort lifts it too.
+  # 0: blue on blue needs only min_support, under the mixed rules as well,
+  # and so does the small blue box rule (d) asks about.  --blue_support 0/1
+  # and the game's checkbox override it.
+  blue_support: 1
   # Robot-arm filter: 1 drops every candidate placement the UR20 cannot make
   # without one of its links hitting the pack, or cannot reach at all (the
   # IK/capsule check of ar2l/pack_collision.py, set up from `robot:` below).
@@ -106,14 +129,16 @@ env:
 
   # ---- stack height over small boxes --------------------------------------
   # A small box carries only a short stack.  Once a box of one of
-  # `stack_cap_types` is placed, a later box may *start* over its footprint
-  # only below its top plus an allowance set by its shorter footprint side:
+  # `stack_cap_types` is placed, a later box may *start* on its stack only
+  # below its top plus an allowance set by its shorter footprint side:
   # linear from stack_cap_allow_cm[0] at a side of stack_cap_side_cm[0] (and
   # below) to stack_cap_allow_cm[1] at stack_cap_side_cm[1], and no limit from
   # that side up.  With the values here: 12 cm -> 8 cm (one box on top),
   # 16 -> 36, 20 -> 64, 24 -> 96, 28 -> 124, 30 cm and wider -> none.  The
   # limit stays with the small box's cells: a box bridging it and a neighbour
-  # is limited only over the small box.  Placements that break it are dropped
+  # is limited only over the small box, and only the cells a box rests on
+  # count -- one that merely overhangs a lower small box's stack is free (the
+  # C++ also checks the overhung cells).  Placements that break it are dropped
   # from the candidate list, like the type and arm rules; the reward is not
   # touched.  Real cm, read onto the grid with the arm filter's cell size
   # (robot.cell_m, else eval.cell_cm * eval.box_scale).  It is the cell's C++
@@ -144,6 +169,9 @@ train:
   # With `data`: the share of its pallets kept out of training and used for
   # the held-out evals that select best.pt.  0 scores on the training pallets.
   holdout: 0.2
+  # Seed of the train / held-out split, apart from run.seed so runs with
+  # different seeds still train and score on the same pallets.
+  split_seed: 0
   # With `data`: randomise each drawn pallet's box order, as eval.order_random
   # does -- 0 keeps the file's order, 1 is fully random.  More variety from
   # the same pallets.
@@ -170,6 +198,27 @@ model:
   heads: 1
   layers: 1              # attention blocks
   c_temp: 10.0            # pointer-head temperature c in Eq. 28
+  # Bound on the score inside Eq. 28's tanh: > 0 uses ptr_norm * cos(q, k),
+  # 0 the paper's unbounded q.k / sqrt(d).  Unbounded, a wider or deeper net
+  # can push every candidate's score past ~3, where the tanh gives them all
+  # the same logit and no gradient, and the policy is uniform for good: the
+  # 256-wide, 3-layer selector died that way by iteration 2000.  Checkpoints
+  # from before this option were trained with 0, and are loaded and resumed
+  # with 0 whatever this says.  0 by default: 3 capped the 128-wide packer's
+  # sharpness (0.55 held out against 0.60 with 0); fight saturation with
+  # ptr_center instead.
+  ptr_norm: 0.0
+  # 1 subtracts the mean over the live candidates from that score before the
+  # tanh.  What saturated the 256-wide selector was a score every candidate
+  # shared; centred, that offset is gone and the differences the softmax reads
+  # are left as they are -- unlike ptr_norm, which also caps them and left a
+  # 128-wide packer softer and weaker (0.57 held out against 0.61 with 0).
+  # 2 subtracts the max instead: the mean misses a spread -- brown scored ~240
+  # below blue/white, so every blue/white box saturated to the same logit and
+  # the selector picked among them at random (15% of its choices).  At the max
+  # the best candidate sits at 0, where the tanh is steepest, and is never tied.
+  # Checkpoints from before this option were trained with 0.
+  ptr_center: 0
   # Width of the trainable type embedding concatenated onto every node's
   # physical features before the per-element projection.  The embedding table
   # has n_types + 1 rows: one per box type, plus the bin floor, which is what

@@ -16,7 +16,7 @@ import torch
 
 from .config import CFG, load as load_config
 from .env import (BPPBatch, MIN_SUPPORT, OUTLINE_AREA, OUTLINE_WHEN,
-                  TYPE_RULES)
+                  TYPE_RULES, WHITE_SUPPORT_CM)
 from .heuristics import NAMES as HEURISTICS, act as heur_act
 from .model import PackNet, PermNet, sample
 from .orders import (add_cm_args, add_order_args, load_orders, orders_bin,
@@ -94,6 +94,9 @@ def load_nets(path, device, what=("pack", "attacker")):
     # current type count so it can be run against a typed env at all
     kw["n_types"] = a.get("n_types", CFG["env"]["n_types"])
     kw["type_embed"] = a.get("type_embed", CFG["model"]["type_embed"])
+    # a run trained before --ptr_norm existed used the unbounded Eq. 28 score
+    kw["ptr_norm"] = a.get("ptr_norm", 0.0)
+    kw["ptr_center"] = a.get("ptr_center", 0)
     out = {}
     if "pack" in what:
         net = _fit_state(PackNet(**kw).to(device), ck["pack"]); net.eval()
@@ -111,7 +114,8 @@ def run(seqs, policy, nb, attacker=None, attacked=None, batch=None, S=None,
         device=None, greedy=True, stability=None, ems=None, rot=None,
         max_l=None, min_support=None, n_pick=None, n_types=None,
         type_constraint=None, stack_cap=None, type_rule=None, soft_mix=None,
-        outline_resort=None, outline_when=None, outline_area=None):
+        outline_resort=None, outline_when=None, outline_area=None,
+        white_support=None, white_support_cm=None, blue_support=None):
     """Play every instance once.  `policy` is a net or a heuristic name.
 
     Anything left `None` comes from `config.yaml`; the env arguments are
@@ -137,6 +141,9 @@ def run(seqs, policy, nb, attacker=None, attacked=None, batch=None, S=None,
                        type_constraint=type_constraint, type_rule=type_rule,
                        soft_mix=soft_mix, outline_resort=outline_resort,
                        outline_when=outline_when, outline_area=outline_area,
+                       mixed_white_support=white_support,
+                       mixed_white_support_cm=white_support_cm,
+                       blue_support=blue_support,
                        stack_cap=stack_cap)
         env.reset(chunk)
         on = torch.as_tensor(attacked[s:s + batch]).to(device)
@@ -172,7 +179,8 @@ def nominal_score(pack, nb, n_inst=256, n_items=150, seed=999, device="cuda",
                   min_support=None, n_pick=None, n_types=None,
                   type_constraint=None, stack_cap=None, seqs=None,
                   type_rule=None, soft_mix=None, outline_resort=None,
-                  outline_when=None, outline_area=None):
+                  outline_when=None, outline_area=None, white_support=None,
+                  white_support_cm=None, blue_support=None):
     """Quick greedy score on a fixed held-out slice, for training curves.
 
     `seqs` scores those instances (a run's held-out real pallets) instead of
@@ -185,7 +193,8 @@ def nominal_score(pack, nb, n_inst=256, n_items=150, seed=999, device="cuda",
                n_pick=n_pick, n_types=n_types, type_constraint=type_constraint,
                stack_cap=stack_cap, type_rule=type_rule, soft_mix=soft_mix,
                outline_resort=outline_resort, outline_when=outline_when,
-               outline_area=outline_area)
+               outline_area=outline_area, white_support=white_support,
+               white_support_cm=white_support_cm, blue_support=blue_support)
     return float(u.mean()), float(k.mean())
 
 
@@ -195,7 +204,8 @@ def attack_score(policy, attacker, nb, n_inst=256, n_items=150, seed=998,
                  max_l=120, min_support=None, n_pick=None, n_types=None,
                  type_constraint=None, stack_cap=None, seqs=None,
                  type_rule=None, soft_mix=None, outline_resort=None,
-                 outline_when=None, outline_area=None):
+                 outline_when=None, outline_area=None, white_support=None,
+                 white_support_cm=None, blue_support=None):
     """Greedy utilisation of `policy` with every conveyor reordered.
 
     The attacker is selected and reported under the conditions it will be
@@ -213,7 +223,8 @@ def attack_score(policy, attacker, nb, n_inst=256, n_items=150, seed=998,
                type_constraint=type_constraint, stack_cap=stack_cap,
                type_rule=type_rule, soft_mix=soft_mix,
                outline_resort=outline_resort, outline_when=outline_when,
-               outline_area=outline_area)
+               outline_area=outline_area, white_support=white_support,
+               white_support_cm=white_support_cm, blue_support=blue_support)
     return float(u.mean()), float(k.mean())
 
 
@@ -263,6 +274,21 @@ def get_parser():
     p.add_argument("--soft_mix", type=int, default=e.get("soft_mix", 0),
                    help="1 adds the mixed rules' soft mix: mixes only as "
                         "the station's last resort; match the policy's")
+    p.add_argument("--white_support", type=int,
+                   default=int(e.get("mixed_white_support_cm") is not None),
+                   help="1 adds white towers (w), under any box-type rule: "
+                        "white on white rests on at least the small white's "
+                        "base; match the policy's")
+    p.add_argument("--white_support_cm", type=float, nargs=2,
+                   metavar=("L", "W"),
+                   default=list(e.get("mixed_white_support_cm")
+                                or WHITE_SUPPORT_CM),
+                   help="the small white box of (w), length and width in cm")
+    p.add_argument("--blue_support", type=int,
+                   default=int(e.get("blue_support", 1)),
+                   help="1 adds blue towers (b), under any box-type rule: "
+                        "blue on blue rests on blue with all of its base; "
+                        "match the policy's")
     p.add_argument("--outline_resort", type=int, default=e.get("outline_resort", 0),
                    help="1 adds the mixed rules' outline step: when every "
                         "other step leaves nothing, the outline points")
@@ -327,6 +353,9 @@ def main(argv=None):
                    n_pick=a.n_pick, n_types=a.n_types,
                    type_constraint=bool(a.type_constraint),
                    type_rule=a.type_rule, soft_mix=bool(a.soft_mix),
+                   white_support=bool(a.white_support),
+                   white_support_cm=a.white_support_cm,
+                   blue_support=bool(a.blue_support),
                    outline_resort=bool(a.outline_resort),
                    outline_when=a.outline_when,
                    outline_area=a.outline_area,

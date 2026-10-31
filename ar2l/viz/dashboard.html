@@ -28,7 +28,20 @@ main{padding:16px 20px 40px;max-width:1500px;margin:0 auto}
 .kpi{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:9px 13px;flex:1;min-width:120px}
 .kpi .v{font-size:20px;font-weight:640;font-variant-numeric:tabular-nums;line-height:1.2}
 .kpi .k{color:var(--dim);font-size:10px;text-transform:uppercase;letter-spacing:.5px}
-#grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:12px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:12px}   /* auto-fit: the plots there stretch to fill the row */
+.sec{margin-bottom:22px}
+.sh{display:flex;align-items:stretch;gap:10px;margin:0 0 12px;padding-bottom:9px;border-bottom:1px solid var(--line)}
+.sh .bar{width:4px;border-radius:2px;background:var(--acc)}
+.sh h3{font-size:16px;font-weight:650;margin:0;letter-spacing:.2px;line-height:1.25}
+#s-general{--acc:var(--dim)} #s-packer{--acc:var(--c0)} #s-selector{--acc:var(--c4)}
+/* packer left, selector right, a hairline between; one alone takes the
+   full width, and on a narrow screen they stack with the line across */
+.pair{display:grid;grid-template-columns:1fr 1px 1fr;gap:0 28px;align-items:start}
+.pair>.vr{align-self:stretch;background:var(--line)}
+.pair:has(>section[hidden]){grid-template-columns:1fr}
+.pair:has(>section[hidden])>.vr{display:none}
+@media (max-width:900px){.pair{grid-template-columns:1fr}.pair>.vr{height:1px;margin-bottom:22px}}
+.pair .grid{grid-template-columns:1fr}   /* one plot a row, level with its twin */
 .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;cursor:pointer}
 .card h2{font-size:11px;margin:0 0 6px;font-weight:600;color:var(--dim);letter-spacing:.6px;text-transform:uppercase}
 .lg{display:flex;gap:10px;flex-wrap:wrap;font-size:10.5px;color:var(--dim);margin-bottom:4px;min-height:15px}
@@ -47,12 +60,14 @@ svg{width:100%;height:auto;display:block;overflow:visible}
 #modal{position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:20;display:flex;
   align-items:center;justify-content:center;padding:26px}
 #modal .card{width:min(1100px,96vw);cursor:default}
-table.sum{width:100%;border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums}
-table.sum th{text-align:left;color:var(--dim);font-weight:500;font-size:10px;
-  text-transform:uppercase;letter-spacing:.5px;padding:0 10px 6px 0}
-table.sum td{padding:4px 10px 4px 0;border-top:1px solid var(--line)}
 .good{color:var(--ok);font-weight:640}
 .bad{color:var(--bad)}
+h2[data-h]{cursor:help}
+#help{position:fixed;z-index:30;max-width:360px;pointer-events:none;background:var(--panel);
+  border:1px solid var(--line);border-radius:8px;padding:7px 10px;font-size:12px;
+  box-shadow:0 6px 20px rgba(0,0,0,.35)}
+#help div+div{margin-top:4px;color:var(--dim)}
+#help code{font:600 11px ui-monospace,monospace;color:var(--fg)}
 </style>
 
 <header>
@@ -65,11 +80,18 @@ table.sum td{padding:4px 10px 4px 0;border-top:1px solid var(--line)}
 
 <main>
   <div class="kpis" id="kpis"></div>
-  <div class="card" id="sumcard" style="margin-bottom:14px;cursor:default" hidden>
-    <h2>Held-out evaluation vs. the paper &mdash; space utilisation, &beta; = 0 / 100</h2>
-    <div id="sum"></div>
+  <section class="sec" id="s-general">
+    <div class="sh"><span class="bar"></span><div><h3>General</h3><div class="sub">how well the run packs</div></div></div>
+    <div class="grid"></div></section>
+  <div class="pair">
+    <section class="sec" id="s-packer">
+      <div class="sh"><span class="bar"></span><div><h3>Packer</h3><div class="sub">where each box goes &mdash; corner point and orientation</div></div></div>
+      <div class="grid"></div></section>
+    <div class="vr"></div>
+    <section class="sec" id="s-selector">
+      <div class="sh"><span class="bar"></span><div><h3>Selector</h3><div class="sub">which box from the buffer goes next</div></div></div>
+      <div class="grid"></div></section>
   </div>
-  <div id="grid"></div>
 </main>
 
 <div id="modal" hidden onclick="closeM()">
@@ -83,24 +105,64 @@ table.sum td{padding:4px 10px 4px 0;border-top:1px solid var(--line)}
   </div>
 </div>
 
+<div id="help" hidden></div>
+
 <script>
 const $ = s => document.querySelector(s);
 const COLORS = ['--c0','--c2','--c1','--c4','--c3','--c5'];
 const cvar = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 
-// series: key in log.jsonl -> [title, scale, formatter]
-const PLOTS = [
-  ['nom_util',  'held-out nominal utilisation (%)', 100, v => v.toFixed(1)],
-  ['util',      'training utilisation, each algorithm’s own dynamics (%)', 100, v => v.toFixed(1)],
-  ['nom_items', 'held-out items packed', 1, v => v.toFixed(1)],
-  ['pack_vf',   'packer value loss', 1, v => v.toExponential(1)],
-  ['pack_ent',  'packer entropy', 1, v => v.toFixed(2)],
-  ['att_pg',    'attacker policy loss', 1, v => v.toFixed(4)],
-  ['mix_pg',    'mixture policy loss', 1, v => v.toFixed(4)],
-  ['mix_aux',   'mixture distance loss (Eq. 6)', 1, v => v.toFixed(2)],
+// series: key in log.jsonl -> [title, scale, formatter, [what it is, good / bad]]
+// the last is the pop-up over the title.  `*_sat` and `*_kl` are what show a
+// pointer saturating: sat climbs to 100% and kl drops to 0 once it is dead.
+const pct = v => v.toFixed(1);
+
+// the plots every net has, built the same so the packer and selector columns
+// line up row for row.  `mix_` is the selector: the log keeps the paper's
+// name for it, the mixture, which is what it is in an `exact` run.
+const NET = (pre, who, what) => [
+  [`${pre}_pg`,  `${who} policy loss`, 1, v => v.toFixed(4),
+   [`The ${who}’s clipped PPO policy loss.`,
+    ['small, hovering around 0', 'large swings, or drifting far from 0']]],
+  [`${pre}_vf`,  `${who} value loss`, 1, v => v.toExponential(1),
+   [`How far the ${who}’s value head is from the returns it sees.`,
+    ['small and settling; bumps as the policy improves are fine', 'climbs steadily, or jumps by orders of magnitude']]],
+  [`${pre}_ent`, `${who} entropy`, 1, v => v.toFixed(2),
+   [`How spread the ${who}’s choice over ${what} is.`,
+    ['a slow, steady fall as it grows confident', 'crashes to ~0 early (stopped exploring), or rises (policy going vague)']]],
+  [`${pre}_sat`, `${who} pointer saturation (% of candidates past tanh)`, 100, pct,
+   [`Share of ${what} whose ${who} pointer score is past tanh’s range (|y| > 3): they get the same logit and no gradient.`,
+    ['near 0%; some with --ptr_center 2 is fine (only far-below candidates)', 'climbs toward 100% — every choice tied, the net has stopped learning']]],
+  [`${pre}_kl`,  `${who} KL per update`, 1, v => v.toFixed(4),
+   [`How far one PPO update moves the ${who}’s policy (old vs. new log-prob, averaged).`,
+    ['small and positive, about 0.001–0.02', 'stuck at 0 (frozen, e.g. saturated), or above ~0.05 (updates too big: lower the lr)']]],
 ];
 
-let META = [], SEL = new Set(), LOGS = {}, SUM = null, MODAL = -1, ATT = false;
+const PLOTS = [
+  ['nom_util',  'held-out utilisation (%) — nominal, selected or attacked, as the run is judged', 100, pct,
+   ['Space used on the held-out sequences, scored the way this run is judged (nominal, through the selector, or attacked).',
+    ['rises, then flattens near or above the dashed paper line', 'falls after a rise, or flat from the start']]],
+  ['util',      'training utilisation, each algorithm’s own dynamics (%)', 100, pct,
+   ['Space used on the training episodes, under each algorithm’s own dynamics.',
+    ['climbs steadily; noise is normal', 'drops after a rise (collapse), or flat from the start']]],
+  ['nom_items', 'held-out items packed', 1, v => v.toFixed(1),
+   ['Boxes packed per pallet on the held-out sequences.',
+    ['rises along with utilisation', 'falls, or rises while utilisation falls (small boxes only)']]],
+  ['att_pg',    'attacker policy loss', 1, v => v.toFixed(4),
+   ['The attacker’s clipped PPO policy loss.',
+    ['small, hovering around 0', 'large swings, or drifting far from 0']]],
+  ...NET('pack', 'packer', 'the candidate corners'),
+  ...NET('mix', 'selector', 'the boxes in the buffer'),
+  ['mix_aux',   'selector distance loss (Eq. 6)', 1, v => v.toFixed(2),
+   ['In an exact run the selector is AR2L’s mixture, and Eq. 6 pulls it toward the plain order and the attacker.',
+    ['falls, then holds steady', 'rises over training']]],
+];
+
+// which column of the page a plot sits in
+const SECTION = key => key.startsWith('pack_') ? 'packer'
+                     : key.startsWith('mix_') ? 'selector' : 'general';
+
+let META = [], SEL = new Set(), LOGS = {}, MODAL = -1, ATT = false;
 
 // 16 policies plus their 16 attackers plus 12 heuristic attackers is far too
 // many pills to leave in the header at once
@@ -108,11 +170,20 @@ const isAtt = m => m.algo === 'attack';
 
 async function jget(u){ const r = await fetch(u); return r.json(); }
 
+// the held-out eval is logged under the name of what it scores -- att_ for an
+// attacker, sel_ for a select run, nom_ otherwise -- as train._held reads it
+const held = (r, key) => {
+  if (!key.startsWith('nom_')) return r[key];
+  const s = key.slice(4), p = ['att_', 'sel_', 'nom_'].find(p => r[p + s] != null);
+  return p && r[p + s];
+};
+
 function series(run, key, scale){
   const rows = LOGS[run] || [];
   // nom_util is logged as 0 until the first held-out evaluation
-  return rows.filter(r => r[key] != null && !(key.startsWith('nom') && r[key] === 0))
-             .map(r => [r.it, r[key] * scale]);
+  return rows.map(r => [r.it, held(r, key)])
+             .filter(([, v]) => v != null && !(key.startsWith('nom') && v === 0))
+             .map(([it, v]) => [it, v * scale]);
 }
 
 function plotData(key, scale){
@@ -169,11 +240,38 @@ function legend(el, key, scale){
     `<span><i style="background:${cvar(COLORS[i % COLORS.length])}"></i>${s.run}</span>`).join('');
 }
 
+// which algorithms train the net a plot reads, as train.py's stages do:
+// an attacker for rarl / exact / approx / attack, a selector (`mix_`) for
+// exact and select (Eq. 6 only in exact), and a packer for all but attack
+const TRAINS = {
+  att: ['rarl', 'exact', 'approx', 'attack'],
+  mix: ['exact', 'select'],
+  mix_aux: ['exact'],
+};
+const trains = (key, algo) => {
+  const t = TRAINS[key] || TRAINS[key.split('_')[0]];
+  if (t) return t.includes(algo);
+  return !key.startsWith('pack_') || algo !== 'attack';
+};
+
+// indices into PLOTS to show: a plot only when a picked run trains what it
+// reads and has logged it (older logs have no *_sat / *_kl)
+function shown(){
+  const algo = run => (META.find(m => m.run === run) || {}).algo;
+  return PLOTS.map((p, i) => i).filter(i => plotData(PLOTS[i][0], 1)
+    .some(s => trains(PLOTS[i][0], algo(s.run))));
+}
+
 function cards(){
-  $('#grid').innerHTML = PLOTS.map((p, i) =>
-    `<div class="card" onclick="openM(${i})"><h2>${p[1]}</h2>
-     <div class="lg" id="lg${i}"></div><svg id="sv${i}"></svg></div>`).join('');
-  PLOTS.forEach((p, i) => { legend($('#lg' + i), p[0], p[2]); draw($('#sv' + i), p[0], p[2], p[3], false); });
+  const ix = shown();
+  ['general', 'packer', 'selector'].forEach(sec => {
+    const mine = ix.filter(i => SECTION(PLOTS[i][0]) === sec), el = $('#s-' + sec);
+    el.hidden = !mine.length;
+    el.querySelector('.grid').innerHTML = mine.map(i =>
+      `<div class="card" onclick="openM(${i})"><h2 data-h="${i}">${PLOTS[i][1]}</h2>
+       <div class="lg" id="lg${i}"></div><svg id="sv${i}"></svg></div>`).join('');
+  });
+  ix.forEach(i => { const p = PLOTS[i]; legend($('#lg' + i), p[0], p[2]); draw($('#sv' + i), p[0], p[2], p[3], false); });
 }
 
 function kpis(){
@@ -190,29 +288,6 @@ function kpis(){
   ];
   $('#kpis').innerHTML = rows.map(([k, v]) =>
     `<div class="kpi"><div class="v">${v}</div><div class="k">${k}</div></div>`).join('');
-}
-
-function summary(){
-  if (!SUM || !Object.keys(SUM).length){ $('#sumcard').hidden = true; return; }
-  $('#sumcard').hidden = false;
-  const nbs = [...new Set(Object.values(SUM).map(v => v.nb))].sort((a, b) => a - b);
-  let h = '<table class="sum"><tr><th>method</th>' +
-    nbs.map(nb => `<th>N<sub>B</sub>=${nb} &beta;=0</th><th>&beta;=100</th>`).join('') + '</tr>';
-  const order = ['pct', 'cppo', 'rarl', 'rfmdp', 'ex05', 'ex10', 'ap05', 'ap10'];
-  order.forEach(m => {
-    const cells = nbs.map(nb => {
-      const v = SUM[`${m}_nb${nb}`];
-      if (!v) return '<td>—</td><td>—</td>';
-      const p = v.paper || {};
-      const cls = (o, q) => q == null ? '' : (o >= q ? ' class="good"' : ' class="bad"');
-      return `<td${cls(v['0'].uti, p.b0)}>${v['0'].uti.toFixed(1)}</td>` +
-             `<td${cls(v['100'].uti, p.b100)}>${v['100'].uti.toFixed(1)}</td>`;
-    }).join('');
-    if (cells.includes('—') && !SUM[`${m}_nb${nbs[0]}`]) return;
-    h += `<tr><td>${m}</td>${cells}</tr>`;
-  });
-  $('#sum').innerHTML = h + '</table><div class="sub" style="padding-top:6px">'
-    + 'green where we are at or above the paper for that cell</div>';
 }
 
 function toggleAtt(){
@@ -257,7 +332,7 @@ function openM(i){ MODAL = i; $('#modal').hidden = false; drawM(); }
 function closeM(){ MODAL = -1; $('#modal').hidden = true; }
 function drawM(){
   const p = PLOTS[MODAL];
-  $('#mt').textContent = p[1];
+  $('#mt').textContent = p[1]; $('#mt').dataset.h = MODAL;
   legend($('#ml'), p[0], p[2]);
   MG = draw($('#ms'), p[0], p[2], p[3], true);
   $('#mread').innerHTML = '';
@@ -284,16 +359,31 @@ $('#ms').addEventListener('mousemove', e => {
 document.addEventListener('keydown', e => {
   if (MODAL < 0) return;
   if (e.key === 'Escape') closeM();
-  if (e.key === 'ArrowRight'){ MODAL = (MODAL + 1) % PLOTS.length; drawM(); }
-  if (e.key === 'ArrowLeft'){ MODAL = (MODAL + PLOTS.length - 1) % PLOTS.length; drawM(); }
+  const ix = shown(), k = ix.indexOf(MODAL);
+  if (e.key === 'ArrowRight'){ MODAL = ix[(k + 1) % ix.length]; drawM(); }
+  if (e.key === 'ArrowLeft'){ MODAL = ix[(k + ix.length - 1) % ix.length]; drawM(); }
+});
+
+// ---- title pop-ups --------------------------------------------------------
+// on the document, not the titles: the cards are rebuilt on every poll
+document.addEventListener('mousemove', e => {
+  const t = e.target.closest && e.target.closest('h2[data-h]'), el = $('#help');
+  const p = t && PLOTS[+t.dataset.h];
+  if (!p || !p[4]){ el.hidden = true; return; }
+  const [what, [good, bad]] = p[4];
+  el.innerHTML = `<div><code>${p[0]}</code> &mdash; ${what}</div>`
+    + `<div><span class="good">good:</span> ${good} &nbsp;&middot;&nbsp; <span class="bad">bad:</span> ${bad}</div>`;
+  el.hidden = false;
+  el.style.left = Math.max(8, Math.min(e.clientX + 14, innerWidth - el.offsetWidth - 8)) + 'px';
+  el.style.top = (e.clientY + 18 + el.offsetHeight > innerHeight
+    ? e.clientY - el.offsetHeight - 10 : e.clientY + 18) + 'px';
 });
 
 // ---- boot ----------------------------------------------------------------
 async function poll(){
   META = await jget('runs');
-  SUM = await jget('summary');
   if (!SEL.size) META.filter(m => !isAtt(m)).slice(0, 6).forEach(m => SEL.add(m.run));
-  pills(); summary(); await refresh();
+  pills(); await refresh();
 }
 poll(); setInterval(poll, 4000);
 </script>

@@ -33,6 +33,8 @@ def typed(n_env=8, **kw):
     # this file is about the own-type rule, whatever the config says; the
     # mixed rules' exceptions are tested in test_mixed.py
     kw.setdefault("type_rule", "touch")
+    # config's 0.80 floor stacks too rarely for the contact count below
+    kw.setdefault("min_support", 0.3)
     return BPPBatch(n_env, **kw)
 
 
@@ -149,8 +151,11 @@ def test_no_box_is_ever_stacked_on_another_type():
 def test_the_rule_actually_removes_placements():
     """Without this the test above would pass on a simulator that never stacks."""
     rng = np.random.default_rng(3)
-    on = typed(8, seed=5, type_constraint=True)
-    off = typed(8, seed=5, type_constraint=False)
+    # without (b) and (w): a box the type rule leaves no place gets them lifted
+    # as its fallback, which does add placements -- by design, not the rule's
+    towers = dict(blue_support=False, mixed_white_support=False)
+    on = typed(8, seed=5, type_constraint=True, **towers)
+    off = typed(8, seed=5, type_constraint=False, **towers)
     blocked = 0
     for _ in range(30):
         for f in ("hmap", "tmap", "seq", "head", "packed", "ptype", "n_packed",
@@ -176,7 +181,7 @@ def test_an_overhang_over_a_foreign_type_is_legal():
     """
     env = BPPBatch(1, S=(6, 6, 6), nb=1, rot=1, ems=False, seed=0,
                    n_types=3, types=CLASSES, min_support=0.6,
-                   type_rule="touch")
+                   type_rule="touch", blue_support=False)   # (b) bars it
     def offer(t_far):
         env.reset(np.array([[[3, 1, 1, 0]] * 4], np.int16))
         env.hmap[0, 0:2, 0] = 2          # a type-0 shelf, two cells wide
@@ -639,8 +644,9 @@ def test_column_rule_is_touch_minus_footprints_over_a_foreign_box():
     """The column mask, cell by cell, is the touch mask with every footprint
     that covers a foreign box anywhere below taken out -- and it does take
     some out, or the two rules would be the same."""
+    # (b) reads "on blue" as each rule does, so it would differ between them
     env = typed(8, seed=12, type_rule="column", arm_collision=False,
-                stack_cap=False)
+                stack_cap=False, blue_support=False)
     rng = np.random.default_rng(12)
     removed = 0
     for _ in range(30):

@@ -234,6 +234,20 @@ cells those placements cover, and sweeps that map like `hbad`. The fallback
 needs to know whether any normal placement exists, so it asks the arm in the
 same batch as the station filter. RUN.md §0a has the table.
 
+White towers (w) is a rule of its own, under every type rule and with the
+type rule off too: a white box resting on white needs at least the small
+white box's base (45 × 27 cm, `mixed_white_support_cm`) resting, or all of
+its own when it is smaller, on top of `min_support` -- the same contact
+count, against a fixed area -- and falls back to `min_support` alone when
+that leaves it no place (`env._white_ok`, `--white_support`).
+
+Blue towers (b) is the same for blue, and was the mixed rules' own blue on
+blue before it held everywhere: a blue box resting on blue rests on it with
+all of its base -- the contact count against the whole footprint -- and
+falls back to `min_support` alone when that leaves it no place
+(`env._blue_ok`, `--blue_support`). Off, the small blue box of rule (d) is
+placed on `min_support` too.
+
 Each candidate position carries the type it would land on, `TYPE_FLOOR` on the
 floor, which is the `l_type` the packer is given. That one comes from a second
 coded sweep — `code = h·(n_types+1) + (t+1)` is monotone in the height, so the

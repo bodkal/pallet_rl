@@ -34,6 +34,9 @@ def plain(*a, **kw):
     kw.setdefault("n_types", 1)
     kw.setdefault("types", False)
     kw.setdefault("arm_collision", False)
+    # the brute-force references model EMS corners only; config's ems 3 adds
+    # corner cells they do not know about
+    kw.setdefault("ems", 1)
     return BPPBatch(*a, **kw)
 
 

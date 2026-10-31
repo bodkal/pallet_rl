@@ -384,6 +384,19 @@ details.cf>summary b{font-size:14px}
   border:1px solid var(--line);border-radius:9px;padding:8px 11px;font-size:12px;line-height:1.45;
   box-shadow:0 6px 22px rgba(0,0,0,.35);opacity:0;transform:translateY(3px);transition:opacity .12s,transform .12s}
 #ttip.on{opacity:1;transform:none}
+/* a candidate point's pop-up, opened by a click on it in a 3D bin */
+#ptpop{position:absolute;z-index:40;max-width:320px;max-height:60vh;overflow:auto;background:var(--panel);
+  border:1px solid var(--line);border-radius:9px;padding:8px 11px;font-size:12px;line-height:1.5;
+  box-shadow:0 6px 22px rgba(0,0,0,.35)}
+#ptpop b{font-family:ui-monospace,monospace;font-weight:600}
+#ptpop .ph{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+#ptpop .d{color:var(--dim);font-size:11px}
+#ptpop .pt{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:4px}
+#ptpop .nav{margin-left:auto;display:flex;gap:3px}
+#ptpop .nav button{padding:0 8px;font-size:14px;line-height:20px;border-radius:5px}
+#ptpop .pe{border-top:1px solid var(--line);padding:5px 6px;margin:0 -6px;border-radius:6px}
+#ptpop .pe[data-k]{cursor:pointer}
+#ptpop .pe.on{background:color-mix(in srgb,var(--c1) 16%,transparent);border-top-color:transparent}
 #ttip b{font-family:ui-monospace,monospace;font-weight:600}
 #ttip .d{color:var(--dim);margin-top:4px;font-size:11px}
 :root{--tr:#279cc4;--ho:#c2850a}
@@ -464,6 +477,52 @@ details.cf>summary b{font-size:14px}
   background:color-mix(in srgb,var(--ho) 10%,transparent)}
 .tlead button.none{opacity:.55;border-style:dashed}
 .tlead button .its{opacity:.8;padding-left:6px;border-left:1px solid var(--line)}
+/* the hall of fame: three wide tiles, gold - silver - bronze */
+:root{--au:#f5c542;--ag:#c4ccd8;--cu:#d98b4e}
+:root[data-theme=light]{--au:#d9a514;--ag:#9aa4b2;--cu:#b8693a}
+#tfame{margin-bottom:12px;padding:10px 14px;position:relative;overflow:hidden}
+#tfame h2{margin-bottom:8px}
+.fpod{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:8px}
+.fpod+.fk{margin-top:8px}
+.fk{color:var(--dim);font-size:10px;text-transform:uppercase;letter-spacing:.55px;margin-bottom:4px}
+.fsp{display:grid;grid-template-columns:auto minmax(0,1fr);gap:1px 9px;align-items:center;min-width:0;
+  padding:6px 10px;border-radius:9px;cursor:pointer;--m:var(--cu);
+  border:1px solid color-mix(in srgb,var(--m) 45%,var(--line));
+  background:linear-gradient(90deg,color-mix(in srgb,var(--m) 16%,transparent),transparent 70%);
+  position:relative;overflow:hidden;animation:xin .45s both}
+.fsp.p1{--m:var(--au)} .fsp.p2{--m:var(--ag);animation-delay:.08s} .fsp.p3{animation-delay:.16s}
+.fsp.p1::after{content:'';position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(105deg,transparent 40%,color-mix(in srgb,var(--au) 30%,transparent) 50%,transparent 60%) no-repeat;
+  background-size:250% 100%;animation:xsheen 3.5s ease-in-out 1s infinite}
+.fsp:hover{border-color:var(--m)}
+.fsp .md{grid-row:1/3;font-size:20px;line-height:1}
+.fsp.p1 .md{animation:fbob 2.4s ease-in-out infinite}
+.fsp .nm{font-family:ui-monospace,monospace;font-weight:600;font-size:11px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.fsp .sc{grid-column:2;color:var(--dim);font-size:11px;font-variant-numeric:tabular-nums;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fsp .sc b{font-size:14px;font-weight:700;color:var(--m)}
+.fbtn{padding:1px 9px;font-size:10.5px;border-radius:7px;text-transform:none;letter-spacing:0;font-weight:500}
+#tfame.more .fbtn{color:var(--c0);border-color:var(--c0)}
+.fsp .ds{grid-column:2;color:var(--dim);font-size:10.5px;font-variant-numeric:tabular-nums;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:none}
+#tfame.more .fsp .ds{display:grid;grid-template-columns:auto minmax(0,1fr);gap:1px 12px;
+  margin:6px 0 2px;padding-top:6px;border-top:1px solid color-mix(in srgb,var(--m) 30%,var(--line))}
+.fsp .ds dd{margin:0;color:var(--fg);font-weight:600}
+#tfame.more .fsp{align-items:start}
+#tfame.more .fsp :is(.nm,.sc,.ds){white-space:normal;overflow:visible;overflow-wrap:anywhere}
+#tfame.more .fsp .md{grid-row:1/3}
+.fsp .tg{font-size:9px;padding:0 5px;border-radius:6px;margin-right:5px;border:1px solid var(--line);color:var(--dim)}
+.fsp .tg.live{color:var(--c2);border-color:color-mix(in srgb,var(--c2) 50%,var(--line))}
+.fsp .tg.live::before{content:'';display:inline-block;width:5px;height:5px;border-radius:50%;
+  background:var(--c2);margin-right:3px;vertical-align:1px;animation:xbeat 1.6s ease-in-out infinite}
+.fsp.empty{opacity:.4;cursor:default;border-style:dashed;background:none}
+.fmore{margin-top:5px;font-size:10.5px}
+.fconf{position:absolute;top:-10px;width:5px;height:8px;border-radius:1px;pointer-events:none;
+  animation:fdrop var(--d) cubic-bezier(.25,.6,.5,1) forwards}
+@keyframes fbob{50%{transform:translateY(-2px) rotate(-6deg)}}
+@keyframes fdrop{to{transform:translate(var(--x),150px) rotate(var(--r));opacity:0}}
+@media(prefers-reduced-motion:reduce){#tfame *,#tfame *::after,#tfame *::before{animation:none!important}}
 .chip.rk.lead{color:var(--ho);border-color:color-mix(in srgb,var(--ho) 55%,transparent);font-weight:600}
 .tjob pre{font:11px/1.4 ui-monospace,monospace;color:var(--dim);max-height:260px;overflow:auto;
   background:var(--bg);border-radius:8px;padding:8px;margin:6px 0 0;white-space:pre-wrap}
@@ -602,6 +661,10 @@ details.cf>summary b{font-size:14px}
             <option value="mixed_touch">mixed touch &mdash; the cell's blue / white / brown rules, on what it rests on</option>
             <option value="mixed_column">mixed column &mdash; the same rules, on anything below</option></select></div>
           <label class="pf flag" title="mixed rules only: a box's own fallback onto another type becomes a last resort for the whole station -- only when no box within reach has any other place -- and brown on blue loses (c) but gains that last resort. Blue on blue keeps its fallback; brown never goes on white."><input id="softmix" type="checkbox"><span>soft mix &mdash; mixes only as a last resort for the station</span></label>
+          <label class="pf flag" title="under every box-type rule, and with it off: a blue box on blue rests on blue with all of its base -- every cell of its footprint at the height it lands at, so resting fully across two blues is fine -- so a blue tower does not shift. Otherwise only as its own fallback, when it has no other place at all. Off, blue on blue needs only the support floor, under the mixed rules too."><input id="bsup" type="checkbox"><span>blue towers (b) &mdash; blue on blue needs all of its base on blue</span></label>
+          <label class="pf flag" title="under every box-type rule, and with it off: a white box on white rests on at least the small white box&#39;s base (mixed_white_support_cm, 45 x 27 cm = 12 x 8 cells), or all of its own when that is less -- on top of the support floor -- so a white tower does not shift. Otherwise only as its own fallback, when it has no other place at all. Resting fully across two whites is fine."><input id="wsup" type="checkbox"><span>white towers (w) &mdash; white on white needs a small white&#39;s base</span></label>
+          <div class="pf" title="(w)&#39;s small white box, length and width in cm, padded and rounded like a box of the data: 45, 27 is 12 x 8 cells"><span>small white for (w), cm: length / width</span>
+            <input id="wsupcm" type="text" placeholder="45, 27"></div>
           <label class="pf flag" title="mixed rules only: when every other step leaves nothing -- the normal rules, a box's own fallback, soft mix's last resort -- the same rules again over every point on an outline: the edges of every packed box (on it flush with an edge, or beside it flush with a side) and the pallet's edges. Nothing to add when the action space is every loading position already."><input id="olresort" type="checkbox"><span>outline points &mdash; a last resort after soft mix</span></label>
           <div class="pf"><span>outline step opens</span><select id="olwhen">
             <option value="station">station &mdash; when no box within reach has a place</option>
@@ -614,6 +677,11 @@ details.cf>summary b{font-size:14px}
             <option value="1">on &mdash; drop placements the arm collides on</option></select></div>
           <div class="pf"><span>arm base x moves (-1..1, tried in order)</span>
             <input id="armmoves" type="text" placeholder="0, -0.5, 0.5, -1, 1"></div>
+          <div class="pf" title="how the agent's packer and picker centre their pointer scores before the tanh. It holds no weights, so a checkpoint can be played under another one without retraining. Top score: the best box sits at 0, where the tanh is steepest, so boxes the network ranks apart never tie at the same probability."><span>pointer centering (agent)</span><select id="pcenter">
+            <option value="-1">as trained</option>
+            <option value="0">off &mdash; the raw score</option>
+            <option value="1">average &mdash; minus the mean over the boxes</option>
+            <option value="2">top score &mdash; minus the best box's score</option></select></div>
           <div class="pf"><span>stack-height limit over small boxes</span><select id="stackcap">
             <option value="1">on &mdash; short stacks on small boxes</option>
             <option value="0">off &mdash; any height on any box</option></select></div>
@@ -851,6 +919,10 @@ details.cf>summary b{font-size:14px}
           <option value="mixed_touch">mixed touch &mdash; the cell's blue / white / brown rules, on what it rests on</option>
           <option value="mixed_column">mixed column &mdash; the same rules, on anything below</option></select></div>
         <label class="pf flag" title="mixed rules only: a box's own fallback onto another type becomes a last resort for the whole station -- only when no box within reach has any other place -- and brown on blue loses (c) but gains that last resort. Blue on blue keeps its fallback; brown never goes on white."><input id="rcsoftmix" type="checkbox"><span>soft mix &mdash; mixes only as a last resort for the station</span></label>
+        <label class="pf flag" title="under every box-type rule, and with it off: a blue box on blue rests on blue with all of its base -- every cell of its footprint at the height it lands at, so resting fully across two blues is fine -- so a blue tower does not shift. Otherwise only as its own fallback, when it has no other place at all. Off, blue on blue needs only the support floor, under the mixed rules too."><input id="rcbsup" type="checkbox"><span>blue towers (b) &mdash; blue on blue needs all of its base on blue</span></label>
+        <label class="pf flag" title="under every box-type rule, and with it off: a white box on white rests on at least the small white box&#39;s base (mixed_white_support_cm, 45 x 27 cm = 12 x 8 cells), or all of its own when that is less -- on top of the support floor -- so a white tower does not shift. Otherwise only as its own fallback, when it has no other place at all. Resting fully across two whites is fine."><input id="rcwsup" type="checkbox"><span>white towers (w) &mdash; white on white needs a small white&#39;s base</span></label>
+        <div class="pf" title="(w)&#39;s small white box, length and width in cm, padded and rounded like a box of the data: 45, 27 is 12 x 8 cells"><span>small white for (w), cm: length / width</span>
+          <input id="rcwsupcm" type="text" placeholder="45, 27"></div>
         <label class="pf flag" title="mixed rules only: when every other step leaves nothing -- the normal rules, a box's own fallback, soft mix's last resort -- the same rules again over every point on an outline: the edges of every packed box (on it flush with an edge, or beside it flush with a side) and the pallet's edges. Nothing to add when the action space is every loading position already."><input id="rcolresort" type="checkbox"><span>outline points &mdash; a last resort after soft mix</span></label>
         <div class="pf"><span>outline step opens</span><select id="rcolwhen">
           <option value="station">station &mdash; when no box within reach has a place</option>
@@ -863,6 +935,11 @@ details.cf>summary b{font-size:14px}
           <option value="1">on &mdash; drop placements the arm collides on</option></select></div>
         <div class="pf"><span>arm base x moves (-1..1, tried in order)</span>
           <input id="rcarmmoves" type="text" placeholder="0, -0.5, 0.5, -1, 1"></div>
+        <div class="pf" title="how the agent's packer and picker centre their pointer scores before the tanh. It holds no weights, so a checkpoint can be played under another one without retraining. Top score: the best box sits at 0, where the tanh is steepest, so boxes the network ranks apart never tie at the same probability."><span>pointer centering (agent)</span><select id="rcpcenter">
+          <option value="-1">as trained</option>
+          <option value="0">off &mdash; the raw score</option>
+          <option value="1">average &mdash; minus the mean over the boxes</option>
+          <option value="2">top score &mdash; minus the best box's score</option></select></div>
         <div class="pf"><span>stack-height limit over small boxes</span><select id="rcstackcap">
           <option value="1">on &mdash; short stacks on small boxes</option>
           <option value="0">off &mdash; any height on any box</option></select></div>
@@ -1006,6 +1083,10 @@ details.cf>summary b{font-size:14px}
           <option value="mixed_touch">mixed touch &mdash; the cell's blue / white / brown rules, on what it rests on</option>
           <option value="mixed_column">mixed column &mdash; the same rules, on anything below</option></select></div>
         <label class="pf flag" title="mixed rules only: a box's own fallback onto another type becomes a last resort for the whole station -- only when no box within reach has any other place -- and brown on blue loses (c) but gains that last resort. Blue on blue keeps its fallback; brown never goes on white."><input id="xsoftmix" type="checkbox"><span>soft mix &mdash; mixes only as a last resort for the station</span></label>
+        <label class="pf flag" title="under every box-type rule, and with it off: a blue box on blue rests on blue with all of its base -- every cell of its footprint at the height it lands at, so resting fully across two blues is fine -- so a blue tower does not shift. Otherwise only as its own fallback, when it has no other place at all. Off, blue on blue needs only the support floor, under the mixed rules too."><input id="xbsup" type="checkbox"><span>blue towers (b) &mdash; blue on blue needs all of its base on blue</span></label>
+        <label class="pf flag" title="under every box-type rule, and with it off: a white box on white rests on at least the small white box&#39;s base (mixed_white_support_cm, 45 x 27 cm = 12 x 8 cells), or all of its own when that is less -- on top of the support floor -- so a white tower does not shift. Otherwise only as its own fallback, when it has no other place at all. Resting fully across two whites is fine."><input id="xwsup" type="checkbox"><span>white towers (w) &mdash; white on white needs a small white&#39;s base</span></label>
+        <div class="pf" title="(w)&#39;s small white box, length and width in cm, padded and rounded like a box of the data: 45, 27 is 12 x 8 cells"><span>small white for (w), cm: length / width</span>
+          <input id="xwsupcm" type="text" placeholder="45, 27"></div>
         <label class="pf flag" title="mixed rules only: when every other step leaves nothing -- the normal rules, a box's own fallback, soft mix's last resort -- the same rules again over every point on an outline: the edges of every packed box (on it flush with an edge, or beside it flush with a side) and the pallet's edges. Nothing to add when the action space is every loading position already."><input id="xolresort" type="checkbox"><span>outline points &mdash; a last resort after soft mix</span></label>
         <div class="pf"><span>outline step opens</span><select id="xolwhen">
           <option value="station">station &mdash; when no box within reach has a place</option>
@@ -1066,7 +1147,7 @@ details.cf>summary b{font-size:14px}
     <h2>Log match &mdash; the cell's conveyor log, packed by an agent one pick at a time</h2>
     <div class="xg">
       <div class="pf wide"><span>conveyor log (.csv &mdash; type a path or browse)</span>
-        <div class="dirp"><input id="lfile" type="text" spellcheck="false" value="data/log data/conveyor_boxes_PL11PR_steps_1-133_with_maxnum.csv"></div></div>
+        <div class="dirp"><input id="lfile" type="text" spellcheck="false" value="" placeholder="data/log data/"></div></div>
       <div class="pf"><span>packer</span><select id="lopp"></select></div>
       <div class="pf" title="two rows of two log steps are the same box when they have the same type and the same three sides, in any order, within this many cm, and the box has not moved back along the belt"><span>same box in two steps: sides within, cm</span>
         <input id="ltol" type="number" min="0" max="20" step="0.1" value="1.5"></div>
@@ -1123,6 +1204,10 @@ details.cf>summary b{font-size:14px}
           <option value="mixed_touch">mixed touch &mdash; the cell's blue / white / brown rules, on what it rests on</option>
           <option value="mixed_column">mixed column &mdash; the same rules, on anything below</option></select></div>
         <label class="pf flag" title="mixed rules only: a box's own fallback onto another type becomes a last resort for the whole station -- only when no box within reach has any other place -- and brown on blue loses (c) but gains that last resort. Blue on blue keeps its fallback; brown never goes on white."><input id="lsoftmix" type="checkbox"><span>soft mix &mdash; mixes only as a last resort for the station</span></label>
+        <label class="pf flag" title="under every box-type rule, and with it off: a blue box on blue rests on blue with all of its base -- every cell of its footprint at the height it lands at, so resting fully across two blues is fine -- so a blue tower does not shift. Otherwise only as its own fallback, when it has no other place at all. Off, blue on blue needs only the support floor, under the mixed rules too."><input id="lbsup" type="checkbox"><span>blue towers (b) &mdash; blue on blue needs all of its base on blue</span></label>
+        <label class="pf flag" title="under every box-type rule, and with it off: a white box on white rests on at least the small white box&#39;s base (mixed_white_support_cm, 45 x 27 cm = 12 x 8 cells), or all of its own when that is less -- on top of the support floor -- so a white tower does not shift. Otherwise only as its own fallback, when it has no other place at all. Resting fully across two whites is fine."><input id="lwsup" type="checkbox"><span>white towers (w) &mdash; white on white needs a small white&#39;s base</span></label>
+        <div class="pf" title="(w)&#39;s small white box, length and width in cm, padded and rounded like a box of the data: 45, 27 is 12 x 8 cells"><span>small white for (w), cm: length / width</span>
+          <input id="lwsupcm" type="text" placeholder="45, 27"></div>
         <label class="pf flag" title="mixed rules only: when every other step leaves nothing -- the normal rules, a box's own fallback, soft mix's last resort -- the same rules again over every point on an outline: the edges of every packed box (on it flush with an edge, or beside it flush with a side) and the pallet's edges. Nothing to add when the action space is every loading position already."><input id="lolresort" type="checkbox"><span>outline points &mdash; a last resort after soft mix</span></label>
         <div class="pf"><span>outline step opens</span><select id="lolwhen">
           <option value="station">station &mdash; when no box within reach has a place</option>
@@ -1241,6 +1326,22 @@ details.cf>summary b{font-size:14px}
         <div class="isorow"><div class="rpts" id="pts-l"></div>
           <div class="isocv"><canvas id="iso-l"></canvas></div></div>
         <div class="rwin" id="win-l"></div>
+        <div class="row" style="margin-top:6px;gap:6px;flex-wrap:wrap"
+             title="a box that was never in the log, put in front of the station at this step: where it could go, the packer's odds and the points the rules turn down -- it is not packed, and nothing the run did changes">
+          <span>test box</span>
+          <select id="ltbox">
+            <option value="">none &mdash; the station's own boxes</option>
+            <option value="0,50,30,18">blue 50&times;30&times;18</option>
+            <option value="0,50,30,28">blue 50&times;30&times;28</option>
+            <option value="1,46,28,18">white 46&times;28&times;18</option>
+            <option value="1,46,28,25">white 46&times;28&times;25</option>
+            <option value="2">brown &mdash; sides &rarr;</option>
+          </select>
+          <input type="number" id="ltl" value="40" min="1" step="1" style="width:56px" title="length, cm" disabled>&times;
+          <input type="number" id="ltw" value="30" min="1" step="1" style="width:56px" title="width, cm" disabled>&times;
+          <input type="number" id="lth" value="20" min="1" step="1" style="width:56px" title="height, cm" disabled>
+          <span class="sub">cm, padded and gridded as a log box</span>
+        </div>
       </div>
     </div>
     <div class="sub" id="lrnote" style="margin-top:8px"></div>
@@ -1290,6 +1391,11 @@ details.cf>summary b{font-size:14px}
     <h2><span class="live"></span>Machine load &mdash; live, whole machine</h2>
     <div class="sysg" id="tsysg"><div class="sub" id="tsysmsg">reading&hellip;</div></div>
   </div>
+  <div class="card" id="tfame" hidden>
+    <h2 class="row">Hall of fame &mdash; best held-out ever, every run<span class="spacer"></span>
+      <button id="tfmore" type="button" class="fbtn" title="show or hide each run's train util, size and settings">Details &#9662;</button></h2>
+    <div id="tfameb"></div>
+  </div>
   <div class="card" id="tjobcard" hidden>
     <h2>Runs started from this server &mdash; full loss curves in the Training tab</h2>
     <div id="tlead" hidden></div>
@@ -1305,7 +1411,7 @@ details.cf>summary b{font-size:14px}
     <div class="cbar" style="margin-top:10px">
       <select id="trun" style="flex:1;min-width:220px" title="a run under runs/, with the settings it was trained with"></select>
       <button id="tresume" type="button" disabled title="fill the form with this run's settings, its name, and --resume ticked">Resume it</button>
-      <button id="tcopy" type="button" disabled title="fill the form with this run's settings, for a new run under a new name">Copy its settings</button>
+      <button id="tcopy" type="button" disabled title="fill the form with this run's settings and name, for a new run once the name is changed">Copy its settings</button>
     </div>
     <div class="opt" id="trunmsg"></div>
     <div id="tform"></div>
@@ -1354,10 +1460,11 @@ const PF = {
   size_hi: ['#hi0', '#hi1', '#hi2'],
   nb: '#nb', n_pick: '#npick', n_items: '#nitems', max_l: '#maxl',
   rot: '#prot', ems: '#ems', stability: '#stab', min_support: '#msup',
-  type_rule: '#trule', soft_mix: '#softmix',
+  type_rule: '#trule', soft_mix: '#softmix', white_support: '#wsup', white_support_cm: '#wsupcm', blue_support: '#bsup',
   outline_resort: '#olresort', outline_when: '#olwhen', outline_area: '#olarea', arm_collision: '#armcol', base_x_moves: '#armmoves',
   stack_cap: '#stackcap', stack_cap_types: '#stacktypes',
   stack_cap_side_cm: '#stackside', stack_cap_allow_cm: '#stackallow',
+  ptr_center: '#pcenter',
   source: '#src', data: '#data', pallet: '#palpick', order_random: '#ordrnd',
   pallet_cm: ['#pcm0', '#pcm1', '#pcm2'], cell_cm: '#cellcm',
   box_pad_m: '#bpad', box_scale: '#bscale', box_round: '#bround',
@@ -1370,10 +1477,10 @@ const EMSTEXT = {1: 'the corners of the empty maximal spaces',
 const PSTR = new Set(['stability', 'type_rule', 'outline_when', 'outline_area', 'source', 'data', 'box_round']);
 const PFLOAT = new Set(['min_support', 'order_random', 'cell_cm', 'box_pad_m', 'box_scale']);
 /* a checkbox, sent as 1 or 0 */
-const PFLAG = new Set(['soft_mix', 'outline_resort']);
+const PFLAG = new Set(['soft_mix', 'white_support', 'blue_support', 'outline_resort']);
 /* a list of numbers typed as "0, -0.5, 0.5"; the server checks the values */
 const PNUMS = new Set(['base_x_moves', 'stack_cap_types', 'stack_cap_side_cm',
-  'stack_cap_allow_cm']);
+  'stack_cap_allow_cm', 'white_support_cm']);
 const readList = v => v.split(/[\s,]+/).filter(t => t !== '').map(Number);
 const showList = v => (v || []).join(', ');
 /* what an orders file decides, so the form shows it rather than takes it */
@@ -1384,10 +1491,11 @@ const PLABEL = {source: 'box source', data: 'data file', pallet: 'pallet',
   nb: 'window N_B', n_pick: 'reach k', n_items: 'items in the sequence',
   max_l: 'candidate cap', rot: 'orientations', ems: 'action space',
   stability: 'stability rule', min_support: 'support floor',
-  type_rule: 'box-type rule', soft_mix: 'soft mix',
+  type_rule: 'box-type rule', soft_mix: 'soft mix', white_support: 'white towers (w)', white_support_cm: 'small white (cm)', blue_support: 'blue towers (b)',
   outline_resort: 'outline step', outline_when: 'outline step opens', outline_area: 'outline step looks at', arm_collision: 'robot-arm filter', base_x_moves: 'arm base x moves',
   stack_cap: 'stack-height limit', stack_cap_types: 'limited box types',
-  stack_cap_side_cm: 'stack-limit sides (cm)', stack_cap_allow_cm: 'stack-limit allowances (cm)'};
+  stack_cap_side_cm: 'stack-limit sides (cm)', stack_cap_allow_cm: 'stack-limit allowances (cm)',
+  ptr_center: 'pointer centering'};
 
 function readParams(pf = PF){
   const o = {};
@@ -1421,11 +1529,14 @@ function writeParams(p, pf = PF){
 }
 
 /* soft mix and the outline step mean something only under the mixed rules,
+   (w)'s size only with (w) on,
    and when the outline step opens and where it looks only with it on */
 function syncSoft(pf = PF){
   if (!pf.type_rule) return;
   const mixed = $(pf.type_rule).value.startsWith('mixed');
   if (pf.soft_mix) $(pf.soft_mix).disabled = !mixed;
+  if (pf.white_support_cm)
+    $(pf.white_support_cm).disabled = !$(pf.white_support).checked;
   if (pf.outline_resort) $(pf.outline_resort).disabled = !mixed;
   for (const k of ['outline_when', 'outline_area'])
     if (pf[k]) $(pf[k]).disabled = !mixed || !$(pf.outline_resort).checked;
@@ -1687,18 +1798,18 @@ function drawIso(cv, boxes, L, W, H, opts){
   }
 
   // ---- the box being placed, see-through, where the pointer would drop it ----
-  if(opts.ghost){
-    const [x,y,z,l,w,h] = opts.ghost.box, t = opts.ghost.type;
+  const seeThrough = ([x,y,z,l,w,h], t, i) => {
     const xf = st>=0 ? x+l : x, yf = ct>=0 ? y+w : y;
     const faces = [[P(x,y,z+h),P(x+l,y,z+h),P(x+l,y+w,z+h),P(x,y+w,z+h)],
                    [P(xf,y,z),P(xf,y+w,z),P(xf,y+w,z+h),P(xf,y,z+h)],
                    [P(x,yf,z),P(x+l,yf,z),P(x+l,yf,z+h),P(x,yf,z+h)]];
     g.globalAlpha = .45;
-    faces.forEach((f, k) => poly(f, boxColor(t, opts.ghost.i, [1,.84,.70][k])));
+    faces.forEach((f, k) => poly(f, boxColor(t, i, [1,.84,.70][k])));
     g.globalAlpha = 1; g.setLineDash([4,3]);
     faces.forEach(f => poly(f, null, css('--fg'), 1.2));
     g.setLineDash([]);
-  }
+  };
+  if(opts.ghost) seeThrough(opts.ghost.box, opts.ghost.type, opts.ghost.i);
 
   // ---- where the next box could go: one mark per candidate corner ----
   // orientation 1 a filled dot, orientation 2 a hollow diamond a size larger,
@@ -1707,12 +1818,19 @@ function drawIso(cv, boxes, L, W, H, opts){
   // down, the same shapes in red and a size smaller, drawn first so the
   // packer's own sit on top of them.  `onlyRot` (0 or 1) draws one
   // orientation's marks alone; indices into `points` stay as they were.
+  // `cv._marks` keeps where each mark landed on screen, for a click to find
+  // (`pickMark`); `cv._sel` is the ones picked, ringed dashed and followed
+  // by their pop-up as the view turns, and `cv._selAt` the one of them a
+  // dummy of the box stands at -- wherever it is, the rules or not.
   const shown = r => opts.onlyRot == null || (r ? 1 : 0) === opts.onlyRot;
+  const marks = cv._marks = [];
+  const nCand = opts.points ? opts.points.length : 0;
   if(opts.bad && opts.bad.length){
     const R = Math.max(2, Math.min(4.5, s*0.17));
-    for(const [x,y,z,r] of opts.bad){
+    for(const [x,y,z,r,why] of opts.bad){
       if(!shown(r)) continue;
       const [px,py] = P(x,y,z);
+      marks.push({px, py, R, ok: false, x, y, z, r, why});
       g.beginPath();
       if(r){ const d = R*1.45;
              g.moveTo(px,py-d); g.lineTo(px+d,py); g.lineTo(px,py+d); g.lineTo(px-d,py); g.closePath();
@@ -1726,6 +1844,10 @@ function drawIso(cv, boxes, L, W, H, opts){
     for(const [k, [x,y,z,r]] of opts.points.entries()){
       if(!shown(r)) continue;
       const [px,py] = P(x,y,z);
+      marks.push({px, py, R, ok: true, x, y, z, r, k, n: nCand,
+                  p: opts.pointProbs ? opts.pointProbs[k] : null,
+                  rank: opts.pointProbs ? 1 + opts.pointProbs.filter(q => q > opts.pointProbs[k]).length : 0,
+                  taken: k === opts.pointsTaken});
       g.beginPath();
       if(r){ const d = R*1.45;
              g.moveTo(px,py-d); g.lineTo(px+d,py); g.lineTo(px,py+d); g.lineTo(px-d,py); g.closePath();
@@ -1748,6 +1870,22 @@ function drawIso(cv, boxes, L, W, H, opts){
       }
     }
   }
+  const sel = (cv._sel || []).map(q => marks.find(m => sameMark(m, q))).filter(Boolean);
+  const at = sel.length ? Math.min(cv._selAt || 0, sel.length - 1) : -1;
+  const pb = opts.pointBox;
+  if(at >= 0 && pb){
+    const m = sel[at], [l, w, h] = pb.dims;
+    seeThrough([m.x, m.y, m.z, ...(m.r ? [w, l] : [l, w]), h],
+               opts.types ? pb.type : -1, boxes.length);
+  }
+  for(const [k, m] of sel.entries()){
+    g.beginPath(); g.arc(m.px, m.py, m.R*2.6, 0, 7);
+    g.strokeStyle = css('--bg'); g.lineWidth = 4; g.stroke();
+    g.setLineDash(k === at ? [] : [3,2]); g.strokeStyle = css('--c1');
+    g.lineWidth = k === at ? 2.6 : 2; g.stroke();
+    g.setLineDash([]);
+  }
+  markPop(cv, sel, at, pb && pb.dims);
 
   // ---- robot arm ----
   if(ARM){
@@ -1837,7 +1975,13 @@ function bindRotate(sel){
     redrawIsos();
   });
   const stop = e=>{ if(DRAG){ DRAG=null; cv.style.cursor='grab'; } };
-  cv.addEventListener('pointerup', stop);
+  // a press that hardly moved is a click: on a candidate point, it opens that
+  // point's pop-up
+  cv.addEventListener('pointerup', e=>{
+    if(DRAG && !DRAG.pan && Math.hypot(e.clientX-DRAG.x, e.clientY-DRAG.y) < 4)
+      pickMark(cv, e);
+    stop(e);
+  });
   cv.addEventListener('pointercancel', stop);
   cv.addEventListener('contextmenu', e=>e.preventDefault());
   // the wheel zooms about the cursor: the point under it stays put
@@ -1854,6 +1998,100 @@ function bindRotate(sel){
   }, {passive:false});
   cv.addEventListener('dblclick', ()=>{ Object.assign(VIEW, VIEW0); redrawIsos(); });
 }
+
+/* ---- a candidate point's pop-up ------------------------------------------
+   A click on a mark in a 3D bin says what it is: where it is, which way the
+   box is turned, whether the rules let it go there (and if not, which rule),
+   and the agent's probability for it.  Every mark under the click is listed
+   at once -- marks that overlap on screen, and the other orientation and
+   kind at the same corner -- the nearest first.  One pop-up for the page;
+   the bin that owns it moves it as the view turns.  A dummy of the box
+   stands at the point picked: the arrows, ↑/↓, or a click on an entry move
+   it between them. */
+const POP = {cv: null};
+const sameMark = (a, b) => a.ok === b.ok && a.x === b.x && a.y === b.y && a.z === b.z && a.r === b.r;
+const DOWN_WHY = {
+  arm: 'the robot arm would hit the pack placing it here, or cannot reach it',
+  lid: 'it would poke out through the lid',
+  cap: 'the stack-height limit: a small box in the stack it rests on caps how high it may start',
+  white: "white on white must rest on at least a small white box's base (w)",
+  blue: 'blue on blue must rest on it with all of its base (b)',
+  type: 'the box-type rule: it may not rest on what is under it',
+  support: 'not enough support underneath: it would not rest stably'};
+function pickMark(cv, e){
+  const b = cv.getBoundingClientRect(), mx = e.clientX - b.left, my = e.clientY - b.top;
+  const near = (cv._marks || []).map(m => ({m, d: Math.hypot(m.px - mx, m.py - my)}))
+    .filter(o => o.d <= o.m.R * 1.6 + 5)
+    .sort((u, v) => u.d - v.d || v.m.ok - u.m.ok);
+  const m = near.length ? near[0].m : null;
+  if (POP.cv && POP.cv !== cv) POP.cv._sel = null;
+  cv._selAt = 0;
+  // the same mark again, or empty space, closes it
+  const again = m && cv._sel && sameMark(cv._sel[0], m);
+  cv._sel = m && !again ? [...near.map(o => o.m), ...cv._marks.filter(q =>
+      q.x === m.x && q.y === m.y && !near.some(o => o.m === q))] : null;
+  redrawIsos();
+}
+function markHtml(m){
+  const turn = `orientation ${m.r ? 90 : 0}&deg;`;
+  return `<div class="ph"><b>x ${m.x} &middot; y ${m.y} &middot; z ${m.z}</b>
+      <span class="d">${turn}</span></div>`
+    + (m.ok ? `<div><span style="color:var(--c2)">&#10003; valid</span> &mdash; on the packer's candidate list</div>`
+       + `<div>score: ${m.p != null
+           ? `<b>${PCT(m.p)}</b> the agent's probability, rank <b>${m.rank}</b> of ${m.n}`
+           : 'none &mdash; no policy scored this bin'}${m.taken ? ' &middot; <b>taken</b>' : ''}</div>`
+     : `<div><span style="color:var(--c3)">&#10007; not valid</span> &mdash; ${DOWN_WHY[m.why] || 'the rules turn it down'}</div>`
+       + `<div class="d">score: none &mdash; the packer is never offered it</div>`);
+}
+function markPop(cv, sel, at, dims){
+  let el = $('#ptpop');
+  if (!sel.length){
+    if (POP.cv === cv){ POP.cv = null; if (el) el.hidden = true; }
+    return;
+  }
+  if (!el){
+    el = document.createElement('div'); el.id = 'ptpop'; document.body.appendChild(el);
+    el.addEventListener('click', e => {
+      const t = e.target.closest('[data-k],[data-step]');
+      if (t) moveDummy(t.dataset.k != null ? {to: +t.dataset.k} : {by: +t.dataset.step});
+    });
+  }
+  POP.cv = cv;
+  const many = sel.length > 1;
+  el.innerHTML = `<div class="pt">${dims ? `dummy box <b>${dims.join('×')}</b>` : 'no box to stand there'}${
+      many ? ` &middot; point <b>${at + 1}</b> of ${sel.length}
+        <span class="nav"><button data-step="-1" title="the point before (↑)">&lsaquo;</button><button
+          data-step="1" title="the next point (↓)">&rsaquo;</button></span>` : ''}</div>`
+    + sel.map((m, k) => `<div class="pe${k === at ? ' on' : ''}"${many ? ` data-k="${k}"` : ''}>${markHtml(m)}</div>`)
+         .join('');
+  el.hidden = false;
+  const b = cv.getBoundingClientRect(), o = sel[0];      // stays put as the dummy moves
+  const left = Math.min(b.left + o.px + 16, innerWidth - el.offsetWidth - 8);
+  el.style.left = (scrollX + Math.max(8, left)) + 'px';
+  el.style.top = (scrollY + b.top + o.py + 14) + 'px';
+}
+function moveDummy({to, by}){
+  const cv = POP.cv, n = cv && cv._sel ? cv._sel.length : 0;
+  if (n < 2) return;
+  cv._selAt = to != null ? to : ((cv._selAt || 0) + by + n) % n;
+  redrawIsos();
+}
+function closePop(){
+  if (!POP.cv) return;
+  POP.cv._sel = null; markPop(POP.cv, []); redrawIsos();
+}
+addEventListener('keydown', e => {
+  if (e.key === 'Escape') closePop();
+  else if (POP.cv && (e.key === 'ArrowUp' || e.key === 'ArrowDown')
+           && !e.target.closest('input,select,textarea')){
+    moveDummy({by: e.key === 'ArrowUp' ? -1 : 1}); e.preventDefault();
+  }
+});
+// a press anywhere but a bin, the pop-up itself or an arm base bar --
+// which moves the arm placing the picked point -- closes it
+addEventListener('pointerdown', e => {
+  if (POP.cv && e.target !== POP.cv && !e.target.closest('#ptpop, .basebar')) closePop();
+});
 
 /* ---- the robot arm ------------------------------------------------------
    Pointing at a cell asks the server to place the held box there with the
@@ -1875,6 +2113,8 @@ function drawPlay3d(){
            ghost: ok ? {box: [...ARM.pos, ...ARM.size], i: B.items,
                         type: typed() ? B.item_type : -1} : null});
   $('#armlg').hidden = !(ok && ARM.reachable);
+  baseBar('iso3d', G.params.base_x_moves, G.params, [LX, LY, LZ], ok ? ARM : null,
+          $('#showarm').checked);
 }
 
 function armText(){
@@ -1898,7 +2138,8 @@ async function fetchArm(){
   const q = ++ARMQ;
   if (!armWanted()){ ARM = null; armText(); if (B) drawPlay3d(); return; }
   const key = `${ORIENT},${HOVER.x},${HOVER.y}`;
-  const r = await api('/api/arm', {gid: G.gid, r: ORIENT, x: HOVER.x, y: HOVER.y});
+  const r = await api('/api/arm', {gid: G.gid, r: ORIENT, x: HOVER.x, y: HOVER.y,
+                                   moves: baseMoves(G.params.base_x_moves)});
   if (q !== ARMQ) return;                     // the pointer has moved on
   ARM = r.error ? null : {...r, key};
   if (r.error) $('#arminfo').textContent = '⚠ arm: ' + r.error; else armText();
@@ -1925,19 +2166,110 @@ function stepArm(key, placed, n, bin, redraw, moves, via){
   return null;
 }
 
+/* `sides` are [who, placed, arm, at], `at` -- {n, what} -- where that side's
+   arm places a picked point's dummy (`viewArm`) rather than box n */
 function armReplayText(sel, n, sides, show = '#showarm', lg = '.armlg-r'){
   const on = $(show).checked;
   document.querySelectorAll(lg).forEach(el => el.hidden = !on);
   if (!on || n < 1){ $(sel).innerHTML = ''; return; }
-  $(sel).innerHTML = 'arm placing box ' + n + ': ' + sides.map(([who, placed, a]) => {
-    const say = placed.length < n ? '<span style="color:var(--dim)">—</span>'
+  // the base move it stood at, where it is not the first
+  const mv = a => a.base_move ? ` (base moved ${a.base_move > 0 ? '+' : ''}${a.base_move})` : '';
+  const any = sides.some(s => s[3]);
+  $(sel).innerHTML = (any ? 'arm placing &mdash; ' : `arm placing box ${n}: `)
+    + sides.map(([who, placed, a, at]) => {
+    const say = placed.length < (at ? at.n : n) ? '<span style="color:var(--dim)">—</span>'
       : !a ? '<span style="color:var(--dim)">…</span>'
       : !a.reachable ? '<span style="color:var(--c3)">out of reach</span>'
       : a.hit ? `<span style="color:var(--c3)">the ${a.caps.filter(c => c.hit)
-                  .map(c => c.name).join(', ')} hits the pack</span>`
-      : '<span style="color:var(--c2)">clear</span>';
-    return `${who} ${say}`;
+                  .map(c => c.name).join(', ')} hits the pack${mv(a)}</span>`
+      : `<span style="color:var(--c2)">clear${mv(a)}</span>`;
+    return any ? `${who}: ${at ? at.what : 'box ' + n}, ${say}` : `${who} ${say}`;
   }).join(' &middot; ');
+}
+
+/* ---- the arm base: one setting for every 3D bin ---------------------------
+   Auto asks a bin's arm from each of its own base x moves in turn, the first
+   that clears the pack standing, as the valid and red points do; off, the
+   base stands at `v`, cleared or not -- in a bin whose moves lack `v`, at the
+   one of them nearest it.  Each bin has a bar under it (`baseBar`), and the
+   bars all follow each other, as the `.ptsrot` menus do. */
+const BASE = {auto: true, v: 0};
+const nearestMove = (ms, v) => ms.reduce((a, b) => Math.abs(b - v) < Math.abs(a - v) ? b : a);
+/* the moves a bin's arm is asked from, out of that bin's own */
+function baseMoves(moves){
+  const ms = moves && moves.length ? moves : [0];
+  return BASE.auto ? ms : [nearestMove(ms, BASE.v)];
+}
+/* what a pinned base adds to an arm's cache key */
+const baseKey = moves => BASE.auto ? '' : `:b${baseMoves(moves)[0]}`;
+for (const id of ['iso3d', 'iso-h', 'iso-a', 'iso-rc0', 'iso-rc1', 'iso-l']){
+  const cv = $('#' + id);
+  (cv.closest('.isorow') || cv).insertAdjacentHTML('afterend', `<div class="row basebar" id="base-${id}" hidden
+      style="gap:8px;margin-top:4px" title="where the robot's base stands for the arm drawn: auto takes the first of the base x moves that clears the pack, as the valid and red points do; off, the slider pins the base at one of them, cleared or not -- every 3D bin follows it">
+    <label style="cursor:pointer;white-space:nowrap"><input type="checkbox" class="baseauto" checked> auto base</label>
+    <input type="range" class="basesl" min="0" max="0" step="1" value="0" disabled style="flex:1;min-width:80px">
+    <span class="sub baselab" style="white-space:nowrap;font-variant-numeric:tabular-nums"></span></div>`);
+}
+/* bin `id`'s bar: over its base x `moves` in order along the pallet's y,
+   each sliding the base half the pallet's y side per 1 from where
+   `robot.base_from_box_tf` stands it; labelled with where its arm `a`
+   stood under auto.  Hidden while `on` -- its arm checkbox -- is off. */
+function baseBar(id, moves, p, bin, a, on){
+  const bar = $('#base-' + id);
+  bar.hidden = !on;
+  if (!on) return;
+  const ms = [...new Set(moves && moves.length ? moves : [0])].sort((x, y) => x - y);
+  const sl = bar.querySelector('.basesl');
+  bar._moves = ms;
+  sl.max = ms.length - 1;
+  sl.value = ms.indexOf(nearestMove(ms, BASE.v));
+  sl.disabled = BASE.auto;
+  bar.querySelector('.baseauto').checked = BASE.auto;
+  const ycm = bin[1] * p.cell_cm * Math.max(1, p.box_scale || 1);
+  const say = v => {
+    const cm = Math.round(v * ycm / 2);
+    return `${v > 0 ? '+' : ''}${v} (${cm ? `${cm > 0 ? '+' : ''}${cm} cm along pallet y` : 'the tf\'s own'})`;
+  };
+  bar.querySelector('.baselab').textContent = !BASE.auto ? 'base ' + say(nearestMove(ms, BASE.v))
+    : a && a.base_move != null ? 'auto: base ' + say(a.base_move) : 'auto';
+}
+document.addEventListener('input', e => {
+  if (!e.target.matches('.basesl')) return;
+  BASE.v = e.target.closest('.basebar')._moves[+e.target.value];
+  baseChanged();
+});
+document.addEventListener('change', e => {
+  if (!e.target.matches('.baseauto')) return;
+  BASE.auto = e.target.checked;
+  baseChanged();
+});
+function baseChanged(){
+  redrawIsos();
+  if (!$('#play').hidden && B && HOVER) fetchArm();
+}
+
+/* the point picked in a bin, as the box [x, y, z, l, w, h] its dummy
+   stands for there -- null when none is, or it is not one of `v`'s */
+function pickedBox(cv, v){
+  const sel = cv._sel;
+  if (!sel || !sel.length || !v || !v.box) return null;
+  const m = sel[Math.min(cv._selAt || 0, sel.length - 1)];
+  const same = p => p[0] === m.x && p[1] === m.y && p[2] === m.z && !p[3] === !m.r;
+  if (!((m.ok ? v.pts : v.bad) || []).some(same)) return null;
+  const [l, w, h] = v.box;
+  return [m.x, m.y, m.z, ...(m.r ? [w, l] : [l, w]), h];
+}
+/* The arm a replay bin `cv` draws after n boxes, from the shared base:
+   placing the dummy of the point picked there when one is -- on the pack
+   of this step, as the replay puts box n down -- else placing box n.
+   -> {arm, key, placed, at}, `at` as `armReplayText` takes it. */
+function viewArm(key, cv, v, placed, n, bin, moves, redraw, via){
+  const pick = pickedBox(cv, v);
+  const pl = pick ? [...placed.slice(0, n), pick] : placed, an = pick ? n + 1 : n;
+  const k = key + (pick ? `:at:${pick.join(',')}` : '') + baseKey(moves);
+  const at = pick && {n: an, what: `${v.test ? 'the test box' : v.own ? `box ${n + 1}` : `#${v.i + 1}`}`
+                                   + ` at (${pick[0]}, ${pick[1]}) z ${pick[2]}`};
+  return {arm: stepArm(k, pl, an, bin, redraw, baseMoves(moves), via), key: k, placed: pl, at};
 }
 
 // ---- the box you are placing -------------------------------------------
@@ -2125,7 +2457,6 @@ function mixedWhy(t, u){
                     : 'when it has no other place at all';
   // what each pair asks; null is never
   const when = {
-    '0,0': 'with all of its base on blue, or with less when it has no other place at all',
     '0,1': `when ${lid}, or ${late}`,
     '0,2': `when ${lid}, or ${late}`,
     '1,0': `when ${lid} or ${open}, or ${late}`,
@@ -2136,7 +2467,7 @@ function mixedWhy(t, u){
   };
   const rule = B.type_rule === 'mixed_column' ? 'mixed column rule' : 'mixed touch rule';
   if (B.type_rule === 'mixed_column'){
-    const parts = [0, 1, 2].filter(k => k !== t || t === 0).map(k => {
+    const parts = [0, 1, 2].filter(k => k !== t || when[`${t},${k}`]).map(k => {
       const w = when[`${t},${k}`];
       return w === null ? `never over ${PTNAME[k]}` : `over ${PTNAME[k]} only ${w}`;
     });
@@ -2333,9 +2664,20 @@ function onMove(ev){
                     : typed() && B.type_constraint && z > 0 && u >= 0
                       && u !== B.item_type;
   const armBlocked = B.armblock && B.armblock[ORIENT] && B.armblock[ORIENT][x][y];
+  const whiteBlocked = B.whiteblock && B.whiteblock[ORIENT] && B.whiteblock[ORIENT][x][y];
+  const blueBlocked = B.blueblock && B.blueblock[ORIENT] && B.blueblock[ORIENT][x][y];
+  const W = B.white || {};
   const why = armBlocked ? 'the robot arm would hit the pack placing it here, or cannot reach it (robot-arm filter on)'
             : (x + l > LX || y + w > LY) ? 'it hangs off the pallet'
             : (z + h > LZ) ? 'it would poke out through the lid'
+            : whiteBlocked && !wrongType ? `a white box on white must rest on at least a
+                           small white box's base (${(W.cm || []).join('×')} cm,
+                           ${(W.cells || []).join('×')} cells), or all of its own when that is
+                           less, so a white tower does not shift; it may with less only
+                           when it has no other place at all (white towers (w))`
+            : blueBlocked && !wrongType ? `a blue box on blue must rest on it with all of
+                           its base, so a blue tower does not shift; it may with less only
+                           when it has no other place at all (blue towers (b))`
             : wrongType && column ? `there is a box of another type somewhere under
                            its footprint, and a ${TNAME(B.item_type)} box may only be
                            over its own type (column rule)`
@@ -2464,7 +2806,7 @@ function renderResult(){
   const p = G.params;
   $('#vsub').innerHTML = `${LX}×${LY}×${LZ} bin · `
     + (G.pallet_id != null
-       ? `pallet ${G.pallet_id} of ${p.data}, ${p.n_items} boxes`
+       ? `pallet ${G.pallet_id}${p.pallet != null ? '/#' + p.pallet : ''} of ${p.data}, ${p.n_items} boxes`
          + (p.order_random ? `, order randomised ${p.order_random}` : '')
        : `items ${p.size_lo.join('×')} to ${p.size_hi.join('×')}`)
     + ` · N<sub>B</sub> ${p.nb}, reach k ${p.n_pick}
@@ -2544,11 +2886,15 @@ function viewPoints(pid, side, n, redraw){
   const step = ws[n] ? n : last && last.pick < 0 ? ws.length - 1 : -1;
   const win = ws[step];
   const show = side._show || SHOWPTS;
+  // a test box (`side._test`), never in the log, asked in front of the station
+  const test = side._test && side._test();
+  if (test && $(show.pts).checked && win) return testPoints(side, n, step, test, show, redraw);
   if (!$(show.pts).checked || !win || !win.w.length) return null;
   const sel = BOXSEL.get(pid);
   const i = sel && sel.side === side && sel.n === n ? sel.i : Math.max(0, win.pick);
   const own = i === win.pick && side.cands && side.cands[n];
   const v = {i, n, own: i === win.pick, left: win.pick < 0,
+             box: win.w[i], btype: win.t ? win.t[i] : -1,
              pts: own ? side.cands[n] : null,
              probs: own && side.cand_probs ? side.cand_probs[n] : null,
              taken: own && side.taken ? side.taken[n] : -1, bad: null};
@@ -2569,12 +2915,31 @@ function viewPoints(pid, side, n, redraw){
   v.capped = r.capped;
   return v;
 }
+/* `viewPoints` for a test box: every answer comes from the server, which
+   also says what the sides come to in cells */
+function testPoints(side, n, step, test, show, redraw){
+  const v = {i: -1, n, test, btype: test.type, box: null, pts: null, probs: null,
+             taken: -1, bad: null};
+  const key = `${side._pk}:${step}:T${test.type}:${test.cm.join('x')}`;
+  if (!PTSC.has(key)){
+    PTSC.set(key, null);
+    side._ask(step, 0, test).then(r => { PTSC.set(key, r); redraw(); })
+      .catch(() => PTSC.delete(key));
+  }
+  const r = PTSC.get(key);
+  if (!r){ v.wait = true; return v; }
+  if (r.error){ v.error = r.error; return v; }
+  Object.assign(v, {box: r.box, pts: r.cands, probs: r.probs, capped: r.capped});
+  if ($(show.bad).checked) v.bad = r.bad;
+  return v;
+}
 
 /* those points as `drawIso` takes them */
 function isoPoints(v){
   if (!v || !v.pts) return {};
   const top = topPoints(v.pts, v.probs, NTOP);
-  return {points: v.pts, pointsTaken: v.taken, bad: v.bad,
+  return {points: v.pts, pointsTaken: v.taken, bad: v.bad, pointProbs: v.probs,
+          pointBox: v.box ? {dims: v.box, type: v.btype} : null,
           pointRanks: new Map(top.map((t, k) => [t.i, k + 1])),
           onlyRot: PTSROT === 'all' ? null : +PTSROT};
 }
@@ -2585,7 +2950,9 @@ function isoPoints(v){
 function drawPoints(el, v){
   if (!v){ el.innerHTML = ''; return; }
   const top = topPoints(v.pts, v.probs, NTOP);
-  const box = v.left ? `#${v.i + 1}, left over` : v.own ? `box ${v.n + 1}`
+  const box = v.test ? `test ${PTNAME[v.test.type]} ${v.test.cm.join('×')} cm${
+              v.box ? ` (${v.box.join('×')})` : ''}`
+            : v.left ? `#${v.i + 1}, left over` : v.own ? `box ${v.n + 1}`
             : `box ${v.n + 1}, #${v.i + 1} instead`;
   el.innerHTML = (top.length
     ? `<div class="rwh">${box} &middot; top ${top.length}</div><ol class="plist short">`
@@ -2663,25 +3030,28 @@ function boxClicks(pid, el, redraw){
 function drawReplay(n){
   const h = RES.human.placed.slice(0, n), a = RES.agent.placed.slice(0, n);
   const again = () => drawReplay(parseInt($('#scrub').value, 10));
-  const ah = stepArm('h:' + n, RES.human.placed, n, [LX, LY, LZ], again),
-        aa = stepArm('a:' + n, RES.agent.placed, n, [LX, LY, LZ], again);
   const vh = RES.human.skipped ? null : viewPoints('h', RES.human, n, again),
         va = viewPoints('a', RES.agent, n, again);
+  const bin = [LX, LY, LZ], moves = G.params.base_x_moves, on = $('#showarm').checked;
+  const ah = viewArm('h:' + n, $('#iso-h'), vh, RES.human.placed, n, bin, moves, again),
+        aa = viewArm('a:' + n, $('#iso-a'), va, RES.agent.placed, n, bin, moves, again);
   drawIso($('#iso-h'), h, LX, LY, LZ,
-          {highlight: h.length - 1, height: 290, arm: ah,
+          {highlight: h.length - 1, height: 290, arm: ah.arm,
            types: typed() ? RES.human.placed_types : null,
            ...isoPoints(vh)});
   drawIso($('#iso-a'), a, LX, LY, LZ,
-          {highlight: a.length - 1, height: 290, arm: aa,
+          {highlight: a.length - 1, height: 290, arm: aa.arm,
            types: typed() ? RES.agent.placed_types : null,
            ...isoPoints(va)});
+  baseBar('iso-h', moves, G.params, bin, ARMC.get(ah.key), on && !RES.human.skipped);
+  baseBar('iso-a', moves, G.params, bin, ARMC.get(aa.key), on);
   drawWindow($('#win-h'), RES.human, n, G.params.n_pick, vh);
   drawWindow($('#win-a'), RES.agent, n, G.params.n_pick, va);
   drawPoints($('#pts-h'), vh);
   drawPoints($('#pts-a'), va);
+  const side = (who, A) => [who, A.placed, ARMC.get(A.key), A.at];
   armReplayText('#scrubarm', n,
-                RES.human.skipped ? [['agent', RES.agent.placed, aa]]
-                                  : [['you', RES.human.placed, ah], ['agent', RES.agent.placed, aa]]);
+                RES.human.skipped ? [side('agent', aa)] : [side('you', ah), side('agent', aa)]);
   $('#scrublab').textContent = n === 0 ? 'empty bins — drag to replay'
     : RES.human.skipped ? `after box ${n}:  agent ${a.length} placed`
     : `after box ${n}:  you ${h.length} placed`
@@ -2699,10 +3069,11 @@ const RPF = {
   bin: ['#rcbin0', '#rcbin1', '#rcbin2'],
   nb: '#rcnb', n_pick: '#rcnpick', max_l: '#rcmaxl',
   rot: '#rcrot', ems: '#rcems', stability: '#rcstab', min_support: '#rcmsup',
-  type_rule: '#rctrule', soft_mix: '#rcsoftmix',
+  type_rule: '#rctrule', soft_mix: '#rcsoftmix', white_support: '#rcwsup', white_support_cm: '#rcwsupcm', blue_support: '#rcbsup',
   outline_resort: '#rcolresort', outline_when: '#rcolwhen', outline_area: '#rcolarea', arm_collision: '#rcarmcol', base_x_moves: '#rcarmmoves',
   stack_cap: '#rcstackcap', stack_cap_types: '#rcstacktypes',
   stack_cap_side_cm: '#rcstackside', stack_cap_allow_cm: '#rcstackallow',
+  ptr_center: '#rcpcenter',
   box_pad_m: '#rcbpad',
 };
 let RCROWS = [];
@@ -2852,19 +3223,20 @@ function showRecalc(i){
 
 function drawRcReplay(n){
   if (!RCSEL || !RCROWS[RCSEL]) return;
-  const sides = [RCROWS[0], RCROWS[RCSEL]];
+  const sides = [RCROWS[0], RCROWS[RCSEL]], arms = [];
+  const again = () => drawRcReplay(parseInt($('#rcscrub').value, 10));
   sides.forEach((r, k) => {
     const pl = r.placed.slice(0, n), [bx, by, bz] = r.params.bin;
     r._aid = r._aid || ++ARMRID;              // rows are replaced, not edited
-    const arm = stepArm(`rc${r._aid}:${n}`, r.placed, n, [bx, by, bz],
-                        () => drawRcReplay(parseInt($('#rcscrub').value, 10)),
-                        r.params.base_x_moves);
-    const v = viewPoints('rc' + k, r, n,
-                         () => drawRcReplay(parseInt($('#rcscrub').value, 10)));
+    const v = viewPoints('rc' + k, r, n, again);
+    const A = arms[k] = viewArm(`rc${r._aid}:${n}`, $('#iso-rc' + k), v, r.placed, n,
+                                [bx, by, bz], r.params.base_x_moves, again);
     drawIso($('#iso-rc' + k), pl, bx, by, bz,
-            {highlight: pl.length - 1, height: 290, arm,
+            {highlight: pl.length - 1, height: 290, arm: A.arm,
              types: typed() ? r.placed_types : null,
              ...isoPoints(v)});
+    baseBar('iso-rc' + k, r.params.base_x_moves, r.params, [bx, by, bz], ARMC.get(A.key),
+            $('#showarm').checked);
     drawWindow($('#win-rc' + k), r, n, r.params.n_pick, v);
     drawPoints($('#pts-rc' + k), v);
     $('#rcs' + k).textContent = `${(r.util * 100).toFixed(1)}% filled · `
@@ -2876,7 +3248,7 @@ function drawRcReplay(n){
     + ((sides[1].changed || []).length ? ' \u00b7 ' + rcsay(sides[1].changed) : '');
   const [a, b] = sides.map(r => Math.min(n, r.placed.length));
   armReplayText('#rcscrubarm', n, sides.map((r, k) =>
-    [k ? `row ${RCSEL}` : 'this game', r.placed, ARMC.get(`rc${r._aid}:${n}`)]));
+    [k ? `row ${RCSEL}` : 'this game', arms[k].placed, ARMC.get(arms[k].key), arms[k].at]));
   $('#rcscrublab').textContent = n === 0 ? 'empty bins \u2014 drag to replay'
     : `after box ${n}:  this game ${a} placed`
       + (a < n ? ' (had already stopped)' : '')
@@ -3269,7 +3641,7 @@ const XPF = {
   bin: ['#xbin0', '#xbin1', '#xbin2'],
   nb: '#xnb', n_pick: '#xnpick', max_l: '#xmaxl',
   rot: '#xprot', ems: '#xems', stability: '#xstab', min_support: '#xmsup',
-  type_constraint: '#xtcon', type_rule: '#xtrule', soft_mix: '#xsoftmix',
+  type_constraint: '#xtcon', type_rule: '#xtrule', soft_mix: '#xsoftmix', white_support: '#xwsup', white_support_cm: '#xwsupcm', blue_support: '#xbsup',
   outline_resort: '#xolresort', outline_when: '#xolwhen', outline_area: '#xolarea', arm_collision: '#xarmcol', base_x_moves: '#xarmmoves',
   stack_cap: '#xstackcap', stack_cap_types: '#xstacktypes',
   stack_cap_side_cm: '#xstackside', stack_cap_allow_cm: '#xstackallow',
@@ -3278,7 +3650,7 @@ const XPF = {
 };
 PLABEL.type_constraint = 'stacking rule';
 for (const pf of [PF, RPF, XPF])
-  for (const k of ['type_rule', 'outline_resort'])
+  for (const k of ['type_rule', 'outline_resort', 'white_support'])
     $(pf[k]).addEventListener('input', () => syncSoft(pf));
 let XCHECK = null, XFILLED = false;
 /* a run with no name cannot be told apart in Compare, nor deleted by name */
@@ -3427,14 +3799,14 @@ const LPF = {
   bin: ['#lbin0', '#lbin1', '#lbin2'],
   nb: '#lnb', n_pick: '#lnpick', max_l: '#lmaxl',
   rot: '#lprot', ems: '#lems', stability: '#lstab', min_support: '#lmsup',
-  type_constraint: '#ltcon', type_rule: '#ltrule', soft_mix: '#lsoftmix',
+  type_constraint: '#ltcon', type_rule: '#ltrule', soft_mix: '#lsoftmix', white_support: '#lwsup', white_support_cm: '#lwsupcm', blue_support: '#lbsup',
   outline_resort: '#lolresort', outline_when: '#lolwhen', outline_area: '#lolarea', arm_collision: '#larmcol', base_x_moves: '#larmmoves',
   stack_cap: '#lstackcap', stack_cap_types: '#lstacktypes',
   stack_cap_side_cm: '#lstackside', stack_cap_allow_cm: '#lstackallow',
   pallet_cm: ['#lpcm0', '#lpcm1', '#lpcm2'], cell_cm: '#lcellcm',
   box_pad_m: '#lbpad', box_scale: '#lbscale', box_round: '#lbround',
 };
-for (const k of ['type_rule', 'outline_resort'])
+for (const k of ['type_rule', 'outline_resort', 'white_support'])
   $(LPF[k]).addEventListener('input', () => syncSoft(LPF));
 let LJOB = null, LPOLL = null, LRUN = false, LBAD = false, LFILLED = false, LCHECK = null;
 let LSTAT = null, LRES = null;          // the last status, and the pallet on show
@@ -3563,8 +3935,8 @@ async function lOpen(k){
   if (!job || k < 0 || k >= n) return;
   const pal = await api('/api/log/pallet', {job, i: k});
   if (pal.error){ $('#lmsg').textContent = pal.error; return; }
-  Object.assign(pal, {_pk: `L${job}:${k}`, _show: LSHOW, _typed: true,
-    _ask: (step, i) => api('/api/log/points', {job, pallet: k, n: step, i}),
+  Object.assign(pal, {_pk: `L${job}:${k}`, _show: LSHOW, _typed: true, _test: lTest,
+    _ask: (step, i, test) => api('/api/log/points', {job, pallet: k, n: step, i, test}),
     _via: {show: '#lshowarm',
            post: (placed, bin, moves) => api('/api/log/arm', {job, placed, bin, moves})}});
   LRES = {job, k, pal};
@@ -3669,14 +4041,16 @@ function lWinHead(win, reach){
 function lDraw(n){
   if (!LRES) return;
   const pal = LRES.pal, [bx, by, bz] = pal.bin, again = () => lDraw(lNow());
-  const arm = stepArm(`${pal._pk}:${n}`, pal.placed, n, pal.bin, again,
-                      pal.params.base_x_moves, pal._via);
   const v = viewPoints('L', pal, n, again);
+  const A = viewArm(`${pal._pk}:${n}`, $('#iso-l'), v, pal.placed, n, pal.bin,
+                    pal.params.base_x_moves, again, pal._via);
   drawIso($('#iso-l'), pal.placed.slice(0, n), bx, by, bz,
-          {highlight: n - 1, height: 400, arm, types: pal.placed_types, ...isoPoints(v)});
+          {highlight: n - 1, height: 400, arm: A.arm, types: pal.placed_types, ...isoPoints(v)});
+  baseBar('iso-l', pal.params.base_x_moves, pal.params, pal.bin, ARMC.get(A.key),
+          $('#lshowarm').checked);
   drawWindow($('#win-l'), pal, n, pal.params.n_pick, v);
   drawPoints($('#pts-l'), v);
-  armReplayText('#lscrubarm', n, [['agent', pal.placed, ARMC.get(`${pal._pk}:${n}`)]],
+  armReplayText('#lscrubarm', n, [['agent', A.placed, ARMC.get(A.key), A.at]],
                 '#lshowarm', '.armlg-l');
   lReal(n);
   const na = Math.min(n, pal.placed.length), w0 = pal.windows[na - 1];
@@ -3720,6 +4094,13 @@ $('#lrun').onclick = async () => {
 $('#lstop').onclick = async () => { await api('/api/log/stop', {job: LJOB}); lPoll(); };
 for (const sel of Object.values(LPF).flat()) $(sel).addEventListener('input', lCheck);
 for (const sel of ['#lfile', '#ltol']) $(sel).addEventListener('input', lCheck);
+/* the log field opens on the first conveyor log in data/log data/, by name */
+fetch('/api/dirs?dir=' + encodeURIComponent('data/log data') + '&files=1')
+  .then(x => x.json()).then(r => {
+    const f = r.dir === 'data/log data'
+      && (r.files || []).find(f => f.name.toLowerCase().endsWith('.csv'));
+    if (f && !$('#lfile').value.trim()){ $('#lfile').value = f.path; if (LFILLED) lCheck(); }
+  }).catch(() => {});
 $('#lopp').onchange = lPreset;
 $('#lpreset').onclick = lPreset;
 $('#lfromplay').onclick = () => { writeParams(readParams(), LPF); lCheck(); };
@@ -3733,6 +4114,26 @@ $('#lscrub').oninput = e => lDraw(parseInt(e.target.value, 10));
 $('#lshowarm').onchange = () => lDraw(lNow());
 $('#lshowpts').onchange = e => { $('#lshowbad').disabled = !e.target.checked; lDraw(lNow()); };
 $('#lshowbad').onchange = () => lDraw(lNow());
+/* the test box under the station: one of the log's own blue and white
+   sizes, or a brown of any sides; null for none */
+function lTest(){
+  const v = $('#ltbox').value;
+  if (!v) return null;
+  const [t, ...cm] = v.split(',').map(Number);
+  const own = cm.length ? cm : ['#ltl', '#ltw', '#lth'].map(s => parseFloat($(s).value));
+  return own.every(c => c > 0) ? {type: t, cm: own} : null;
+}
+$('#ltbox').onchange = () => {
+  const brown = $('#ltbox').value === '2';
+  for (const s of ['#ltl', '#ltw', '#lth']) $(s).disabled = !brown;
+  BOXSEL.delete('L');
+  lDraw(lNow());
+};
+for (const s of ['#ltl', '#ltw', '#lth']) $(s).addEventListener('change', () => lDraw(lNow()));
+// a click on a station box goes back to the station's own boxes
+$('#win-l').addEventListener('click', e => {
+  if (e.target.closest('.rwt.pk') && $('#ltbox').value){ $('#ltbox').value = ''; $('#ltbox').onchange(); }
+});
 boxClicks('L', $('#win-l'), () => lDraw(lNow()));
 /* ================= compare the reports =================
    The server reads the reports with `ar2l.viz.compare`, the parser the
@@ -3955,7 +4356,6 @@ async function tFromRun(resume){
   if (res.error){ $('#trunmsg').textContent = res.error; return; }
   if (($('#tcfg').value.trim() || '') !== (res.config || '')){ $('#tcfg').value = res.config || ''; await tLoad(); $('#trun').value = name; tRunPick(); }
   const v = Object.assign({}, res.values, {resume: resume});
-  if (!resume){ v.name = ''; }
   TFORM.fields.forEach(f => {
     if (!(f.dest in v)) return;
     const e = $('#tf_' + f.dest);
@@ -3963,7 +4363,7 @@ async function tFromRun(resume){
   });
   TREF = Object.assign({}, res.values, {resume: resume, name: v.name});
   TLOADED = {run: r, resume: resume};
-  if (!resume) $('#tf_name').focus();
+  if (!resume){ $('#tf_name').focus(); $('#tf_name').select(); }
   tCheck();
   return true;
 }
@@ -3974,7 +4374,7 @@ function tRunMsg(){
   const r = TLOADED.run, it = r.it.toLocaleString(), want = +$('#tf_iters').value || 0;
   const same = $('#tf_name').value.trim() === r.name && $('#tf_resume').checked;
   $('#trunmsg').textContent = !TLOADED.resume
-    ? `${r.name}'s settings, for a new run: give it a name. Set --init to one of its checkpoints to start from its weights.`
+    ? `${r.name}'s settings and name, for a new run: change the name. Set --init to one of its checkpoints to start from its weights.`
     : !same ? `No longer resuming ${r.name}: the name or --resume was changed.`
     : want <= r.it ? `${r.name} already reached iteration ${it} — raise --iters above that to train it further.`
     : `Resumes ${r.name} from last.pt at iteration ${it} and trains on to ${want.toLocaleString()}. Marked fields differ from what it was trained with.`;
@@ -4257,8 +4657,93 @@ async function tPoll(){
     if (!$('#trn').hidden) tFill(c, j); else c._j = j;
   });
   tLead(jobs);
+  if (!$('#trn').hidden && Date.now() - FAME.t > 10000) tFame();
   if (live || !$('#trn').hidden) TPOLL = setTimeout(tPoll, live ? 2000 : 5000);
 }
+/* the hall of fame: every run's best held-out eval, the top three on a
+   podium.  A new champion -- one this browser has not crowned before -- gets
+   confetti */
+const FAME = {t: 0, sig: ''};
+async function tFame(){
+  FAME.t = Date.now();
+  let gs;
+  try { gs = await fetch('/api/train/fame').then(x => x.json()); } catch (e) { return; }
+  $('#tfame').hidden = !gs.length;
+  const sig = JSON.stringify(gs);
+  if (sig === FAME.sig) return;                 // nothing new: keep the animations still
+  FAME.sig = sig;
+  const num = v => v == null ? '—' : v.toFixed(1);
+  $('#tfameb').innerHTML = gs.map(g => {
+    const top = g.runs[0], medal = ['🥇', '🥈', '🥉'];
+    const spot = k => {
+      const r = g.runs[k];
+      if (!r) return `<div class="fsp p${k + 1} empty"><span class="md">${medal[k]}</span><span class="nm">up for grabs</span></div>`;
+      const arch = r.width ? `w${r.width} h${r.heads} l${r.layers}` : r.algo;
+      const tip = `${r.name}\nbest held-out ${tPct(r.best)} at it ${r.at.toLocaleString()} `
+        + `(${r.n_evals} evals, ${r.it.toLocaleString()} / ${(r.iters || 0).toLocaleString()} it)`
+        + `\ntrain ${tPct(r.train)} · ${num(r.train_items)} boxes/pallet (the iterations up to that eval)`
+        + `\nheld-out ${tPct(r.best)} · ${num(r.held_items)} boxes/pallet`
+        + `\n${arch}${r.params ? ` · ${r.params.toLocaleString()} params` : ''} · lr ${r.lr}`
+        + (r.init ? `\nwarm-started from ${r.init}` : '');
+      return `<div class="fsp p${k + 1}" data-name="${tEsc(r.name)}" title="${tEsc(tip)}">
+        <span class="md">${medal[k]}</span>
+        <span class="nm">${tEsc(r.name)}</span>
+        <div class="sc">held-out <b>${tPct(r.best)}</b> &middot; <b>${num(r.held_items)}</b> box/pallet</div>
+        <dl class="ds">${[
+          ['status', r.running ? '<span class="tg live">training</span>' : 'stopped'],
+          ['train util', tPct(r.train)],
+          ['train boxes per pallet', num(r.train_items)],
+          ['held-out util', tPct(r.best)],
+          ['held-out boxes per pallet', num(r.held_items)],
+          ['behind first place', k ? `${(100 * Math.abs(r.best - top.best)).toFixed(1)} pt` : null],
+          ['width', r.width], ['heads', r.heads], ['layers', r.layers],
+          ['parameters', r.params ? r.params.toLocaleString() : null],
+          ['learning rate', r.lr],
+          ['best at iteration', r.at.toLocaleString()],
+          ['iterations trained', `${r.it.toLocaleString()} / ${(r.iters || r.it).toLocaleString()}`],
+          ['warm-started from', r.init ? tEsc(r.init) : null],
+          ['data', r.data ? tEsc(r.data) : null],
+          ['train pallets', r.n_train != null ? r.n_train.toLocaleString() : null],
+          ['held-out pallets', r.n_holdout != null ? r.n_holdout.toLocaleString() : null],
+        ].filter(([, v]) => v != null).map(([kk, v]) => `<dt>${kk}</dt><dd>${v}</dd>`).join('')}</dl>
+      </div>`;
+    };
+    const label = gs.length > 1 ? `<div class="fk">${tEsc(g.key)}${g.lower_better ? ' (lower wins)' : ''}</div>` : '';
+    return label + `<div class="fpod">${[0, 1, 2].map(spot).join('')}</div>`
+      + (g.n > 3 ? `<div class="sub fmore">held-out util &middot; mean boxes per pallet, at each run's best eval &middot; out of ${g.n} runs</div>` : '');
+  }).join('');
+  // confetti for a champion this browser has not seen on top yet
+  let seen = {};
+  try { seen = JSON.parse(localStorage.getItem('ar2l.champ') || '{}'); } catch (e) {}
+  const fresh = gs.filter(g => g.runs.length && seen[g.key] !== g.runs[0].name);
+  fresh.forEach(g => { seen[g.key] = g.runs[0].name; });
+  try { localStorage.setItem('ar2l.champ', JSON.stringify(seen)); } catch (e) {}
+  if (fresh.length && !matchMedia('(prefers-reduced-motion: reduce)').matches) fConfetti();
+}
+function fConfetti(){
+  const card = $('#tfame'), cs = ['--au', '--c0', '--c2', '--c3', '--c4', '--c5'];
+  for (let i = 0; i < 40; i++){
+    const p = document.createElement('i');
+    p.className = 'fconf';
+    p.style.cssText = `left:${5 + Math.random() * 90}%;background:var(${cs[i % cs.length]});`
+      + `--x:${(Math.random() - .5) * 140}px;--r:${(Math.random() - .5) * 900}deg;`
+      + `--d:${1.6 + Math.random() * 1.4}s;animation-delay:${.6 + Math.random() * .5}s`;
+    card.appendChild(p);
+    p.addEventListener('animationend', () => p.remove());
+  }
+}
+try { $('#tfame').classList.toggle('more', localStorage.getItem('ar2l.fame.more') === '1'); } catch (e) {}
+$('#tfmore').addEventListener('click', () => {
+  const on = $('#tfame').classList.toggle('more');
+  try { localStorage.setItem('ar2l.fame.more', on ? '1' : '0'); } catch (e) {}
+});
+$('#tfameb').addEventListener('click', ev => {
+  const s = ev.target.closest('.fsp[data-name]');
+  if (!s) return;
+  const c = $(`#tjobs .tjob[data-name="${CSS.escape(s.dataset.name)}"]`);
+  if (c) c.scrollIntoView({block: 'start', behavior: 'smooth'});
+  else { $('#trun').value = s.dataset.name; tRunPick(); $('#trun').scrollIntoView({block: 'center', behavior: 'smooth'}); }
+});
 /* who is winning right now: the runs ranked by their latest held-out eval,
    one row per number they are judged on (an attacker wins when the packer it
    faces does worst), with a rank chip on each card.  Shown from two runs up */

@@ -1,8 +1,8 @@
 """The stack-height limit over small boxes.
 
-Once a box of a limited type is placed, a later box may start over its
-footprint only below the box's top plus an allowance set by its shorter
-footprint side.  The reference here is the packed list itself: replaying it
+Once a box of a limited type is placed, a later box may start on its stack
+only below the box's top plus an allowance set by its shorter footprint side;
+only the cells a box rests on count, not those it overhangs.  The reference here is the packed list itself: replaying it
 box by box rebuilds every limit independently of `cmap` and the sweeps.
 
 Every env below pins the rule's numbers rather than reading `config.yaml`,
@@ -31,11 +31,13 @@ N = 8
 
 def capped(n_env=1, **kw):
     """Only the limit in play: every grid position is offered, no rotation,
-    no type rule, no support floor, no arm."""
+    no type rule, no white or blue towers (w, b), no support floor, no
+    arm."""
     kw.setdefault("S", (8, 8, 20))
     for k, v in dict(nb=1, n_items=N, rot=1, ems=0, stability="com",
                      min_support=0.0, n_types=3, types=CLASSES,
-                     type_constraint=False, arm_collision=False,
+                     type_constraint=False, mixed_white_support=False,
+                     blue_support=False, arm_collision=False,
                      stack_cap=True, stack_types=[2]).items():
         kw.setdefault(k, v)
     return BPPBatch(n_env, **{**RULE, **kw})
@@ -157,6 +159,16 @@ def test_the_limit_stays_with_the_small_box():
     assert offered_without_the_rule(env, 1, 0)
 
 
+def test_overhanging_a_small_box_is_not_limited():
+    """A box standing on a tall neighbour with one column out over the small
+    box's stack, far above its limit: it does not rest there, so it is free."""
+    env = capped()
+    env.reset(seq((2, 2, 2, 2), (3, 2, 5, 0), (3, 2, 1, 0)))
+    place(env, 0, 0)                        # the small box, limit 4
+    place(env, 2, 0)                        # the neighbour, top 5
+    assert offered(env, 1, 0), "an overhang over the small box was limited"
+
+
 def test_a_restart_clears_only_the_bins_it_restarts():
     env = capped(2)
     env.reset(np.concatenate([seq((2, 2, 2, 2))] * 2))
@@ -180,7 +192,7 @@ def random_action(env, rng):
 
 def test_the_mask_is_exactly_the_rule_on_every_candidate():
     """Every placement the rule-free twin offers, checked by hand: kept
-    exactly when it starts below the lowest limit under its footprint."""
+    exactly when it starts below the lowest limit of the cells it rests on."""
     rng = np.random.default_rng(0)
     kw = dict(S=(8, 8, 12), rot=2, n_items=80, seed=1, stack_types=[0, 1, 2])
     on, off = capped(6, **kw), capped(6, stack_cap=False, **kw)
@@ -195,7 +207,9 @@ def test_the_mask_is_exactly_the_rule_on_every_candidate():
         assert not (fa & ~fb).any(), "the rule invented a placement"
         for b, r, x, y in zip(*np.nonzero(fb)):
             sx, sy = dims[b, r, :2]
-            want = z[b, r, x, y] < on.cmap[b, x:x + sx, y:y + sy].min()
+            zz = z[b, r, x, y]
+            rest = on.hmap[b, x:x + sx, y:y + sy] == zz
+            want = zz < on.cmap[b, x:x + sx, y:y + sy][rest].min()
             assert fa[b, r, x, y] == want, (b, r, x, y)
             kept += int(want)
             removed += int(not want)
@@ -215,9 +229,12 @@ def test_no_box_ever_starts_above_a_limit():
     allow, checked = env.stack_allow, 0
     for b in range(env.n_env):
         lim = np.full((env.Lx, env.Ly), NO_CAP, np.int64)
+        top = np.zeros((env.Lx, env.Ly), np.int64)
         items = (env.packed[b, : env.n_packed[b]] * env.scale).round().astype(int)
         for i, (x, y, z, sx, sy, sz) in enumerate(items):
-            assert z < lim[x:x + sx, y:y + sy].min(), (b, i)
+            rest = top[x:x + sx, y:y + sy] == z
+            assert z < lim[x:x + sx, y:y + sy][rest].min(), (b, i)
+            top[x:x + sx, y:y + sy] = z + sz
             a = allow[min(sx, sy)]
             if env.ptype[b, i] == 2 and a < NO_CAP:
                 lim[x:x + sx, y:y + sy] = np.minimum(lim[x:x + sx, y:y + sy],
