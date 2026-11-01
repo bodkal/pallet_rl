@@ -227,6 +227,10 @@ model:
 
 run:
   seed: 0
+  # New training page only: how many runs one Start opens.  1 is the run as
+  # named; more are the same run as <name>_seed_<s> for s = seed, seed+1, ...
+  # ar2l.train itself always trains one run.
+  n_seeds: 1
   device: cuda            # cpu works, slowly; there is no silent fallback
   compile: 0              # torch.compile; miscompiles the pointer head
   eval_every: 250         # iterations between held-out evals; they select best.pt

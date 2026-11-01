@@ -2292,6 +2292,8 @@ class BPPBatch:
         inx = (gx[None, :] >= x[:, None]) & (gx[None, :] < (x + sx)[:, None])
         iny = (gy[None, :] >= y[:, None]) & (gy[None, :] < (y + sy)[:, None])
         foot = inx[:, :, None] & iny[:, None, :] & alive[:, None, None]
+        # the columns it only overhangs: air between it and the stack below
+        gap = foot & (self.hmap < zz[:, None, None])
         self.hmap = np.where(foot, (zz + sz)[:, None, None].astype(np.int16),
                              self.hmap)
         # the item is now the top of every column it covers, so it is what the
@@ -2313,8 +2315,11 @@ class BPPBatch:
             # a small box of a limited type carries only a short stack: from
             # here on nothing may start over its footprint at or above its top
             # plus its allowance.  The limit stays with these cells -- a box
-            # laid over them later does not spread it over its own footprint.
+            # laid over them later does not spread it over its own footprint --
+            # until a box bridges them over a gap: its top there is a new
+            # stack, resting elsewhere, and carries no limit from below.
             # A finished bin's slot is clamped into the table; `foot` drops it
+            self.cmap = np.where(gap, NO_CAP, self.cmap).astype(np.int16)
             allow = self.stack_allow[np.minimum(np.minimum(sx, sy),
                                                 len(self.stack_allow) - 1)]
             lim = np.where(np.isin(tt, self.stack_types) & (allow < NO_CAP),

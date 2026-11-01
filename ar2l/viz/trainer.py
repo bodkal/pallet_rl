@@ -161,6 +161,17 @@ def form(config_path=None):
             'help': _help(a, default),
             'nargs': a.nargs, 'required': a.required,
             'suggest': checkpoints() if a.dest == 'init' else None})
+    # the page's own field, not a flag: Start opens one run per seed
+    n = cfg['run'].get('n_seeds', 1)
+    at = next((i + 1 for i, f in enumerate(fields) if f['dest'] == 'seed'),
+              len(fields))
+    fields.insert(at, {
+        'dest': 'n_seeds', 'flag': '--n_seeds', 'kind': 'int', 'section': 'run',
+        'default': str(n), 'choices': None, 'nargs': None, 'required': False,
+        'suggest': None,
+        'help': f'how many runs Start opens: 1 is the run as named; more are '
+                f'the same run as <name>_seed_<s> for --seed s = seed, seed+1, '
+                f'... (page only, not an ar2l.train flag) (default: {n})'})
     fields.sort(key=lambda f: ORDER.index(f['section']))
     return {'fields': fields, 'sections': list(ORDER),
             'config': config_path or os.environ.get('AR2L_CONFIG') or 'config.yaml'}
@@ -292,6 +303,9 @@ def run_values(name, config_path=None):
         v = args[a.dest]
         out[a.dest] = (bool(v) if isinstance(a, argparse._StoreTrueAction)
                        or _switch(a) else _text(a, v))
+    # every run, a group's seeds included, is one run: its Resume must not
+    # open more
+    out['n_seeds'] = '1'
     return {'values': out, 'config': args.get('config') or ''}
 
 
@@ -318,8 +332,64 @@ def argv_of(values, config_path=None):
     return argv
 
 
+def seed_runs(values, config_path=None):
+    """The form's values for each run `n_seeds` asks for: one seed is the run
+    as filled in; more are `<name>_seed_<s>` for s = seed, seed+1, ..."""
+    raw = str(values.get('n_seeds') or '1').strip()
+    if not re.fullmatch(r'\d+', raw) or not 1 <= int(raw) <= 16:
+        raise ValueError(f'n_seeds: a whole number from 1 to 16, got {raw!r}')
+    name = str(values.get('name') or '').strip()
+    if int(raw) == 1 or not name:                 # no name: check says so
+        return [values]
+    seed = str(values.get('seed') or '').strip()
+    if seed == '':
+        seed = str(parser(fresh_config(config_path)).get_default('seed'))
+    if not re.fullmatch(r'-?\d+', seed):
+        raise ValueError(f'seed: a whole number, got {seed!r}')
+    return [dict(values, name=f'{name}_seed_{int(seed) + k}',
+                 seed=str(int(seed) + k), n_seeds='1') for k in range(int(raw))]
+
+
 def check(values, config_path=None):
-    """The argv and its errors, by parsing it with the real parser."""
+    """The argv and its errors, by parsing it with the real parser; with
+    `n_seeds` above 1, the errors of every seed's run as well."""
+    try:
+        group = seed_runs(values, config_path)
+    except Exception as e:                        # a bad n_seeds, seed or config
+        return [], [str(e)]
+    argv, errs = _check_one(group[0], config_path)
+    for v in group[1:]:
+        errs += [e for e in _check_one(v, config_path)[1] if e not in errs]
+    return argv, errs
+
+
+def gpu_estimate(values, config_path=None):
+    """GB of GPU memory one run of the form is expected to take, as
+    nvidia-smi reports it, or None for a run off the GPU or a form that does
+    not parse.
+
+    The packer's PPO minibatch dominates: its encoder and its critic's keep
+    S * width * (13 + 48 * layers) bytes of activations per sample for the
+    backward pass (measured; heads cost nothing, attention is the
+    memory-efficient kernel).  S is the candidate list, which over a rollout
+    runs to max_l, plus N_B, plus the packed boxes -- ~56 on the real pallets.
+    That and the ~600 MiB the process holds before any of it (CUDA context,
+    data, allocator slack) are fitted to runs read off nvidia-smi: 128/1/1
+    took 1.7 GB, 256/2/3 6.4 GB, at 64 bins x T 30 / 4 minibatches."""
+    try:
+        with contextlib.redirect_stderr(io.StringIO()):
+            a = parser(fresh_config(config_path)).parse_args(
+                argv_of(dict(values, name=values.get('name') or 'x'), config_path))
+    except (Exception, SystemExit):
+        return None
+    if not str(a.device).startswith('cuda'):
+        return None
+    mb = -(-a.n_env * a.T // max(a.minibatches, 1))
+    S = a.max_l + a.nb + min(a.n_items, 56)
+    return (600 * 2**20 + mb * S * a.width * (13 + 48 * a.layers)) / 2**30
+
+
+def _check_one(values, config_path=None):
     errs = []
     name = str(values.get('name') or '').strip()
     if not name:
@@ -389,9 +459,16 @@ threading.Thread(target=_spawner, name='train-spawner', daemon=True).start()
 
 
 def start(values, config_path=None):
-    argv, errs = check(values, config_path)
+    """Start the form's run, or with `n_seeds` above 1 one run per seed; none
+    starts unless all of them check out.  Returns the first run's name."""
+    _, errs = check(values, config_path)
     if errs:
         raise ValueError('\n'.join(errs))
+    return [_start_one(v, config_path) for v in seed_runs(values, config_path)][0]
+
+
+def _start_one(values, config_path=None):
+    argv = argv_of(values, config_path)
     name = values['name'].strip()
     # `auto` draws no bar into a file, and the bar is the only thing that
     # moves every iteration: the page reads the iteration and the speed off

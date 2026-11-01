@@ -169,6 +169,19 @@ def test_overhanging_a_small_box_is_not_limited():
     assert offered(env, 1, 0), "an overhang over the small box was limited"
 
 
+def test_a_box_bridging_a_small_box_starts_a_free_stack():
+    """The overhanging box is placed: its top over the small box is a new
+    stack resting on the neighbour, so a box on it is not limited either."""
+    env = capped()
+    env.reset(seq((2, 2, 2, 2), (3, 2, 5, 0), (3, 2, 1, 0), (3, 2, 1, 0)))
+    place(env, 0, 0)                        # the small box, limit 4
+    place(env, 2, 0)                        # the neighbour, top 5
+    place(env, 1, 0)                        # over both, resting on the neighbour
+    assert (env.cmap[0, 1, :2] == NO_CAP).all()
+    assert (env.cmap[0, 0, :2] == 4).all(), "the uncovered column lost its limit"
+    assert offered(env, 1, 0), "a stack beside the small box was limited"
+
+
 def test_a_restart_clears_only_the_bins_it_restarts():
     env = capped(2)
     env.reset(np.concatenate([seq((2, 2, 2, 2))] * 2))
@@ -234,6 +247,7 @@ def test_no_box_ever_starts_above_a_limit():
         for i, (x, y, z, sx, sy, sz) in enumerate(items):
             rest = top[x:x + sx, y:y + sy] == z
             assert z < lim[x:x + sx, y:y + sy][rest].min(), (b, i)
+            lim[x:x + sx, y:y + sy][~rest] = NO_CAP
             top[x:x + sx, y:y + sy] = z + sz
             a = allow[min(sx, sy)]
             if env.ptype[b, i] == 2 and a < NO_CAP:

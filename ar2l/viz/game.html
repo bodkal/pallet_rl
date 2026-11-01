@@ -22,6 +22,9 @@ button:hover:not(:disabled){border-color:var(--c0);color:var(--c0)}
 button:disabled{opacity:.45;cursor:default}
 button.go{background:var(--c0);border-color:var(--c0);color:#06121a;font-weight:640}
 button.go:hover:not(:disabled){filter:brightness(1.08);color:#06121a}
+#tstart{display:inline-flex;flex-direction:column;align-items:center;gap:2px;min-width:190px;padding:9px 22px;font-size:15px}
+#tstart small{font-size:11.5px;font-weight:500;opacity:.8}
+#tstart small:empty{display:none}
 select,input{font:inherit;background:var(--panel);color:var(--fg);border:1px solid var(--line);
   border-radius:8px;padding:7px 10px}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
@@ -1418,7 +1421,7 @@ details.cf>summary b{font-size:14px}
     <div class="tcmd" id="tcmd"></div>
     <div id="terr" class="opt"></div>
     <div class="row" style="margin-top:12px">
-      <button class="go" id="tstart">Start training &rarr;</button>
+      <button class="go" id="tstart"><span>Start training &rarr;</span><small id="tgpu"></small></button>
       <span class="sub">changed fields are marked; the run keeps going when this page is closed, and stops with the game server's terminal</span>
     </div>
   </div>
@@ -4401,6 +4404,7 @@ function tCheck(){
   TCHECK = setTimeout(async () => {
     const r = await api('/api/train/check', {values, config: $('#tcfg').value.trim()});
     $('#tcmd').textContent = '$ ' + r.cmd;
+    $('#tgpu').textContent = r.gpu_gb != null ? `estimated GPU ${r.gpu_gb.toFixed(1)} GB` : '';
     $('#terr').textContent = r.errors.join('\n');
     $('#tstart').disabled = r.errors.length > 0;
   }, 200);

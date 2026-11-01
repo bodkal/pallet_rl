@@ -1892,8 +1892,19 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({'error': str(e)}, 400)
         if p == '/api/train/check':
             argv, err = TR.check(body.get('values') or {}, body.get('config') or None)
-            return self._json({'cmd': 'python -m ar2l.train ' + ' '.join(argv),
-                               'errors': err})
+            cmd = 'python -m ar2l.train ' + ' '.join(argv)
+            if not err:
+                more = TR.seed_runs(body.get('values') or {}, body.get('config') or None)[1:]
+                if more:
+                    cmd += '\n  + the same with ' + ', '.join(
+                        f"--seed {v['seed']} as {v['name']}" for v in more)
+            try:                                  # every seed is a run of its own
+                n = max(int(str((body.get('values') or {}).get('n_seeds') or 1)), 1)
+            except ValueError:
+                n = 1
+            gb =TR.gpu_estimate(body.get('values') or {}, body.get('config') or None)
+            return self._json({'cmd': cmd, 'errors': err,
+                               'gpu_gb': None if gb is None else gb * n})
         if p == '/api/train/start':
             try:
                 return self._json({'name': TR.start(body.get('values') or {},
