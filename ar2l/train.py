@@ -230,6 +230,20 @@ def flat(x):
     return x.reshape(-1)
 
 
+def eq6_kl(logp_mix, logp_perm, reverse=False):
+    """(B,) the KL term of Eq. 6 between the mixture and the attacker.
+
+    `reverse` False is KL(pi_mix || pi_perm), as the paper writes it; True is
+    KL(pi_perm || pi_mix), what the official code's `KLDivLoss(mix, wor,
+    log_target=True)` computes.  A slot the expectation's own distribution
+    gives no mass -- a masked one -- adds nothing either way.
+    """
+    p, lp, lq = (logp_perm, logp_perm, logp_mix) if reverse else \
+                (logp_mix, logp_mix, logp_perm)
+    w = p.exp()
+    return torch.where(w > 0, w * (lp - lq), 0.0).sum(-1)
+
+
 def _held(nom):
     """The held-out number this run is judged on, whatever produced it."""
     for k in ("att_util", "sel_util", "nom_util"):
@@ -294,6 +308,7 @@ def make_env(args, seed, pool=None):
                     outline_when=args.outline_when,
                     outline_area=args.outline_area,
                     stack_cap=bool(args.stack_cap),
+                    show_infeasible=bool(args.show_infeasible),
                     support_reward=args.support_reward,
                     tower_penalty=args.tower_penalty, **kw)
 
@@ -346,7 +361,8 @@ def build(args, device):
               c_temp=args.c_temp, n_types=args.n_types,
               type_embed=args.type_embed, ptr_norm=args.ptr_norm,
               ptr_center=args.ptr_center)
-    return PackNet(**kw).to(device), PermNet(**kw).to(device), PermNet(**kw).to(device)
+    pack = PackNet(**kw, feas_flag=bool(args.show_infeasible))
+    return pack.to(device), PermNet(**kw).to(device), PermNet(**kw).to(device)
 
 
 # The pointer-score options, as (flag, Pointer attribute, type).  They hold no
@@ -455,9 +471,9 @@ def train(args):
     opt_kw = dict(lr=args.lr, epochs=args.epochs, minibatches=args.minibatches,
                   ent_coef=args.ent_coef, clip=args.clip,
                   vf_coef=args.vf_coef, max_grad=args.max_grad)
-    ppo_pack = PPO(pack, **opt_kw)
-    ppo_att = PPO(attacker, **opt_kw)
-    ppo_mix = PPO(mixer, **opt_kw)
+    ppo_pack = PPO(pack, **opt_kw, sat_coef=args.sat_coef_pack)
+    ppo_att = PPO(attacker, **opt_kw, sat_coef=args.sat_coef_sel)
+    ppo_mix = PPO(mixer, **opt_kw, sat_coef=args.sat_coef_sel)
     if resumed is not None and "opt" in resumed:
         # Adam's moment estimates are part of the training state; dropping them
         # costs a visible transient every time a run is restarted
@@ -506,12 +522,13 @@ def train(args):
             adv, ret = gae(tr["rew"], pm["val"], tr["done"],
                            pm["last_val"], args.gamma, args.lam)
 
-            def aux(o, mb, logp_all, _a=args.alpha, _c=args.dist_coef):
+            def aux(o, mb, logp_all, _a=args.alpha, _c=args.dist_coef,
+                    _rev=bool(args.kl_reverse)):
                 # Eq. 6: stay near the nominal order (index 0) and near pi_perm
                 ce = -logp_all[:, 0]
                 with torch.no_grad():
                     lq = F.log_softmax(attacker.logits(o), -1)
-                kl = (logp_all.exp() * (logp_all - lq)).sum(-1)
+                kl = eq6_kl(logp_all, lq, _rev)
                 return _c * (ce.mean() + _a * kl.mean())
 
             stats["mix"] = ppo_mix.update(flat_obs(pm["obs"]), flat(pm["act"]),
@@ -715,6 +732,10 @@ def get_parser():
     p.add_argument("--dist_coef", type=float, default=t["dist_coef"],
                    help="exact: weight of the loss that keeps the mixture order "
                         "close to both the normal and the adversarial order")
+    p.add_argument("--kl_reverse", type=int, choices=(0, 1),
+                   default=t.get("kl_reverse", 0),
+                   help="exact: 0 = KL(pi_mix || pi_perm) as the paper writes "
+                        "Eq. 6, 1 = KL(pi_perm || pi_mix) as the official code")
     p.add_argument("--data", default=t["data"],
                    help="train on these pallets (an orders .csv or an "
                         "instance .npy); empty = the random generator")
@@ -776,6 +797,14 @@ def get_parser():
                         "one that collected the rollout (0.2 = 20%%)")
     p.add_argument("--vf_coef", type=float, default=o["vf_coef"],
                    help="weight of the value (critic) loss next to the policy loss")
+    p.add_argument("--sat_coef_sel", type=float,
+                   default=o.get("sat_coef_sel", 0.0),
+                   help="pointer saturation penalty on the picker nets "
+                        "(selector/mixture, attacker): coef * mean(relu(|y| - "
+                        "3)^2) over live candidates; 0 off")
+    p.add_argument("--sat_coef_pack", type=float,
+                   default=o.get("sat_coef_pack", 0.0),
+                   help="the same penalty on the packer's pointer; 0 off")
     p.add_argument("--max_grad", type=float, default=o["max_grad"],
                    help="gradients are scaled down to at most this norm; guards "
                         "against one bad batch wrecking the weights")
@@ -904,6 +933,11 @@ def get_parser():
     p.add_argument("--ems", type=int, choices=(0, 1, 2, 3), default=e["ems"],
                    help="candidate filter: 0 every loading position, 1 EMS "
                         "corners, 2 height-map corner cells, 3 EMS | corner")
+    p.add_argument("--show_infeasible", type=int, choices=(0, 1),
+                   default=e.get("show_infeasible", 0),
+                   help="also show the packer the ems positions the rules "
+                        "turn down, flagged 0 (official isFeasi); it still "
+                        "picks only legal ones")
     p.add_argument("--eval_every", type=int, default=r["eval_every"],
                    help="iterations between held-out evals; the best one is "
                         "saved as best.pt")

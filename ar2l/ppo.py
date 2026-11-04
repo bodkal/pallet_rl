@@ -117,7 +117,7 @@ class PPO:
     """
 
     def __init__(self, net, lr=None, clip=None, epochs=None, minibatches=None,
-                 vf_coef=None, ent_coef=None, max_grad=None):
+                 vf_coef=None, ent_coef=None, max_grad=None, sat_coef=0.0):
         c = CFG["ppo"]
         lr = c["lr"] if lr is None else lr
         clip = c["clip"] if clip is None else clip
@@ -130,13 +130,16 @@ class PPO:
         self.opt = torch.optim.Adam(net.parameters(), lr=lr, eps=1e-5)
         self.clip, self.epochs, self.nmb = clip, epochs, minibatches
         self.vf_coef, self.ent_coef, self.max_grad = vf_coef, ent_coef, max_grad
+        # weight of the pointer's saturation penalty (`Pointer.pen`); 0 off
+        self.sat_coef = float(sat_coef)
 
     def update(self, obs, act, old_logp, adv, ret, weight=None, aux=None):
         """`aux(obs, idx) -> tensor` adds an extra per-sample loss term."""
         n = act.shape[0]
         adv_n = (adv - adv.mean()) / (adv.std() + 1e-8)
         z = torch.zeros((), device=act.device)
-        stats = {k: z.clone() for k in ("pg", "vf", "ent", "aux", "kl", "sat")}
+        stats = {k: z.clone() for k in ("pg", "vf", "ent", "aux", "kl", "sat",
+                                        "pen")}
         ptr = getattr(self.net, "ptr", None)
         nb = 0
         for _ in range(self.epochs):
@@ -159,6 +162,8 @@ class PPO:
                 if aux is not None:
                     extra = aux(o, mb, logp_all)
                     loss = loss + extra
+                if ptr is not None and self.sat_coef > 0:
+                    loss = loss + self.sat_coef * ptr.pen
 
                 self.opt.zero_grad(set_to_none=True)
                 loss.backward()
@@ -171,5 +176,6 @@ class PPO:
                     stats["kl"] += (old_logp[mb] - logp).mean()
                     if ptr is not None:
                         stats["sat"] += ptr.sat
+                        stats["pen"] += ptr.pen.detach()
                 nb += 1
         return {k: float(v) / max(nb, 1) for k, v in stats.items()}
