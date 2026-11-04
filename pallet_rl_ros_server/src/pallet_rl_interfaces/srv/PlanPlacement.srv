@@ -1,0 +1,18 @@
+# Where should the next box go?  The request carries the whole state; the
+# server keeps none between calls.
+string pallet_id    # for the logs only
+Box[] placed        # every box on the pallet now, in placement order if known
+Box[] station       # the conveyor, front first: the first n_pick can be
+                    # picked, the rest (up to nb) are preview
+---
+uint8 OK=0
+uint8 PALLET_DONE=1     # no box within reach has a legal place
+uint8 BAD_REQUEST=2     # see message
+uint8 status
+string message          # the reason, or warnings on OK
+int32 station_index     # which request.station box to pick
+Box placement           # centre x, y and bottom z; sides as it will stand
+bool rotated            # turned 90 deg: its length now lies along y
+float32 pick_probability
+float32 place_probability
+int32 n_candidates      # legal placements the packer chose from

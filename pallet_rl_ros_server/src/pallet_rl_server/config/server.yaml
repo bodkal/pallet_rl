@@ -1,0 +1,65 @@
+# pallet_rl_server settings -- every value the server uses is here.
+#
+# The rules below must be the ones the checkpoint was trained with; the
+# server compares them with what the checkpoint recorded at start-up
+# (server.check_checkpoint).  These match runs/w_128_h_1_l_1_colom_center_top.
+
+server:
+  service: /pallet_rl/plan_placement
+  # relative paths are read from this file's folder
+  checkpoint: ../models/colom_center_top.pt
+  # the net that picks which station box goes next: mixer (runs trained with
+  # algo select), attacker, or null (always the front box)
+  selector: mixer
+  device: cpu
+  # rules here vs rules in the checkpoint: warn | error | off
+  check_checkpoint: warn
+  # warn when a placed box's reported bottom is this far from where it rests
+  z_tolerance_cm: 2.0
+
+grid:
+  # real cm per grid cell (training: eval.cell_cm * eval.box_scale = 1 * 4)
+  cell_cm: 4.0
+  # pallet in cells, x y z: 31 x 27 x 40 = 124 x 108 x 160 cm
+  pallet_cells: [31, 27, 40]
+  # added to every box's length and width before gridding (eval.box_pad_m)
+  box_pad_cm: 4.0
+  # up | down | nearest (1.5 -> 1, 1.51 -> 2)
+  box_round: nearest
+
+rules:
+  nb: 10                  # conveyor boxes the policy sees
+  n_pick: 5               # of those, how many the robot can reach
+  rot: 2                  # 1 = as given only, 2 = also turned 90 degrees
+  ems: 3                  # candidates: 0 all, 1 EMS corners, 2 corner cells, 3 both
+  max_l: 256              # most candidates the packer is shown
+  stability: com          # com | cdrl
+  min_support: 0.8        # share of the base resting on the box below
+  min_total_support: 0.0  # share resting on columns solid to the floor; 0 off
+  n_types: 3              # 0 blue, 1 white, 2 brown
+  type_constraint: 1      # 0 drops the type rule
+  type_rule: column       # touch | column | mixed_touch | mixed_column
+  soft_mix: 0             # mixed rules: last resort instead of own fallback
+  outline_resort: 0       # mixed rules: extra outline step when nothing fits
+  outline_when: station   # station | box
+  outline_area: outline   # outline | all
+  mixed_top_gap_cm: 5     # (a) near the lid
+  mixed_area_frac: 0.8    # (c) large brown
+  mixed_small_blue_cm: [50, 30, 18]   # (d) the small blue box
+  white_support_cm: [45, 27]          # (w) small white base; null = off
+  blue_support: 1         # (b) blue on blue with all of its base
+  stack_cap: 1            # short stacks over small boxes
+  stack_cap_types: [2]    # brown
+  stack_cap_side_cm: [12, 30]
+  stack_cap_allow_cm: [8, 140]
+  arm_collision: 1        # drop placements the UR20 cannot make
+  pick_feasible: null     # null = on when the type rule can block a box
+
+robot:
+  # robot base -> pallet box origin: x y z (m), qx qy qz qw
+  base_from_box_tf: [-0.50777000000000005, 1.5415239999999999, -1, 0, 0, -0.70753916586098198, 0.70666309052477838]
+  # where the base may slide (fractions of half the pallet's y side), tried
+  # in order until the arm can make the placement
+  base_x_moves: [0, -0.5, 0.5, -1, 1]
+  tool_length_m: 0.35
+  ik_solution: 1

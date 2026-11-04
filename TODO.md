@@ -5,7 +5,7 @@ Packing"** — Pan, Chen & Lin, NeurIPS 2023
 ([arXiv:2310.04323](https://arxiv.org/abs/2310.04323)), and its extension to
 real orders, box types and the UR20 cell.
 
-*Last updated: 2026-10-26* — only open items are listed; finished work is in
+*Last updated: 2026-11-04* — only open items are listed; finished work is in
 the git history (the full list as of 2026-09-27 is `git show eb38e8c:TODO.md`).
 
 The official implementation is at <https://github.com/panyxy/ar2l_bpp>. **No
@@ -88,22 +88,6 @@ which is roughly half the shortfall at `N_B = 10` and almost none of it at
 
 ## D. Open
 
-### D.1 The rewrite
-
-- [ ] **Stability: recursive convex-hull centre of mass** (A.3). Contact
-      polygon = convex hull of the overlap rectangles, shrunk 10%; centre of
-      mass of the stack above; recurse into supporting boxes. Keep
-      `stability="com"` and `"cdrl"` selectable for comparison
-- [ ] Re-run `scripts/calibrate.py` — the stability sweep has to be redone on
-      top of rotation, since the two interact (`results/calibration.json` is
-      from 2026-09-23)
-- [ ] **PPO settings** (A.5): 1 epoch x 32 minibatches, clip 0.1, vf coef 1.0,
-      linear LR decay to a 1e-4 floor, clipped value loss (A.9)
-- [ ] **Block alternation** for ExactAR2L (A.6): `--block 10`, cycling
-      attacker -> mixture -> packer
-- [ ] Table 1 on the rotation action space: `results/table1.json` does not
-      exist yet — only the pre-rotation `results/table1_norot.json`
-
 ### D.2 Cheap, independent of the rewrite
 
 - [ ] Show infeasible candidates to the network with a feasibility flag (A.4)
@@ -120,15 +104,6 @@ which is roughly half the shortfall at `N_B = 10` and almost none of it at
       losses (selector first, then packer) so scores stay where the tanh still
       answers; compare `mix_sat` / `mix_kl` and held-out util against
       `--ptr_center 2` alone
-
-### D.3 Not started
-
-- [ ] Continuous setting and its Intersection-Points candidate generator
-      (paper Appendix A.1.1/A.1.2)
-- [ ] Mixed-Item dataset, paper Table 3
-- [ ] `rho` sweep, paper Figure 3(c,d): `rho` in {0.1, 0.2, 0.3, 0.4}
-- [ ] CDRL baseline for Table 1 (reproduced separately in `../pallet_rl_v1`)
-- [ ] Revisit Eq. 18 at `gamma = 1` — see [B](#b-open-question-eq-18-at-gamma--1)
 
 ### D.4 Robot-arm filter (`env.arm_collision`)
 
@@ -147,27 +122,6 @@ unless the new box raised a column they rest on (`_keep_arm`).
 - [ ] Multiprocessing across bins over a process pool (16 cores). Expect 6-10x
       at best after pickling/IPC; awkward next to the threaded game server and
       CUDA in the training process
-
-### D.5 Tests that depend on `config.yaml`
-
-35 failures on 2026-10-12, the same set on HEAD `8172bcc`. All but the
-experiment's come from a test inheriting what `config.yaml` now ships:
-
-- [ ] The brute-force feasibility tests in `tests/test_env.py`
-      (`test_feasibility_matches_brute_force`, `..._non_cubic_...`,
-      `test_contact_area_...`) inherit `env.ems` and fail with `ems: 3`
-      (11 failures); pin `ems` in `plain()` or parametrise over it
-- [ ] The fallback tests in `tests/test_mixed.py` (14) inherit `soft_mix: 1`,
-      which turns a box's own fallback into the station's last resort; pin
-      `soft_mix=False` in `mixed()` -- with `soft_mix: 0` all 96 pass
-- [ ] `tests/test_experiment.py` (6): `experiment.start` now refuses a run
-      with no name; give the tests one
-- [ ] Boxes read from an orders file come out wider and longer than the
-      tests expect, heights unchanged -- the config's `eval.box_pad_m`
-      padding (`test_experiment` 1, `test_game` 2); pin it in the tests
-- [ ] `tests/test_types.py::test_no_box_is_ever_stacked_on_another_type`
-      pins `type_rule: touch` but inherits the rest (`ems`, arm, stack cap,
-      `min_support`); no box is ever stacked, so it tests nothing
 
 ### D.6 Stack cap (`env.stack_cap`)
 
