@@ -40,14 +40,16 @@ def run_dir(run):
     return os.path.join(ROOT, "runs", run)
 
 
-def list_runs():
-    d = os.path.join(ROOT, "runs")
+def list_runs(old=False):
+    """The runs, newest first; with `old`, the old models in runs/old
+    instead, named `old/<name>` as `run_dir` finds them."""
+    d = os.path.join(ROOT, "runs", *(["old"] if old else []))
     if not os.path.isdir(d):
         return []
     out = [r for r in sorted(os.listdir(d))
            if os.path.exists(os.path.join(d, r, "log.jsonl"))]
     out.sort(key=lambda r: -os.path.getmtime(os.path.join(d, r, "log.jsonl")))
-    return out
+    return [f"old/{r}" for r in out] if old else out
 
 
 def run_info(run):
@@ -175,7 +177,7 @@ def episode_env(seq, nb=1, S=10, stability="com", min_support=None,
                 type_rule=None, soft_mix=None, outline_resort=None,
                 outline_when=None, outline_area=None,
                 mixed_white_support=None, mixed_white_support_cm=None,
-                blue_support=None):
+                blue_support=None, min_total_support=None):
     """The one-bin env `play` packs `seq` in, reset to its first box.
 
     `S` is an int for a cube or an (Lx, Ly, Lz) triple.  `size_hi` bounds the
@@ -201,6 +203,7 @@ def episode_env(seq, nb=1, S=10, stability="com", min_support=None,
                    mixed_white_support=mixed_white_support,
                    mixed_white_support_cm=mixed_white_support_cm,
                    blue_support=blue_support,
+                   min_total_support=min_total_support,
                    arm_collision=arm_collision, arm_cell_m=arm_cell_m,
                    arm_moves=arm_moves, stack_cap=stack_cap,
                    stack_types=stack_types, stack_side_cm=stack_side_cm,

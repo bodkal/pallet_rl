@@ -412,6 +412,16 @@ cannot fail, since that needs roughly half the base hanging free — but both
 are evaluated, so lowering `min_support` degrades gracefully back to the bare
 centre-of-mass rule at `0.0`.
 
+The floor looks one box down. **Total support** looks down the whole tower:
+`min_total_support` is the share of the base that has to rest on columns
+solid all the way to the floor, so a cell over the overhang of a box further
+down counts for `min_support` but not here. A box fully on a box that itself
+hangs half over air has 100% support and 50% total support. `env.gmap` holds
+which columns are solid, `env._ground_ok` checks the rule under both
+stability rules and every fallback, and it is off at `0.0` (the default).
+It is set with `--min_total_support` on `train`/`evaluate` and the
+"total support" field in every game tab.
+
 It is not free. Scored the way the table above is scored (`--n 64`, so noisier
 than the rows above, which is why it is quoted against a same-seed rerun of
 its own baseline rather than against them):

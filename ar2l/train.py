@@ -283,6 +283,7 @@ def make_env(args, seed, pool=None):
                     max_l=args.max_l, stability=args.stability,
                     ems=args.ems, rot=args.rot, max_c=args.max_c,
                     min_support=args.min_support, n_pick=args.n_pick,
+                    min_total_support=args.min_total_support,
                     n_types=args.n_types,
                     type_constraint=bool(args.type_constraint),
                     type_rule=args.type_rule, soft_mix=bool(args.soft_mix),
@@ -292,7 +293,9 @@ def make_env(args, seed, pool=None):
                     outline_resort=bool(args.outline_resort),
                     outline_when=args.outline_when,
                     outline_area=args.outline_area,
-                    stack_cap=bool(args.stack_cap), **kw)
+                    stack_cap=bool(args.stack_cap),
+                    support_reward=args.support_reward,
+                    tower_penalty=args.tower_penalty, **kw)
 
 
 def load_data(args, out):
@@ -586,6 +589,7 @@ def train(args):
             ev = dict(device=args.device, stability=args.stability, rot=args.rot,
                       S=args.bin, size_hi=args.size_hi, max_l=args.max_l,
                       min_support=args.min_support, n_pick=args.n_pick,
+                      min_total_support=args.min_total_support,
                       n_types=args.n_types,
                       type_constraint=bool(args.type_constraint),
                       type_rule=args.type_rule,
@@ -826,6 +830,12 @@ def get_parser():
                         "config.yaml value (%.2f) unless set, 0 for the bare "
                         "centre-of-mass rule (ignored by --stability cdrl)"
                         % e["min_support"])
+    p.add_argument("--min_total_support", type=float,
+                   default=float(e.get("min_total_support", 0.0)),
+                   help="fraction of an item's base that must rest on columns "
+                        "solid all the way down to the floor -- air under an "
+                        "overhang anywhere lower in the tower does not count; "
+                        "both stability rules, every fallback; 0 off")
     p.add_argument("--rot", type=int, default=e["rot"],
                    help="item orientations offered: 1 = none, 2 = yaw by 90 deg")
     p.add_argument("--n_types", type=int, default=e["n_types"],
@@ -863,6 +873,15 @@ def get_parser():
                         "on blue with all of its base, else only as a "
                         "fallback -- a blue tower does not shift (b); 0: "
                         "min_support alone")
+    p.add_argument("--support_reward", type=float,
+                   default=e.get("support_reward", 0.0),
+                   help="k: a box's reward times 1 - k * (1 - support), "
+                        "support the share of its footprint resting on what "
+                        "is below; 0 leaves the reward the volume alone")
+    p.add_argument("--tower_penalty", type=float,
+                   default=e.get("tower_penalty", 0.0),
+                   help="the share of its reward a blue or white box loses "
+                        "on the floor, where it starts a new tower; 0 off")
     p.add_argument("--outline_resort", type=int, choices=(0, 1),
                    default=e.get("outline_resort", 0),
                    help="1 under the mixed rules: when every other step "

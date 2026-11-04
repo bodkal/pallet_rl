@@ -115,7 +115,8 @@ def run(seqs, policy, nb, attacker=None, attacked=None, batch=None, S=None,
         max_l=None, min_support=None, n_pick=None, n_types=None,
         type_constraint=None, stack_cap=None, type_rule=None, soft_mix=None,
         outline_resort=None, outline_when=None, outline_area=None,
-        white_support=None, white_support_cm=None, blue_support=None):
+        white_support=None, white_support_cm=None, blue_support=None,
+        min_total_support=None):
     """Play every instance once.  `policy` is a net or a heuristic name.
 
     Anything left `None` comes from `config.yaml`; the env arguments are
@@ -144,6 +145,7 @@ def run(seqs, policy, nb, attacker=None, attacked=None, batch=None, S=None,
                        mixed_white_support=white_support,
                        mixed_white_support_cm=white_support_cm,
                        blue_support=blue_support,
+                       min_total_support=min_total_support,
                        stack_cap=stack_cap)
         env.reset(chunk)
         on = torch.as_tensor(attacked[s:s + batch]).to(device)
@@ -180,7 +182,8 @@ def nominal_score(pack, nb, n_inst=256, n_items=150, seed=999, device="cuda",
                   type_constraint=None, stack_cap=None, seqs=None,
                   type_rule=None, soft_mix=None, outline_resort=None,
                   outline_when=None, outline_area=None, white_support=None,
-                  white_support_cm=None, blue_support=None):
+                  white_support_cm=None, blue_support=None,
+                  min_total_support=None):
     """Quick greedy score on a fixed held-out slice, for training curves.
 
     `seqs` scores those instances (a run's held-out real pallets) instead of
@@ -194,7 +197,8 @@ def nominal_score(pack, nb, n_inst=256, n_items=150, seed=999, device="cuda",
                stack_cap=stack_cap, type_rule=type_rule, soft_mix=soft_mix,
                outline_resort=outline_resort, outline_when=outline_when,
                outline_area=outline_area, white_support=white_support,
-               white_support_cm=white_support_cm, blue_support=blue_support)
+               white_support_cm=white_support_cm, blue_support=blue_support,
+               min_total_support=min_total_support)
     return float(u.mean()), float(k.mean())
 
 
@@ -205,7 +209,8 @@ def attack_score(policy, attacker, nb, n_inst=256, n_items=150, seed=998,
                  type_constraint=None, stack_cap=None, seqs=None,
                  type_rule=None, soft_mix=None, outline_resort=None,
                  outline_when=None, outline_area=None, white_support=None,
-                 white_support_cm=None, blue_support=None):
+                 white_support_cm=None, blue_support=None,
+                 min_total_support=None):
     """Greedy utilisation of `policy` with every conveyor reordered.
 
     The attacker is selected and reported under the conditions it will be
@@ -224,7 +229,8 @@ def attack_score(policy, attacker, nb, n_inst=256, n_items=150, seed=998,
                type_rule=type_rule, soft_mix=soft_mix,
                outline_resort=outline_resort, outline_when=outline_when,
                outline_area=outline_area, white_support=white_support,
-               white_support_cm=white_support_cm, blue_support=blue_support)
+               white_support_cm=white_support_cm, blue_support=blue_support,
+               min_total_support=min_total_support)
     return float(u.mean()), float(k.mean())
 
 
@@ -261,6 +267,10 @@ def get_parser():
     p.add_argument("--min_support", type=float, default=None,
                    help="contact-area floor; the config.yaml value (%.2f) "
                         "unless set" % e["min_support"])
+    p.add_argument("--min_total_support", type=float,
+                   default=float(e.get("min_total_support", 0.0)),
+                   help="fraction of an item's base on columns solid down to "
+                        "the floor; 0 off; match the policy's")
     p.add_argument("--n_types", type=int, default=e["n_types"],
                    help="box types the dataset carries; must match the "
                         "policy's")
@@ -356,6 +366,7 @@ def main(argv=None):
                    white_support=bool(a.white_support),
                    white_support_cm=a.white_support_cm,
                    blue_support=bool(a.blue_support),
+                   min_total_support=a.min_total_support,
                    outline_resort=bool(a.outline_resort),
                    outline_when=a.outline_when,
                    outline_area=a.outline_area,

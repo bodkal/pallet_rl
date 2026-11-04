@@ -53,6 +53,9 @@ SECTION = {'cell_cm': 'eval', 'pallet_cm': 'eval', 'box_scale': 'eval',
            'box_round': 'eval', 'box_pad_m': 'eval', 'seed': 'run',
            'white_support': 'env', 'white_support_cm': 'env'}
 ORDER = ('run name', 'train', 'env', 'ppo', 'model', 'eval', 'run', 'other')
+#: runs/old: the old models -- out of the hall of fame and every run list,
+#: still in the pickers' Old models submenu, to play, copy or resume
+OLD = 'old'
 
 _CFG_LOCK = threading.RLock()
 _JOBS: dict = {}                 # name -> job, in start order
@@ -110,10 +113,14 @@ def _section(dest, cfg):
 
 
 def checkpoints():
-    """Every checkpoint under runs/, newest first: what --init can start from."""
-    out = glob.glob(os.path.join(ROOT, 'runs', '*', '*.pt'))
-    out.sort(key=lambda q: -os.path.getmtime(q))
-    return [os.path.relpath(q, ROOT) for q in out]
+    """Every checkpoint under runs/, newest first, then the old models':
+    what --init can start from."""
+    out = []
+    for pat in (('*', '*.pt'), ('old', '*', '*.pt')):
+        got = glob.glob(os.path.join(ROOT, 'runs', *pat))
+        got.sort(key=lambda q: -os.path.getmtime(q))
+        out += [os.path.relpath(q, ROOT) for q in got]
+    return out
 
 
 def _switch(a):
@@ -179,18 +186,22 @@ def form(config_path=None):
 
 def runs():
     """Every run with a recorded configuration, newest first, and how far it
-    got -- what the form can load to resume or copy."""
+    got -- what the form can load to resume or copy.  The old models come as
+    `old/<name>`, with `old` set."""
     out = []
-    for a in glob.glob(os.path.join(ROOT, 'runs', '*', 'args.json')):
+    for a in (glob.glob(os.path.join(ROOT, 'runs', '*', 'args.json'))
+              + glob.glob(os.path.join(ROOT, 'runs', OLD, '*', 'args.json'))):
         d = os.path.dirname(a)
         try:
             args = json.load(open(a))
         except (OSError, ValueError):
             continue
         rows, _ = _rows(os.path.join(d, 'log.jsonl'), 0)
+        old = os.path.basename(os.path.dirname(d)) == OLD
         with _JOBS_LOCK:
-            j = _JOBS.get(os.path.basename(d))
-        out.append({'name': os.path.basename(d), 'algo': args.get('algo'),
+            j = None if old else _JOBS.get(os.path.basename(d))
+        out.append({'name': (OLD + '/' if old else '') + os.path.basename(d),
+                    'old': old, 'algo': args.get('algo'),
                     'it': rows[-1]['it'] if rows else 0, 'iters': args.get('iters'),
                     'last_pt': os.path.exists(os.path.join(d, 'last.pt')),
                     'running': bool(j and j['proc'].poll() is None),
@@ -290,8 +301,9 @@ def fame(n=3):
 def run_values(name, config_path=None):
     """A run's args.json as the form's values: every field the parser has,
     written the way the form writes it.  A flag added since the run was
-    trained keeps the form's default (it is left out here)."""
-    d = os.path.join(ROOT, 'runs', os.path.basename(str(name)))
+    trained keeps the form's default (it is left out here).  `old/<name>` is
+    an old model's."""
+    d = _run_path(name)
     try:
         args = json.load(open(os.path.join(d, 'args.json')))
     except (OSError, ValueError) as e:
@@ -396,6 +408,8 @@ def _check_one(values, config_path=None):
         errs.append('a run needs a name')
     elif not re.fullmatch(r'[A-Za-z0-9_.\-]+', name) or name.startswith('.'):
         errs.append('run name: letters, digits, _ . - only')
+    elif name == OLD:
+        errs.append(f'runs/{OLD} holds the old models: pick another name')
     try:
         argv = argv_of(values, config_path)
         p = parser(fresh_config(config_path))
@@ -419,6 +433,10 @@ def _check_one(values, config_path=None):
                 and not values.get('resume')):
             errs.append(f'runs/{name} already exists: tick --resume to carry '
                         f'it on, or pick another name')
+        if (os.path.isdir(os.path.join(ROOT, 'runs', OLD, name))
+                and not values.get('resume')):
+            errs.append(f'{name} is an old model: tick --resume to carry it '
+                        f'on, or pick another name')
     return argv, errs
 
 
@@ -478,6 +496,10 @@ def _start_one(values, config_path=None):
     elif argv[argv.index('--progress') + 1] == 'auto':
         argv[argv.index('--progress') + 1] = 'on'
     d = os.path.join(ROOT, 'runs', name)
+    # resuming an old model brings it back out of runs/old first
+    if (values.get('resume') and not os.path.exists(d)
+            and os.path.isdir(os.path.join(ROOT, 'runs', OLD, name))):
+        from_old(name)
     os.makedirs(d, exist_ok=True)
     log = os.path.join(d, 'train.out')
     out = open(log, 'ab')
@@ -635,6 +657,45 @@ def trash(name):
         dest += time.strftime('_%Y%m%d-%H%M%S')
     shutil.move(src, dest)
     return os.path.relpath(dest, ROOT)
+
+
+def _run_path(name):
+    """runs/<name>, or runs/old/<name> for `old/<name>`."""
+    name = str(name)
+    return os.path.join(ROOT, 'runs', *([OLD] if name.startswith(OLD + '/') else []),
+                        os.path.basename(name))
+
+
+def to_old(name):
+    """runs/<name> moved into runs/old.  Returns its new name, `old/<name>`."""
+    name = os.path.basename(str(name))
+    src, dest = os.path.join(ROOT, 'runs', name), os.path.join(ROOT, 'runs', OLD, name)
+    if name in ('', OLD) or not os.path.isfile(os.path.join(src, 'args.json')):
+        raise ValueError(f'no such run: {name!r}')
+    _SCAN['t'] = 0.0                       # a run started on the command line too
+    adopt()
+    with _JOBS_LOCK:
+        j = _JOBS.get(name)
+        if j and j['proc'].poll() is None:
+            raise ValueError(f'{name} is training: stop it first')
+        _JOBS.pop(name, None)              # its finished card goes with it
+    if os.path.exists(dest):
+        raise ValueError(f'runs/{OLD}/{name} already exists')
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    shutil.move(src, dest)
+    return f'{OLD}/{name}'
+
+
+def from_old(name):
+    """runs/old/<name> moved back to runs/<name>.  Returns `<name>`."""
+    name = os.path.basename(str(name))
+    src, dest = os.path.join(ROOT, 'runs', OLD, name), os.path.join(ROOT, 'runs', name)
+    if not name or not os.path.isdir(src):
+        raise ValueError(f'no old model {name!r}')
+    if os.path.exists(dest):
+        raise ValueError(f'runs/{name} already exists: rename or move it first')
+    shutil.move(src, dest)
+    return name
 
 
 def dismiss(name):

@@ -111,7 +111,7 @@ CLI: dict = {}
 #: triples; `PARAM_KEYS` adds where the boxes come from, below
 GAME_KEYS = ('bin', 'n_items', 'size_lo', 'size_hi', 'nb', 'n_pick',
              'max_l', 'rot', 'ems', 'stability', 'min_support',
-             'n_types', 'type_constraint', 'type_rule', 'soft_mix',
+             'min_total_support', 'n_types', 'type_constraint', 'type_rule', 'soft_mix',
              'white_support', 'white_support_cm', 'blue_support',
              'outline_resort', 'outline_when', 'outline_area', 'arm_collision',
              'stack_cap', 'stack_cap_types', 'stack_cap_side_cm', 'stack_cap_allow_cm',
@@ -218,6 +218,7 @@ def defaults():
          'ems': int(e['ems']),
          'stability': str(e['stability']),
          'min_support': float(e['min_support']),
+         'min_total_support': float(e.get('min_total_support', 0.0)),
          'n_types': int(e['n_types']),
          'type_constraint': int(e['type_constraint']),
          'type_rule': str(e.get('type_rule', 'touch')),
@@ -289,7 +290,7 @@ def run_params(spec):
         return p
     a = info['args']
     for k in ('n_items', 'max_l', 'rot', 'ems', 'stability', 'min_support',
-              'nb', 'n_types', 'type_constraint', 'type_rule', 'soft_mix',
+              'min_total_support', 'nb', 'n_types', 'type_constraint', 'type_rule', 'soft_mix',
               'white_support', 'white_support_cm', 'blue_support',
               'outline_resort', 'outline_when', 'outline_area', 'arm_collision',
               'stack_cap'):
@@ -309,6 +310,9 @@ def run_params(spec):
         p['outline_resort'], p['outline_when'] = 0, 'station'
     if a.get('outline_area') is None:
         p['outline_area'] = 'outline'
+    # and one from before --min_total_support without it
+    if a.get('min_total_support') is None:
+        p['min_total_support'] = 0.0
     for k in TRIPLES:
         if a.get(k) is not None:
             p[k] = list(A.extent(a[k]))
@@ -516,6 +520,13 @@ def validate(raw):
         p['min_support'] = ms
     except (TypeError, ValueError):
         err.append('support floor: expected a fraction between 0 and 1')
+    try:
+        ms = float(raw.get('min_total_support', p['min_total_support']))
+        if not 0.0 <= ms <= 1.0:
+            raise ValueError
+        p['min_total_support'] = ms
+    except (TypeError, ValueError):
+        err.append('total support: expected a fraction between 0 and 1')
 
     # ---- the combinations, once every field is individually sane -----------
     orders = p['source'] == 'orders'
@@ -753,6 +764,20 @@ def arm_blocked(env, free):
     return free_positions(env, arm=False) & ~free
 
 
+def total_blocked(env, free):
+    """(R, S, S) the placements the total-support rule alone rules out: the
+    box would rest there with `min_total_support` off."""
+    if not env.min_total_support:
+        return np.zeros_like(free)
+    keep = env.min_total_support
+    env.min_total_support = 0.0
+    try:
+        return free_positions(env) & ~free
+    finally:
+        env.min_total_support = keep
+        env._invalidate(hmap=False)
+
+
 def cand_points(env):
     """[[x, y, z, r]] the packer's candidate list for the item in front.
 
@@ -902,6 +927,7 @@ def stack_kw(p):
                 mixed_white_support=bool(p['white_support']),
                 mixed_white_support_cm=p['white_support_cm'],
                 blue_support=bool(p['blue_support']),
+                min_total_support=p['min_total_support'],
                 outline_resort=bool(p['outline_resort']),
                 outline_when=p['outline_when'],
                 outline_area=p['outline_area'],
@@ -1116,6 +1142,8 @@ def board(st):
                                     soft).astype(np.uint8).tolist(),
         'blueblock': blue_blocked(env, z, odims, fallback,
                                   soft).astype(np.uint8).tolist(),
+        'totalblock': total_blocked(env, free).astype(np.uint8).tolist(),
+        'min_total_support': float(env.min_total_support),
         'zmap': z.astype(int).tolist(),
         'ncand': k,
         'nfree': nfree,
@@ -1379,7 +1407,7 @@ def recalc(st, spec, p):
 ROWS_KEPT = 20         # recalculation rows a session keeps for `replay`
 SNAP_EVERY = 10        # steps between the checkpoints a replay jumps back to
 STATE = ('seq', 'length', 'head', 'done', 'hmap', 'tmap', 'smap', 'cmap',
-         'omap', 'packed', 'ptype', 'n_packed', 'volume')
+         'gmap', 'omap', 'packed', 'ptype', 'n_packed', 'volume')
 _REPLAY = threading.Lock()
 
 
@@ -1499,8 +1527,9 @@ def turned_down(env, feas, z, odims):
 def down_why(env, z, odims):
     """`why(x, y, z, r)`: the rule that turns the item in front down there,
     in the order the Play tab's hover note asks them -- 'arm', 'lid', 'cap'
-    (the stack-height limit), 'white' (w), 'blue' (b), 'type', and 'support'
-    for what is left: it would not rest stably."""
+    (the stack-height limit), 'white' (w), 'blue' (b), 'type', 'total' (the
+    total-support rule alone) and 'support' for what is left: it would not
+    rest stably."""
     mixed = (env.type_rule in MIXED_RULES and env.type_constraint
              and env.n_types > 1)
     fallback, soft = (free_rules(env) if mixed or env._blue_on()
@@ -1515,6 +1544,7 @@ def down_why(env, z, odims):
     typ = type_blocked(env, z, odims, fallback, soft)
     wht = white_blocked(env, z, odims, fallback, soft)
     blu = blue_blocked(env, z, odims, fallback, soft)
+    tot = total_blocked(env, free_positions(env))
 
     def why(x, y, zz, r):
         return ('arm' if arm[r, x, y]
@@ -1523,6 +1553,7 @@ def down_why(env, z, odims):
                 else 'white' if wht[r, x, y] and not typ[r, x, y]
                 else 'blue' if blu[r, x, y] and not typ[r, x, y]
                 else 'type' if typ[r, x, y]
+                else 'total' if tot[r, x, y]
                 else 'support')
     return why
 
@@ -1576,7 +1607,7 @@ def exp_params(raw):
 
 #: what the experiment's form carries, and so what drift is judged on there
 EXP_KEYS = ('nb', 'n_pick', 'max_l', 'rot', 'ems', 'stability', 'min_support',
-            'type_constraint', 'type_rule', 'soft_mix', 'white_support',
+            'min_total_support', 'type_constraint', 'type_rule', 'soft_mix', 'white_support',
             'white_support_cm', 'blue_support', 'outline_resort', 'outline_when', 'outline_area', 'arm_collision', 'stack_cap',
             'pallet_cm',
             'box_pad_m', 'box_scale', 'box_round')
@@ -1760,7 +1791,7 @@ class Handler(BaseHTTPRequestHandler):
             with open(os.path.join(HERE, 'dashboard.html'), 'rb') as f:
                 return self._send(f.read(), 'text/html; charset=utf-8')
         if p == '/dashboard/runs':
-            return self._json([D.run_meta(r) for r in D.list_runs()])
+            return self._json([D.run_meta(r) for r in D.all_runs()])
         if p == '/dashboard/log':
             return self._json(D.read_log((parse_qs(u.query).get('run') or [''])[0]))
         if p == '/dashboard/summary':
@@ -1770,7 +1801,12 @@ class Handler(BaseHTTPRequestHandler):
             policies = [r for r in runs if not r.startswith(('att_', 'h'))]
             attackers = [r for r in runs
                          if r.startswith(('att_', 'h')) or r in policies]
+            # the old models: in a submenu of their own, the same split
+            old = [r for r in A.list_runs(old=True) if A.run_info(r)]
             return self._json({'policies': policies, 'attackers': attackers,
+                               'old_policies': [r for r in old if not os.path.basename(r)
+                                                .startswith(('att_', 'h'))],
+                               'old_attackers': old,
                                'heuristics': list(A.HEURISTICS),
                                'defaults': defaults(),
                                'limits': {'axis': MAX_AXIS, 'nb': MAX_NB,
@@ -1922,6 +1958,15 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({'name': TR.resume(body.get('name') or '')})
             except ValueError as e:
                 return self._json({'error': str(e)}, 400)
+        if p == '/api/train/old':
+            try:
+                name = body.get('name') or ''
+                return self._json({'name': TR.from_old(name) if body.get('back')
+                                   else TR.to_old(name)})
+            except ValueError as e:
+                return self._json({'error': str(e)}, 400)
+            except OSError as e:
+                return self._json({'error': f'could not move the run: {e}'}, 500)
         if p == '/api/train/dismiss':
             return self._json({'ok': TR.dismiss(body.get('name'))})
         if p == '/api/exp/stop':

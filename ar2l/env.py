@@ -27,6 +27,13 @@ cells a box rests on count, not those it overhangs.  `cmap` holds the limit
 per column, `stack_allowance` the allowance, and `_cap_ok` drops the
 placements that break it.
 
+A tower is only as steady as the boxes under it.  `min_support` asks how much
+of a box's base rests on what is right below it; `min_total_support` asks how
+much rests on a column that is solid all the way down to the floor -- a cell
+over air anywhere lower, under an overhang of a box further down, does not
+count.  `gmap` holds which columns are solid so, and `_ground_ok` drops the
+placements that rest on too little of them.
+
 and the packing action picks one l in L_t.  A placement is an (orientation,
 x, y) triple: with `rot = 2` the leading item is offered both as (w, l, h) and
 as (l, w, h), which is the discrete setting of the paper.  The attacker
@@ -198,6 +205,11 @@ BLUE, WHITE, BROWN = 0, 1, 2
 # rule (d) asks no more either.  `_blue_ok` tests it.
 # (w)'s small white box, length and width in cm, where the config gives none
 WHITE_SUPPORT_CM = (45, 27)
+
+# The types whose box on the floor starts a new tower, which `tower_penalty`
+# charges for: blue and white
+TOWER_TYPES = (BLUE, WHITE)
+
 # What a mixed rule says of a box of one type on a box of another: it may
 # not, it may, it may if the pair's own condition holds, or it may if its top
 # ends near the lid -- rule (a) alone (`mixed_tables`)
@@ -475,7 +487,9 @@ class BPPBatch:
                  mixed_small_blue=None, mixed_white_support=None,
                  mixed_white_support_cm=None, blue_support=None,
                  soft_mix=None, outline_resort=None,
-                 outline_when=None, outline_area=None):
+                 outline_when=None, outline_area=None,
+                 support_reward=None, tower_penalty=None,
+                 min_total_support=None):
         # `None` means "whatever config.yaml says"; an explicit argument wins
         e = CFG["env"]
         S = e["bin"] if S is None else S
@@ -558,6 +572,14 @@ class BPPBatch:
         if not 0.0 <= self.min_support <= 1.0:
             raise ValueError(f"min_support is a fraction of the item base, "
                              f"got {self.min_support}")
+        # the share of the base that has to rest on columns solid down to the
+        # floor (`gmap`), under either stability rule and every fallback; 0 off
+        self.min_total_support = float(
+            e.get("min_total_support", 0.0) if min_total_support is None
+            else min_total_support)
+        if not 0.0 <= self.min_total_support <= 1.0:
+            raise ValueError(f"min_total_support is a fraction of the item "
+                             f"base, got {self.min_total_support}")
         # Drop every placement the robot arm cannot make without one of its
         # links hitting the pack (or cannot reach at all) -- `ar2l.pack_collision`,
         # set up from `robot:` in config.yaml.  `arm_cell_m` is how many metres
@@ -653,6 +675,15 @@ class BPPBatch:
         # (b): blue on blue with all of its base on blue (`--blue_support`)
         self.blue_support = bool(e.get("blue_support", 1) if blue_support
                                  is None else blue_support)
+        # reward shaping, both off at 0 (see config.yaml): `support_reward`
+        # takes that multiple of a box's unsupported share off its reward, and
+        # `tower_penalty` that share of its reward off a blue or white box laid
+        # on the floor -- a new tower of its type
+        self.support_reward = float(e.get("support_reward", 0.0)
+                                    if support_reward is None
+                                    else support_reward)
+        self.tower_penalty = float(e.get("tower_penalty", 0.0)
+                                   if tower_penalty is None else tower_penalty)
         # `soft_mix`: the mixed rules trade a box's own fallback -- all but
         # (b)'s and (w)'s -- for the station's last resort (`SOFT_PAIRS`,
         # `_stuck`), and drop (c).  Both tables are kept, so a caller may
@@ -753,6 +784,8 @@ class BPPBatch:
             self._under_cache = None
             # `cmap` only ever changes with the height map, in `step`
             self._cap_cache = None
+            # and so does `gmap` (`_ground_ok`)
+            self._ground_cache = None
             # the blue cells a small blue box could still go on, per `ems`
             # mode -- rule (d) of the `MIXED_RULES` (`_open_sweep`)
             self._open_cache = {}
@@ -842,6 +875,9 @@ class BPPBatch:
         # how high a later box may start over each column: below this, which
         # a small box of a limited type lowers over its footprint
         self.cmap = np.full((n, self.Lx, self.Ly), NO_CAP, np.int16)
+        # whether each column is solid from its top down to the floor: no air
+        # under any box in it, which `min_total_support` counts
+        self.gmap = np.ones((n, self.Lx, self.Ly), bool)
         # the outlines the outline step offers (`OUTLINE_WHEN`), on the
         # lattice of cell corners: point (i, j) is where cells (i - 1, j - 1)
         # and (i, j) meet.  The pallet's edges, then every packed box's.
@@ -875,6 +911,7 @@ class BPPBatch:
         self.tmap[idx] = TYPE_FLOOR
         self.smap[idx] = 0
         self.cmap[idx] = NO_CAP
+        self.gmap[idx] = True
         self.omap[idx] = self._rim()
         self.packed[idx] = 0
         self.ptype[idx] = 0
@@ -1894,6 +1931,8 @@ class BPPBatch:
             stable = np.zeros_like(ratio, bool)
             for r_min, c_min in SUPPORT_RULES:
                 stable |= (ratio > r_min) & (ncor >= c_min)
+        if self.min_total_support > 0:
+            stable &= self._ground_ok(dims, z)
 
         inx = gx[None, :, None] + sx[:, None, None] <= Lx
         iny = gy[None, None, :] + sy[:, None, None] <= Ly
@@ -2086,6 +2125,31 @@ class BPPBatch:
                & (box[:, 2] < y[b] + sy[b]) & (box[:, 3] >= y[b]))
         self._arm_keys, self._arm_move, self._arm_box = (
             keys[~hit], move[~hit], box[~hit])
+
+    def _ground_ok(self, dims, z):
+        """(n, Lx, Ly): does the box landing at `z` rest on at least
+        `min_total_support` of its base on columns solid down to the floor?
+
+        A cell carries it so when its column reaches `z` and `gmap` holds
+        there.  Coded as `2 * hmap + gmap`, the max over the footprint is
+        `2z + 1` exactly when one such cell is under it, and the cells that
+        attain it are then all of them; otherwise none is.  The y-sweep
+        depends on the bin alone and is kept until the next `step`.
+        """
+        if self._ground_cache is None:
+            code = self.hmap * np.int16(2) + self.gmap
+            self._ground_cache = _win_maxcount(code, None, 2, self.Ly,
+                                               self.sidey)
+        by, byc = self._ground_cache
+        sx, sy, ar = dims[:, 0], dims[:, 1], self._ar
+        cx = np.minimum(sx, self.sidex)
+        cy = np.minimum(sy, self.sidey)
+        m, c = _win_maxcount(by[cy - 1, ar], byc[cy - 1, ar], 1, self.Lx,
+                             _widest(cx, self.sidex))
+        m, c = m[cx - 1, ar], c[cx - 1, ar]
+        grounded = np.where(m == 2 * np.asarray(z, np.int32) + 1, c, 0)
+        ratio = grounded.astype(np.float32) / (sx * sy)[:, None, None]
+        return ratio >= self.min_total_support - SUPPORT_EPS
 
     def _support_ratio(self, dims, cxy, cx):
         """Fraction of the footprint that rests on the contact layer.
@@ -2294,6 +2358,8 @@ class BPPBatch:
         foot = inx[:, :, None] & iny[:, None, :] & alive[:, None, None]
         # the columns it only overhangs: air between it and the stack below
         gap = foot & (self.hmap < zz[:, None, None])
+        # a column stays solid to the floor where the box rests on one
+        self.gmap = np.where(foot, self.gmap & ~gap, self.gmap)
         self.hmap = np.where(foot, (zz + sz)[:, None, None].astype(np.int16),
                              self.hmap)
         # the item is now the top of every column it covers, so it is what the
@@ -2361,6 +2427,15 @@ class BPPBatch:
         self._keep_arm(*arm, x, y, sx, sy, alive)
 
         reward = (vol / self.bin_vol) * alive
+        if self.support_reward:
+            # the share of the footprint resting on what is below, as
+            # `_support_ratio` counts it: every cell but the overhung `gap`
+            area = np.maximum(sx * sy, 1).astype(np.float32)
+            support = 1.0 - gap.sum((1, 2)) / area
+            reward = reward * (1.0 - self.support_reward * (1.0 - support))
+        if self.tower_penalty and self.n_types > 1:
+            tower = (zz == 0) & np.isin(tt, TOWER_TYPES)
+            reward = reward * (1.0 - self.tower_penalty * tower)
         # terminate when the new leading item has nowhere to go -- and, with
         # the station filtered (`pick_feasible`), no other box within reach
         # has either: the permuter reaches past a blocked front box, so the

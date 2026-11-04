@@ -383,6 +383,13 @@ details.cf>summary b{font-size:14px}
 .tcmd{font:11.5px ui-monospace,monospace;color:var(--dim);background:var(--bg);border:1px solid var(--line);
   border-radius:8px;padding:8px 10px;margin-top:12px;white-space:pre-wrap;word-break:break-all}
 #terr{color:var(--c3);white-space:pre-line}
+/* resume batch: the unfinished runs, ticked and resumed together */
+#tbatch{display:inline-block}
+#tbatch>button{width:auto}
+#tbatch>.ddm{left:auto;right:0;min-width:320px;max-width:min(560px,92vw)}
+#tbatch .ddi input{width:15px;height:15px;accent-color:var(--c0);margin:0;flex:none}
+#tbatch .ddft{display:flex;gap:8px;align-items:center;padding:6px 6px 2px;border-top:1px solid var(--line);margin-top:4px}
+#tbatch .ddft .go{margin-left:auto}
 #ttip{position:fixed;z-index:50;max-width:340px;pointer-events:none;background:var(--panel);
   border:1px solid var(--line);border-radius:9px;padding:8px 11px;font-size:12px;line-height:1.45;
   box-shadow:0 6px 22px rgba(0,0,0,.35);opacity:0;transform:translateY(3px);transition:opacity .12s,transform .12s}
@@ -658,6 +665,8 @@ details.cf>summary b{font-size:14px}
             <option value="cdrl">cdrl &mdash; Zhao et al.</option></select></div>
           <div class="pf"><span>support floor (com only)</span>
             <input id="msup" type="number" min="0" max="1" step="0.05"></div>
+          <div class="pf" title="the share of the box's base that has to rest on columns solid all the way down to the floor: a cell over air anywhere lower in the tower -- under the overhang of a box further down -- does not count, where the support floor counts it once the box right below covers it. Both stability rules, every fallback. 0 = off."><span>total support (whole tower)</span>
+            <input id="mtsup" type="number" min="0" max="1" step="0.05"></div>
           <div class="pf"><span>box-type rule</span><select id="trule">
             <option value="touch">touch &mdash; not resting on another type</option>
             <option value="column">column &mdash; not over another type anywhere below</option>
@@ -916,6 +925,8 @@ details.cf>summary b{font-size:14px}
           <option value="cdrl">cdrl &mdash; Zhao et al.</option></select></div>
         <div class="pf"><span>support floor (com only)</span>
           <input id="rcmsup" type="number" min="0" max="1" step="0.05"></div>
+        <div class="pf" title="the share of the box's base that has to rest on columns solid all the way down to the floor: a cell over air anywhere lower in the tower -- under the overhang of a box further down -- does not count, where the support floor counts it once the box right below covers it. Both stability rules, every fallback. 0 = off."><span>total support (whole tower)</span>
+          <input id="rcmtsup" type="number" min="0" max="1" step="0.05"></div>
         <div class="pf"><span>box-type rule</span><select id="rctrule">
           <option value="touch">touch &mdash; not resting on another type</option>
           <option value="column">column &mdash; not over another type anywhere below</option>
@@ -1077,6 +1088,8 @@ details.cf>summary b{font-size:14px}
           <option value="cdrl">cdrl &mdash; Zhao et al.</option></select></div>
         <div class="pf"><span>support floor (com only)</span>
           <input id="xmsup" type="number" min="0" max="1" step="0.05"></div>
+        <div class="pf" title="the share of the box's base that has to rest on columns solid all the way down to the floor: a cell over air anywhere lower in the tower -- under the overhang of a box further down -- does not count, where the support floor counts it once the box right below covers it. Both stability rules, every fallback. 0 = off."><span>total support (whole tower)</span>
+          <input id="xmtsup" type="number" min="0" max="1" step="0.05"></div>
         <div class="pf"><span>stacking rule</span><select id="xtcon">
           <option value="1">on &mdash; a box only on its own type</option>
           <option value="0">off &mdash; any type on any</option></select></div>
@@ -1198,6 +1211,8 @@ details.cf>summary b{font-size:14px}
           <option value="cdrl">cdrl &mdash; Zhao et al.</option></select></div>
         <div class="pf"><span>support floor (com only)</span>
           <input id="lmsup" type="number" min="0" max="1" step="0.05"></div>
+        <div class="pf" title="the share of the box's base that has to rest on columns solid all the way down to the floor: a cell over air anywhere lower in the tower -- under the overhang of a box further down -- does not count, where the support floor counts it once the box right below covers it. Both stability rules, every fallback. 0 = off."><span>total support (whole tower)</span>
+          <input id="lmtsup" type="number" min="0" max="1" step="0.05"></div>
         <div class="pf"><span>stacking rule</span><select id="ltcon">
           <option value="1">on &mdash; a box only on its own type</option>
           <option value="0">off &mdash; any type on any</option></select></div>
@@ -1400,7 +1415,8 @@ details.cf>summary b{font-size:14px}
     <div id="tfameb"></div>
   </div>
   <div class="card" id="tjobcard" hidden>
-    <h2>Runs started from this server &mdash; full loss curves in the Training tab</h2>
+    <h2 class="row">Runs started from this server &mdash; full loss curves in the Training tab<span class="spacer"></span>
+      <button id="tstopall" type="button" class="fbtn" hidden title="ask every running run to finish the iteration under way, save last.pt and exit">Stop &amp; save all</button></h2>
     <div id="tlead" hidden></div>
     <div id="tjobs"></div>
   </div>
@@ -1410,11 +1426,16 @@ details.cf>summary b{font-size:14px}
       <input id="tcfg" type="text" spellcheck="false" placeholder="config.yaml"
         title="--config: a YAML merged over config.yaml; empty = config.yaml alone">
       <button id="treload" type="button" title="read the config file again and reset every field to it">Reload defaults</button>
+      <span class="dd" id="tbatch">
+        <button id="tbatchb" type="button" title="pick runs that stopped before their --iters and resume them all, each with the settings it was trained with">Resume batch <span class="car">&#9662;</span></button>
+        <div class="ddm" hidden></div>
+      </span>
     </div>
     <div class="cbar" style="margin-top:10px">
       <select id="trun" style="flex:1;min-width:220px" title="a run under runs/, with the settings it was trained with"></select>
       <button id="tresume" type="button" disabled title="fill the form with this run's settings, its name, and --resume ticked">Resume it</button>
       <button id="tcopy" type="button" disabled title="fill the form with this run's settings and name, for a new run once the name is changed">Copy its settings</button>
+      <button id="told" type="button" disabled>Move to old models</button>
     </div>
     <div class="opt" id="trunmsg"></div>
     <div id="tform"></div>
@@ -1462,7 +1483,7 @@ const PF = {
   size_lo: ['#lo0', '#lo1', '#lo2'],
   size_hi: ['#hi0', '#hi1', '#hi2'],
   nb: '#nb', n_pick: '#npick', n_items: '#nitems', max_l: '#maxl',
-  rot: '#prot', ems: '#ems', stability: '#stab', min_support: '#msup',
+  rot: '#prot', ems: '#ems', stability: '#stab', min_support: '#msup', min_total_support: '#mtsup',
   type_rule: '#trule', soft_mix: '#softmix', white_support: '#wsup', white_support_cm: '#wsupcm', blue_support: '#bsup',
   outline_resort: '#olresort', outline_when: '#olwhen', outline_area: '#olarea', arm_collision: '#armcol', base_x_moves: '#armmoves',
   stack_cap: '#stackcap', stack_cap_types: '#stacktypes',
@@ -1478,7 +1499,7 @@ const EMSTEXT = {1: 'the corners of the empty maximal spaces',
   2: 'the corner cells of the height map',
   3: 'the empty-maximal-space corners and the corner cells'};
 const PSTR = new Set(['stability', 'type_rule', 'outline_when', 'outline_area', 'source', 'data', 'box_round']);
-const PFLOAT = new Set(['min_support', 'order_random', 'cell_cm', 'box_pad_m', 'box_scale']);
+const PFLOAT = new Set(['min_support', 'min_total_support', 'order_random', 'cell_cm', 'box_pad_m', 'box_scale']);
 /* a checkbox, sent as 1 or 0 */
 const PFLAG = new Set(['soft_mix', 'white_support', 'blue_support', 'outline_resort']);
 /* a list of numbers typed as "0, -0.5, 0.5"; the server checks the values */
@@ -1493,7 +1514,7 @@ const PLABEL = {source: 'box source', data: 'data file', pallet: 'pallet',
   box_pad_m: 'box padding', box_scale: 'box scale', box_round: 'box rounding', bin: 'bin', size_lo: 'smallest item side', size_hi: 'largest item side',
   nb: 'window N_B', n_pick: 'reach k', n_items: 'items in the sequence',
   max_l: 'candidate cap', rot: 'orientations', ems: 'action space',
-  stability: 'stability rule', min_support: 'support floor',
+  stability: 'stability rule', min_support: 'support floor', min_total_support: 'total support',
   type_rule: 'box-type rule', soft_mix: 'soft mix', white_support: 'white towers (w)', white_support_cm: 'small white (cm)', blue_support: 'blue towers (b)',
   outline_resort: 'outline step', outline_when: 'outline step opens', outline_area: 'outline step looks at', arm_collision: 'robot-arm filter', base_x_moves: 'arm base x moves',
   stack_cap: 'stack-height limit', stack_cap_types: 'limited box types',
@@ -2020,6 +2041,7 @@ const DOWN_WHY = {
   white: "white on white must rest on at least a small white box's base (w)",
   blue: 'blue on blue must rest on it with all of its base (b)',
   type: 'the box-type rule: it may not rest on what is under it',
+  total: 'not enough total support: too little of its base stands on columns solid down to the floor',
   support: 'not enough support underneath: it would not rest stably'};
 function pickMark(cv, e){
   const b = cv.getBoundingClientRect(), mx = e.clientX - b.left, my = e.clientY - b.top;
@@ -2669,6 +2691,7 @@ function onMove(ev){
   const armBlocked = B.armblock && B.armblock[ORIENT] && B.armblock[ORIENT][x][y];
   const whiteBlocked = B.whiteblock && B.whiteblock[ORIENT] && B.whiteblock[ORIENT][x][y];
   const blueBlocked = B.blueblock && B.blueblock[ORIENT] && B.blueblock[ORIENT][x][y];
+  const totalBlocked = B.totalblock && B.totalblock[ORIENT] && B.totalblock[ORIENT][x][y];
   const W = B.white || {};
   const why = armBlocked ? 'the robot arm would hit the pack placing it here, or cannot reach it (robot-arm filter on)'
             : (x + l > LX || y + w > LY) ? 'it hangs off the pallet'
@@ -2687,6 +2710,9 @@ function onMove(ev){
             : wrongType && isMixed() ? mixedWhy(B.item_type, u)
             : wrongType ? `it would come to rest on ${TNAME(u)}, and a
                            ${TNAME(B.item_type)} box may only be stacked on its own type`
+            : totalBlocked ? `not enough total support — less than ${PCT(B.min_total_support)} of
+                           the base would stand on columns solid all the way down to the floor:
+                           a box lower in the tower hangs over air there (total support)`
             : 'not enough support underneath — less than 80% of the base would rest on what is below it';
   const ok = legal(x, y);
   const ci = B.cands ? B.cands.findIndex(c => c[0] === x && c[1] === y && c[3] === ORIENT) : -1;
@@ -3071,7 +3097,7 @@ function drawReplay(n){
 const RPF = {
   bin: ['#rcbin0', '#rcbin1', '#rcbin2'],
   nb: '#rcnb', n_pick: '#rcnpick', max_l: '#rcmaxl',
-  rot: '#rcrot', ems: '#rcems', stability: '#rcstab', min_support: '#rcmsup',
+  rot: '#rcrot', ems: '#rcems', stability: '#rcstab', min_support: '#rcmsup', min_total_support: '#rcmtsup',
   type_rule: '#rctrule', soft_mix: '#rcsoftmix', white_support: '#rcwsup', white_support_cm: '#rcwsupcm', blue_support: '#rcbsup',
   outline_resort: '#rcolresort', outline_when: '#rcolwhen', outline_area: '#rcolarea', arm_collision: '#rcarmcol', base_x_moves: '#rcarmmoves',
   stack_cap: '#rcstackcap', stack_cap_types: '#rcstacktypes',
@@ -3418,7 +3444,7 @@ $('#preset').onclick = loadPreset;
 function ddEnhance(sel){
   const wrap = document.createElement('div'); wrap.className = 'dd';
   sel.parentNode.insertBefore(wrap, sel); wrap.appendChild(sel);
-  if (sel.style.width) wrap.style.width = sel.style.width;
+  for (const k of ['width', 'flex', 'minWidth']) if (sel.style[k]) wrap.style[k] = sel.style[k];
   const btn = document.createElement('button'); btn.type = 'button';
   btn.innerHTML = '<span class="lbl"></span><span class="car">&#9662;</span>';
   wrap.appendChild(btn);
@@ -3495,7 +3521,7 @@ function ddEnhance(sel){
     .observe(sel, {childList: true, subtree: true});
   label();
 }
-['#opp', '#rcopp', '#xopp', '#lopp'].forEach(s => ddEnhance($(s)));
+['#opp', '#rcopp', '#xopp', '#lopp', '#trun'].forEach(s => ddEnhance($(s)));
 /* a folder field the menu beside it browses: the folders are the server's,
    since that is where the experiment reads them.  Opening a folder makes it
    the field's value, each counts its .csv files, and Escape puts back the
@@ -3563,17 +3589,37 @@ dirPick($('#xdir'));
 dirPick($('#data'), true);
 dirPick($('#lfile'), true);
 
-(async () => {
+/* the run pickers' lists: the runs, then the heuristics and the old models
+   (runs/old) each folded into a submenu.  Filled again when a run moves to
+   the old models or back, each picker keeping its choice -- under the run's
+   new name, `moved` = [was, now], when it is the run that moved */
+async function fillRuns(moved){
   const m = await (await fetch('/api/setup')).json();
-  $('#opp').innerHTML = m.policies.map(r => `<option value="run:${r}">${r}</option>`).join('')
+  const old = (rs, f) => rs.length ? `<optgroup label="Old models">${rs.map(f).join('')}</optgroup>` : '';
+  const opp = m.policies.map(r => `<option value="run:${r}">${r}</option>`).join('')
     + '<optgroup label="Heuristics &amp; random">'
     + m.heuristics.map(h => `<option value="heur:${h}">${h.toUpperCase()} (heuristic)</option>`).join('')
-    + '<option value="random">random (uniform over the candidates)</option></optgroup>';
-  // the recalculation picker races the same field the setup form does
-  $('#rcopp').innerHTML = $('#opp').innerHTML;
-  $('#att').innerHTML = '<option value="none">none &mdash; nominal conveyor</option>'
+    + '<option value="random">random (uniform over the candidates)</option></optgroup>'
+    + old(m.old_policies, r => `<option value="run:${r}">${r.slice(4)}</option>`);
+  const att = '<option value="none">none &mdash; nominal conveyor</option>'
     + m.attackers.map(r => `<option value="run:${r}">${r} (adversary)</option>`).join('')
-    + m.attackers.map(r => `<option value="mix:${r}">${r} (its selector)</option>`).join('');
+    + m.attackers.map(r => `<option value="mix:${r}">${r} (its selector)</option>`).join('')
+    + old(m.old_attackers, r => `<option value="run:${r}">${r.slice(4)} (adversary)</option>`
+                              + `<option value="mix:${r}">${r.slice(4)} (its selector)</option>`);
+  // the recalculation, experiment and log pickers race the same field the
+  // setup form does; the last two are filled when their tab first opens
+  for (const [sel, html] of [['#opp', opp], ['#rcopp', opp], ['#xopp', opp], ['#lopp', opp], ['#att', att]]){
+    const el = $(sel);
+    if ((sel === '#xopp' || sel === '#lopp') && !el.options.length) continue;
+    let v = el.value;
+    if (moved) v = v.replace(/^(run|mix):(.*)$/, (q, k, r) => r === moved[0] ? `${k}:${moved[1]}` : q);
+    el.innerHTML = html;
+    if ([...el.options].some(o => o.value === v)) el.value = v;
+  }
+  return m;
+}
+(async () => {
+  const m = await fillRuns();
   for (const el of [$('#bin0'), $('#bin1'), $('#bin2'), $('#lo0'), $('#lo1'), $('#lo2'),
                     $('#hi0'), $('#hi1'), $('#hi2')]) el.max = m.limits.axis;
   $('#nb').max = $('#npick').max = m.limits.nb;
@@ -3643,7 +3689,7 @@ function moveInk(){
 const XPF = {
   bin: ['#xbin0', '#xbin1', '#xbin2'],
   nb: '#xnb', n_pick: '#xnpick', max_l: '#xmaxl',
-  rot: '#xprot', ems: '#xems', stability: '#xstab', min_support: '#xmsup',
+  rot: '#xprot', ems: '#xems', stability: '#xstab', min_support: '#xmsup', min_total_support: '#xmtsup',
   type_constraint: '#xtcon', type_rule: '#xtrule', soft_mix: '#xsoftmix', white_support: '#xwsup', white_support_cm: '#xwsupcm', blue_support: '#xbsup',
   outline_resort: '#xolresort', outline_when: '#xolwhen', outline_area: '#xolarea', arm_collision: '#xarmcol', base_x_moves: '#xarmmoves',
   stack_cap: '#xstackcap', stack_cap_types: '#xstacktypes',
@@ -3801,7 +3847,7 @@ $('#xstop').onclick = async () => { await api('/api/exp/stop', {job: XJOB}); xPo
 const LPF = {
   bin: ['#lbin0', '#lbin1', '#lbin2'],
   nb: '#lnb', n_pick: '#lnpick', max_l: '#lmaxl',
-  rot: '#lprot', ems: '#lems', stability: '#lstab', min_support: '#lmsup',
+  rot: '#lprot', ems: '#lems', stability: '#lstab', min_support: '#lmsup', min_total_support: '#lmtsup',
   type_constraint: '#ltcon', type_rule: '#ltrule', soft_mix: '#lsoftmix', white_support: '#lwsup', white_support_cm: '#lwsupcm', blue_support: '#lbsup',
   outline_resort: '#lolresort', outline_when: '#lolwhen', outline_area: '#lolarea', arm_collision: '#larmcol', base_x_moves: '#larmmoves',
   stack_cap: '#lstackcap', stack_cap_types: '#lstacktypes',
@@ -4302,7 +4348,7 @@ $('#cdel').onclick = async () => {
    The fields come from the server, one per flag of ar2l.train's parser, with
    the config file's value as the default.  The runs are the server's children,
    so they outlive this page and are found again when it is reopened. */
-let TFORM = null, TCHECK = null, TPOLL = null, TREF = null, TRUNS = [];
+let TFORM = null, TCHECK = null, TPOLL = null, TREF = null, TRUNS = [], TJOBS = [];
 const TSEC = {'run name': 'Run', train: 'Training (train:)', env: 'Environment (env:)',
               ppo: 'PPO (ppo:)', model: 'Model (model:)', eval: 'Orders data (eval:)',
               run: 'Run settings (run:)', other: 'Other'};
@@ -4338,20 +4384,44 @@ async function tLoad(){
 /* --- load a run's own settings (its args.json), to resume it or copy it --- */
 async function tRuns(){
   TRUNS = await fetch('/api/train/runs').then(x => x.json()).catch(() => []);
-  const keep = $('#trun').value;
-  $('#trun').innerHTML = `<option value="">Load a run's settings…</option>` + TRUNS.map(r =>
-    `<option value="${tEsc(r.name)}">${tEsc(r.name)} — ${tEsc(r.algo || '?')}, it ${r.it.toLocaleString()} / ${(r.iters || 0).toLocaleString()}`
-    + `${r.running ? ' · training now' : r.last_pt ? '' : ' · no last.pt'}</option>`).join('');
+  const keep = $('#trun').value, olds = TRUNS.filter(r => r.old);
+  const opt = r => `<option value="${tEsc(r.name)}">${tEsc(tBase(r.name))} — ${tEsc(r.algo || '?')}, it ${r.it.toLocaleString()} / ${(r.iters || 0).toLocaleString()}`
+    + `${r.running ? ' · training now' : r.last_pt ? '' : ' · no last.pt'}</option>`;
+  $('#trun').innerHTML = `<option value="">Load a run's settings…</option>` + TRUNS.filter(r => !r.old).map(opt).join('')
+    + (olds.length ? `<optgroup label="Old models">${olds.map(opt).join('')}</optgroup>` : '');
   $('#trun').value = TRUNS.some(r => r.name === keep) ? keep : '';
   tRunPick();
 }
+/* an old model is named `old/<name>`: the run's own name is the rest */
+const tBase = n => n.replace(/^old\//, '');
 function tRunPick(){
   const r = TRUNS.find(q => q.name === $('#trun').value);
   $('#tcopy').disabled = !r;
   $('#tresume').disabled = !r || !r.last_pt || r.running;
   $('#tresume').title = !r ? '' : r.running ? 'it is training right now'
-    : !r.last_pt ? 'it has no last.pt to carry on from' : "fill the form with this run's settings, its name, and --resume ticked";
+    : !r.last_pt ? 'it has no last.pt to carry on from' : "fill the form with this run's settings, its name, and --resume ticked"
+      + (r.old ? ' -- Start brings it back from the old models first' : '');
+  $('#told').disabled = !r || r.running;
+  $('#told').textContent = r && r.old ? 'Return from old models' : 'Move to old models';
+  $('#told').title = !r ? '' : r.running ? 'it is training right now: stop it first'
+    : r.old ? 'move it from runs/old back to runs/: into the hall of fame and the run lists again'
+    : 'move it to runs/old: off the hall of fame and the run lists, still in the Old models submenu of every packer picker';
 }
+$('#told').onclick = async () => {
+  const r = TRUNS.find(q => q.name === $('#trun').value);
+  if (!r) return;
+  $('#told').disabled = true;
+  const res = await api('/api/train/old', {name: r.name, back: r.old});
+  if (res.error){ $('#trunmsg').textContent = res.error; tRunPick(); return; }
+  if (TLOADED && TLOADED.run.name === r.name) TLOADED = null;
+  await tRuns();
+  $('#trun').value = res.name; tRunPick();
+  $('#trunmsg').textContent = r.old
+    ? `${res.name} is back in runs/: in the hall of fame and the run lists again.`
+    : `${tBase(res.name)} moved to runs/old: off the hall of fame and the run lists. Pick it from Old models here, or in any packer picker.`;
+  FAME.sig = ''; tFame(); tPoll();
+  fillRuns([r.name, res.name]);
+};
 async function tFromRun(resume){
   const name = $('#trun').value, r = TRUNS.find(q => q.name === name);
   if (!r) return;
@@ -4374,13 +4444,15 @@ async function tFromRun(resume){
 let TLOADED = null;
 function tRunMsg(){
   if (!TLOADED){ $('#trunmsg').textContent = ''; return; }
-  const r = TLOADED.run, it = r.it.toLocaleString(), want = +$('#tf_iters').value || 0;
-  const same = $('#tf_name').value.trim() === r.name && $('#tf_resume').checked;
+  const r = TLOADED.run, it = r.it.toLocaleString(), want = +$('#tf_iters').value || 0, n = tBase(r.name);
+  const same = $('#tf_name').value.trim() === n && $('#tf_resume').checked;
   $('#trunmsg').textContent = !TLOADED.resume
-    ? `${r.name}'s settings and name, for a new run: change the name. Set --init to one of its checkpoints to start from its weights.`
-    : !same ? `No longer resuming ${r.name}: the name or --resume was changed.`
-    : want <= r.it ? `${r.name} already reached iteration ${it} — raise --iters above that to train it further.`
-    : `Resumes ${r.name} from last.pt at iteration ${it} and trains on to ${want.toLocaleString()}. Marked fields differ from what it was trained with.`;
+    ? `${n}'s settings and name, for a new run: change the name. Set --init to one of its checkpoints to start from its weights.`
+    : !same ? `No longer resuming ${n}: the name or --resume was changed.`
+    : want <= r.it ? `${n} already reached iteration ${it} — raise --iters above that to train it further.`
+    : `Resumes ${n} from last.pt at iteration ${it} and trains on to ${want.toLocaleString()}.`
+      + (r.old ? ' Start brings it back from the old models first.' : '')
+      + ' Marked fields differ from what it was trained with.';
 }
 $('#trun').onchange = tRunPick;
 $('#tresume').onclick = async () => {
@@ -4558,6 +4630,22 @@ async function tAct(j, act, b){
   }
   tPoll();
 }
+$('#tstopall').onclick = async ev => {
+  const b = ev.currentTarget, run = TJOBS.filter(j => j.state === 'running');
+  if (!run.length) return;
+  const kill = run.filter(j => !j.graceful).map(j => j.name);
+  if (!confirm(`Stop and save ${run.length} run(s)?\n\n${run.map(j => j.name).join('\n')}\n\nEach finishes the iteration under way, saves last.pt and exits.`
+    + (kill.length ? `\n\n${kill.join(', ')} started before stop-and-save existed: stopping kills ${kill.length > 1 ? 'them' : 'it'}, and only the last regular last.pt is kept.` : ''))) return;
+  b.disabled = true;
+  const errs = [];
+  for (const j of run){
+    const r = await api('/api/train/stop', {name: j.name, mode: 'save'});
+    if (r.error) errs.push(`${j.name}: ${r.error}`);
+  }
+  $('#terr').textContent = errs.join('; ');
+  b.disabled = false;
+  tPoll();
+};
 /* train utilization (line) and the held-out evals (dots on a line) on one %
    axis; x runs to the last iteration, so the empty right is what is left */
 function tChart(el){
@@ -4649,8 +4737,10 @@ async function tPoll(){
   clearTimeout(TPOLL);
   let jobs;
   try { jobs = await fetch('/api/train/status').then(x => x.json()); } catch (e) { return; }
+  TJOBS = jobs;
   const live = jobs.some(j => j.state === 'running' || j.state === 'stopping');
   $('#tdot').hidden = !live;
+  $('#tstopall').hidden = !jobs.some(j => j.state === 'running');
   $('#tjobcard').hidden = !jobs.length;
   const box = $('#tjobs'), keep = new Set(jobs.map(j => j.name));
   box.querySelectorAll('.tjob').forEach(c => { if (!keep.has(c.dataset.name)) c.remove(); });
@@ -4802,6 +4892,42 @@ $('#tform').addEventListener('mouseover', ev => {
 });
 $('#tform').addEventListener('mouseleave', () => $('#ttip').classList.remove('on'));
 $('#treload').onclick = tLoad;
+/* resume batch: every run with a last.pt that stopped short of its --iters */
+function tBatchOpen(){
+  const menu = $('#tbatch .ddm');
+  const left = TRUNS.filter(r => !r.old && r.last_pt && !r.running && r.it < (r.iters || 0));
+  menu.innerHTML = !left.length ? `<div class="ddhd">every run with a last.pt has finished or is training now</div>`
+    : `<div class="ddhd">unfinished runs — each resumes from last.pt with the settings it was trained with</div>`
+      + left.map(r => `<label class="ddi"><input type="checkbox" value="${tEsc(r.name)}"><span>${tEsc(r.name)}</span>`
+        + `<span class="n">${tEsc(r.algo || '?')} · it ${r.it.toLocaleString()} / ${r.iters.toLocaleString()}</span></label>`).join('')
+      + `<div class="ddft"><button type="button" class="fbtn" data-a="all">All</button><button type="button" class="fbtn" data-a="none">None</button>`
+      + `<button type="button" class="go" data-a="go" disabled>Resume 0</button></div>`;
+  const boxes = [...menu.querySelectorAll('input')], go = menu.querySelector('[data-a=go]');
+  const count = () => { const n = boxes.filter(b => b.checked).length; go.disabled = !n; go.textContent = `Resume ${n}`; };
+  boxes.forEach(b => b.onchange = count);
+  menu.querySelectorAll('[data-a=all],[data-a=none]').forEach(b => b.onclick = () => {
+    boxes.forEach(x => x.checked = b.dataset.a === 'all'); count(); });
+  if (go) go.onclick = async () => {
+    const names = boxes.filter(b => b.checked).map(b => b.value), bad = [];
+    go.disabled = true;
+    for (const [k, name] of names.entries()){
+      go.textContent = `Resuming ${k + 1} / ${names.length}…`;
+      const r = await api('/api/train/resume', {name});
+      if (r.error) bad.push(`${name}: ${r.error}`);
+    }
+    menu.hidden = true;
+    $('#terr').textContent = bad.length ? `Not resumed:\n${bad.join('\n')}` : '';
+    await tPoll(); tRuns();
+    $('#tjobcard').scrollIntoView({block: 'start', behavior: 'smooth'});
+  };
+  menu.hidden = false;
+}
+$('#tbatchb').onclick = async () => {
+  if (!$('#tbatch .ddm').hidden){ $('#tbatch .ddm').hidden = true; return; }
+  await tRuns(); tBatchOpen();
+};
+document.addEventListener('click', e => { if (!$('#tbatch').contains(e.target)) $('#tbatch .ddm').hidden = true; });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') $('#tbatch .ddm').hidden = true; });
 $('#tcfg').addEventListener('change', tLoad);
 $('#tstart').onclick = async () => {
   $('#tstart').disabled = true;

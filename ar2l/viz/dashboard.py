@@ -50,14 +50,21 @@ _CACHE: dict = {}                 # path -> incremental parse state
 _CACHE_LOCK = threading.Lock()    # ThreadingHTTPServer: polls can overlap
 
 
-def list_runs():
-    d = os.path.join(ROOT, 'runs')
+def list_runs(old=False):
+    """The runs, newest first; with `old`, the old models in runs/old
+    instead, named `old/<name>`."""
+    d = os.path.join(ROOT, 'runs', *(['old'] if old else []))
     if not os.path.isdir(d):
         return []
     out = [r for r in sorted(os.listdir(d))
            if os.path.exists(os.path.join(d, r, 'log.jsonl'))]
     out.sort(key=lambda r: -os.path.getmtime(os.path.join(d, r, 'log.jsonl')))
-    return out
+    return [f'old/{r}' for r in out] if old else out
+
+
+def all_runs():
+    """The runs, then the old models: what the page lists."""
+    return list_runs() + list_runs(old=True)
 
 
 def delete_run(run):
@@ -68,11 +75,11 @@ def delete_run(run):
     empties it for good.  Only a run the page could have shown is accepted,
     so no name can reach outside runs/.
     """
-    if run not in list_runs():
+    if run not in all_runs():
         raise ValueError(f'no such run: {run!r}')
     trash = os.path.join(ROOT, 'runs', '.trash')
     os.makedirs(trash, exist_ok=True)
-    dest = os.path.join(trash, run)
+    dest = os.path.join(trash, os.path.basename(run))
     if os.path.exists(dest):                 # the same name deleted before
         dest += time.strftime('_%Y%m%d-%H%M%S')
     shutil.move(os.path.join(ROOT, 'runs', run), dest)
@@ -131,8 +138,9 @@ def run_meta(run):
     rows = read_log(run)
     last = rows[-1] if rows else {}
     nb = args.get('nb')
-    bench = PAPER.get((method_of(run), nb)) if args.get('algo') != 'attack' else None
-    return dict(run=run, algo=args.get('algo', '?'), nb=nb,
+    bench = (PAPER.get((method_of(os.path.basename(run)), nb))
+             if args.get('algo') != 'attack' else None)
+    return dict(run=run, old=run.startswith('old/'), algo=args.get('algo', '?'), nb=nb,
                 alpha=args.get('alpha'), rho=args.get('rho'),
                 iters=int(args.get('iters', 0)), it=int(last.get('it', 0)),
                 # a select run logs its held-out eval as sel_*, not nom_*
@@ -189,7 +197,7 @@ class Handler(BaseHTTPRequestHandler):
             with open(os.path.join(HERE, 'dashboard.html'), 'rb') as f:
                 return self._send(f.read(), 'text/html; charset=utf-8')
         if p == '/runs':
-            return self._send(json.dumps([run_meta(r) for r in list_runs()]))
+            return self._send(json.dumps([run_meta(r) for r in all_runs()]))
         if p == '/log':
             return self._send(json.dumps(read_log(q.get('run', [''])[0])))
         if p == '/summary':

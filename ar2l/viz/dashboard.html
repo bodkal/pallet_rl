@@ -19,6 +19,7 @@ h1{font-size:15px;margin:0;font-weight:650}
   user-select:none;font-size:12px;background:var(--panel)}
 .pill.on{background:var(--fg);color:var(--bg);border-color:var(--fg);font-weight:600}
 .pill.att{opacity:.62}
+.pill.old{border-style:dashed}
 .pill .x{margin-left:7px;opacity:0;font-weight:700;padding:0 2px;border-radius:4px}
 .pill:hover .x{opacity:.55}
 .pill .x:hover{opacity:1;background:var(--bad);color:#fff}
@@ -75,6 +76,7 @@ h2[data-h]{cursor:help}
   <span class="sub" id="hs">arXiv:2310.04323 &mdash; adjustable robust RL for online 3D bin packing</span>
   <span class="spacer"></span>
   <div class="pill" id="showatt" onclick="toggleAtt()">+ attackers</div>
+  <div class="pill" id="showold" onclick="toggleOld()" title="the runs moved to runs/old">+ old models</div>
   <div class="row" id="runs" style="display:flex;gap:7px;flex-wrap:wrap"></div>
 </header>
 
@@ -162,7 +164,7 @@ const PLOTS = [
 const SECTION = key => key.startsWith('pack_') ? 'packer'
                      : key.startsWith('mix_') ? 'selector' : 'general';
 
-let META = [], SEL = new Set(), LOGS = {}, MODAL = -1, ATT = false;
+let META = [], SEL = new Set(), LOGS = {}, MODAL = -1, ATT = false, OLD = false;
 
 // 16 policies plus their 16 attackers plus 12 heuristic attackers is far too
 // many pills to leave in the header at once
@@ -276,11 +278,13 @@ function cards(){
 
 function kpis(){
   const sel = [...SEL].map(r => META.find(m => m.run === r)).filter(Boolean);
-  const done = META.filter(m => m.algo !== 'attack' && m.has_ckpt).length;
-  const att = META.filter(m => m.algo === 'attack').length;
+  // the old models are counted out, as they are left out of the hall of fame
+  const cur = META.filter(m => !m.old);
+  const done = cur.filter(m => m.algo !== 'attack' && m.has_ckpt).length;
+  const att = cur.filter(m => m.algo === 'attack').length;
   const best = sel.reduce((b, m) => m.nom_util > (b ? b.nom_util : -1) ? m : b, null);
   const rows = [
-    ['runs on disk', META.length],
+    ['runs on disk', cur.length],
     ['policies with a checkpoint', done],
     ['attackers trained', att],
     ['best nominal, selected', best ? (best.nom_util * 100).toFixed(1) + '%' : '—'],
@@ -297,9 +301,17 @@ function toggleAtt(){
   pills();
 }
 
+function toggleOld(){
+  OLD = !OLD;
+  $('#showold').classList.toggle('on', OLD);
+  $('#showold').textContent = OLD ? '\u2212 old models' : '+ old models';
+  pills();
+}
+
 function pills(){
-  $('#runs').innerHTML = META.filter(m => ATT || !isAtt(m) || SEL.has(m.run)).map(m =>
-    `<div class="pill${SEL.has(m.run) ? ' on' : ''}${m.algo === 'attack' ? ' att' : ''}"
+  $('#runs').innerHTML = META.filter(m => SEL.has(m.run)
+      || ((ATT || !isAtt(m)) && (OLD || !m.old))).map(m =>
+    `<div class="pill${SEL.has(m.run) ? ' on' : ''}${m.algo === 'attack' ? ' att' : ''}${m.old ? ' old' : ''}"
       onclick="toggle('${m.run}')" title="${m.algo} N_B=${m.nb} alpha=${m.alpha}">${m.run}<span
       class="x" title="delete this run" onclick="event.stopPropagation(); del('${m.run}')">&times;</span></div>`).join('');
 }
@@ -382,7 +394,7 @@ document.addEventListener('mousemove', e => {
 // ---- boot ----------------------------------------------------------------
 async function poll(){
   META = await jget('runs');
-  if (!SEL.size) META.filter(m => !isAtt(m)).slice(0, 6).forEach(m => SEL.add(m.run));
+  if (!SEL.size) META.filter(m => !isAtt(m) && !m.old).slice(0, 6).forEach(m => SEL.add(m.run));
   pills(); await refresh();
 }
 poll(); setInterval(poll, 4000);

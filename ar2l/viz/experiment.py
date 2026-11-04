@@ -142,6 +142,7 @@ def pallet_env(seq, S, p, cell_m):
                    mixed_white_support_cm=p.get("white_support_cm"),
                    blue_support=(None if p.get("blue_support") is None
                                  else bool(p["blue_support"])),
+                   min_total_support=p.get("min_total_support"),
                    outline_resort=bool(p.get("outline_resort", 0)),
                    outline_when=p.get("outline_when", "station"),
                    outline_area=p.get("outline_area", "outline"),
@@ -195,6 +196,7 @@ def params_text(spec, p, S):
     env = (f"packer={spec} bin={j(S)} nb={p['nb']} n_pick={p['n_pick']} "
            f"max_l={p['max_l']} rot={p['rot']} ems={p['ems']} "
            f"stability={p['stability']} min_support={p['min_support']:g} "
+           f"min_total_support={p.get('min_total_support', 'config')} "
            f"n_types={p['n_types']} type_constraint={p['type_constraint']} "
            f"type_rule={p.get('type_rule', 'touch')} "
            f"soft_mix={int(p.get('soft_mix', 0))} "

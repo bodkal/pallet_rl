@@ -28,6 +28,14 @@ env:
   # placements and caps DBL at 18% utilisation; 0.30 costs ~2 points against
   # the bare centre-of-mass rule and leaves the action space intact.
   min_support: 0.80
+  # Total support: the share of a box's base that has to rest on columns
+  # solid all the way down to the floor.  A cell over air anywhere lower --
+  # under the overhang of a box further down the tower -- does not count,
+  # where min_support counts it once the box right below covers it.  Under
+  # both stability rules and every fallback (soft mix's last resort and the
+  # outline step too); 0 off.  --min_total_support and the game's field
+  # override it.
+  min_total_support: 0.0
 
   # ---- box types ---------------------------------------------------------
   # Every box carries a type_id, and a box may only be stacked on a box of its
@@ -111,6 +119,21 @@ env:
   # and so does the small blue box rule (d) asks about.  --blue_support 0/1
   # and the game's checkbox override it.
   blue_support: 1
+  # ---- reward shaping ----------------------------------------------------
+  # A box earns its volume over the bin's (the episode adds up to the
+  # utilisation); these take some of that off, both off at 0.  They change
+  # only what the agent learns -- best.pt is still picked on utilisation.
+  # support_reward: k, the reward times 1 - k * (1 - support), support being
+  # the share of the footprint resting on what is below (1 on the floor or
+  # fully on boxes; min_support is the least there is).  k = 2: 90% support
+  # earns 80% of the box's reward, 80% earns 60% -- a good enough place still
+  # pays for itself.  tower_penalty: the share of its reward a blue or white
+  # box loses when laid on the floor -- it starts a new tower -- so towers
+  # grow rather than multiply.  0.5 makes a new tower half a box.  A box on
+  # the floor has all its support, so the two never meet on one box: keep
+  # support_reward under 5 and tower_penalty under 1 and every box still earns.
+  support_reward: 0.0
+  tower_penalty: 0.0
   # Robot-arm filter: 1 drops every candidate placement the UR20 cannot make
   # without one of its links hitting the pack, or cannot reach at all (the
   # IK/capsule check of ar2l/pack_collision.py, set up from `robot:` below).
