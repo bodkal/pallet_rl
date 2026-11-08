@@ -132,12 +132,6 @@ class Pointer(nn.Module):
     `sat` is the share of live candidates whose score sat past SAT on the last
     forward pass -- the training log's `*_sat` column.
 
-    `pen` is the saturation penalty of the last forward pass, with its graph:
-    mean over the live candidates of relu(|y| - SAT)^2.  Centred at the max,
-    the candidates far below the best still sit past the tanh's range with no
-    gradient; PPO adds `coef * pen` to the loss (`--sat_coef_sel`,
-    `--sat_coef_pack`) to pull every score back to where the tanh answers.
-
     `center` can also be given per call, overriding the one built in: it holds
     no weights, so a viewer can play a checkpoint under another centering
     without touching the net, which is shared between its sessions.
@@ -156,7 +150,6 @@ class Pointer(nn.Module):
         self.c_temp, self.d, self.norm = c_temp, d, float(norm)
         self.center = int(center)          # 0 off, 1 mean, 2 max
         self.sat = torch.zeros(())
-        self.pen = torch.zeros(())
 
     def forward(self, xbar, nodes, mask, center=None):
         center = self.center if center is None else int(center)
@@ -173,9 +166,6 @@ class Pointer(nn.Module):
             y = y - y.masked_fill(~mask, NEG).amax(-1, keepdim=True)
         with torch.no_grad():
             self.sat = ((y.abs() > self.SAT).float() * live).sum() / live.sum().clamp(min=1)
-        over = F.relu(y.abs() - self.SAT) * live
-        self.pen = ((over * over).sum(-1)
-                    / live.sum(-1).clamp(min=1)).mean()
         return self.c_temp * torch.tanh(y) + torch.where(mask, 0.0, NEG)
 
 
@@ -202,38 +192,18 @@ class Critic(nn.Module):
 
 
 class PackNet(nn.Module):
-    """Packing policy pi_pack(l | C, B, L) and its value function.
-
-    `feas_flag` is the official AR2L's `isFeasi`: the env lists the positions
-    the rules turn down after the legal ones (`show_infeasible`), each
-    candidate node gets a 7th number, 1 legal and 0 not, and the encoder
-    attends over all of them (`l_seen`) while the pointer can still pick only
-    the legal ones (`l_mask`).  Whatever plays it sets `show_infeasible` on
-    the env (`ar2l.evaluate.run`, `viz.agents`), so it sees the list it
-    trained on.
-    """
+    """Packing policy pi_pack(l | C, B, L) and its value function."""
 
     def __init__(self, d=None, n_head=None, n_layer=None, c_temp=None,
-                 n_types=None, type_embed=None, ptr_norm=None, ptr_center=None,
-                 feas_flag=False):
+                 n_types=None, type_embed=None, ptr_norm=None, ptr_center=None):
         super().__init__()
-        self.feas_flag = bool(feas_flag)
-        self.enc = Encoder([6, 3, 7 if self.feas_flag else 6], d, n_head,
-                           n_layer, n_types, type_embed)
+        self.enc = Encoder([6, 3, 6], d, n_head, n_layer, n_types, type_embed)
         self.ptr = Pointer(self.enc.d, c_temp, ptr_norm, ptr_center)
         self.critic = Critic(d, n_head, n_layer, n_types, type_embed)
 
     def logits(self, o, center=None):
-        l, seen = o["l"], o["l_mask"]
-        if self.feas_flag:
-            if "l_seen" not in o:
-                raise ValueError("this packer was trained with "
-                                 "show_infeasible; the env must list the "
-                                 "turned-down candidates too (l_seen)")
-            l = torch.cat([l, o["l_mask"].unsqueeze(-1).to(l.dtype)], -1)
-            seen = o["l_seen"]
-        x, xbar, _ = self.enc([o["c"], o["b"], l],
-                              [o["c_mask"], o["b_mask"], seen],
+        x, xbar, _ = self.enc([o["c"], o["b"], o["l"]],
+                              [o["c_mask"], o["b_mask"], o["l_mask"]],
                               [o["c_type"], o["b_type"], o["l_type"]],
                               pos_on={1})
         nl = o["l"].shape[1]

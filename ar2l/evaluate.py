@@ -99,8 +99,7 @@ def load_nets(path, device, what=("pack", "attacker")):
     kw["ptr_center"] = a.get("ptr_center", 0)
     out = {}
     if "pack" in what:
-        net = PackNet(**kw, feas_flag=bool(a.get("show_infeasible", 0)))
-        net = _fit_state(net.to(device), ck["pack"]); net.eval()
+        net = _fit_state(PackNet(**kw).to(device), ck["pack"]); net.eval()
         out["pack"] = net
     for k in ("attacker", "mixer"):
         if k in what:
@@ -148,8 +147,6 @@ def run(seqs, policy, nb, attacker=None, attacked=None, batch=None, S=None,
                        blue_support=blue_support,
                        min_total_support=min_total_support,
                        stack_cap=stack_cap)
-        # a packer trained on the turned-down candidates too is shown them
-        env.show_infeasible = bool(getattr(policy, "feas_flag", False))
         env.reset(chunk)
         on = torch.as_tensor(attacked[s:s + batch]).to(device)
         while not env.done.all():

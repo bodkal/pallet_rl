@@ -489,7 +489,7 @@ class BPPBatch:
                  soft_mix=None, outline_resort=None,
                  outline_when=None, outline_area=None,
                  support_reward=None, tower_penalty=None,
-                 min_total_support=None, show_infeasible=None):
+                 min_total_support=None):
         # `None` means "whatever config.yaml says"; an explicit argument wins
         e = CFG["env"]
         S = e["bin"] if S is None else S
@@ -565,15 +565,6 @@ class BPPBatch:
             (self.type_constraint and self.n_types > 1 and self.n_pick > 1)
             if pick_feasible is None else pick_feasible)
         self.stability, self.rot = stability, int(rot)
-        # Also list the `ems` positions the rules turn down, after the legal
-        # ones, so the packer can see them (official AR2L's `isFeasi = 0`
-        # nodes).  `l_mask` still marks only the legal ones -- what the policy
-        # may pick -- and `l_seen` every listed one.  An attribute, not only a
-        # constructor switch: a net trained with it sets it on whatever env it
-        # is handed (`ar2l.evaluate.run`, `viz.agents`).
-        self.show_infeasible = bool(e.get("show_infeasible", 0)
-                                    if show_infeasible is None
-                                    else show_infeasible)
         # read from CFG rather than from MIN_SUPPORT, so a `--config` file
         # loaded after import is honoured too
         self.min_support = float(e["min_support"] if min_support is None
@@ -2300,38 +2291,16 @@ class BPPBatch:
                 "b_mask": wvalid, "b_type": self._emb_type(win[..., 3]),
                 "b_pick": self.pick_mask(wvalid)}
 
-    def _seen(self, feas, z, odims):
-        """(n, R, Lx, Ly) the positions `obs` lists under `show_infeasible`:
-        every `ems` position whose footprint is inside the bin, legal or not,
-        plus the legal ones (the outline step's and soft mix's included)."""
-        gx, gy = np.arange(self.Lx), np.arange(self.Ly)
-        alive = ~self.done & (self.head < self.length)
-        seen = []
-        for r in range(odims.shape[1]):
-            d = odims[:, r]
-            s = (self._space(d, z[:, r], False)
-                 & (gx[None, :, None] + d[:, 0, None, None] <= self.Lx)
-                 & (gy[None, None, :] + d[:, 1, None, None] <= self.Ly))
-            if r:   # a square footprint turned round is the same placement
-                s &= (d[:, 0] != d[:, 1])[:, None, None]
-            seen.append(s)
-        return (np.stack(seen, 1) & alive[:, None, None, None]) | feas
-
     def obs(self):
         feas, z, odims, tunder = self._positions()
         scale, n = self.scale, self.n_env
         flat = feas.reshape(n, -1)
-        seen = (self._seen(feas, z, odims).reshape(n, -1)
-                if self.show_infeasible else flat)
-        NL = int(min(self.max_l, flat.shape[1], max(seen.sum(1).max(), 1)))
+        NL = int(min(self.max_l, flat.shape[1], max(flat.sum(1).max(), 1)))
 
-        # the legal candidates first, deepest first, so an action indexes the
-        # same placement whether or not the turned-down ones follow; keep the
-        # NL deepest legal ones when more than NL are legal
+        # keep the NL deepest candidates when more than NL are feasible
         order = np.lexsort((np.arange(flat.shape[1])[None, :].repeat(n, 0),
-                            z.reshape(n, -1), ~seen, ~flat), axis=1)[:, :NL]
+                            z.reshape(n, -1), ~flat), axis=1)[:, :NL]
         lmask = np.take_along_axis(flat, order, 1)
-        lseen = np.take_along_axis(seen, order, 1)
         zz = np.take_along_axis(z.reshape(n, -1), order, 1)
         tt = np.take_along_axis(tunder.reshape(n, -1), order, 1)
         cells = self.Lx * self.Ly
@@ -2341,14 +2310,14 @@ class BPPBatch:
 
         lnode = np.concatenate(
             [np.stack([xx, yy, zz], -1).astype(np.float32), dims], -1) / scale
-        lnode *= lseen[..., None]
+        lnode *= lmask[..., None]
         self._lxy = np.stack([xx, yy, rr], -1).astype(np.int32)
         self._lz = zz.astype(np.int32)
         self._ldim = dims.astype(np.int32)
         # a masked-out slot has no footprint and so no type underneath; giving
         # it the floor row keeps the index in range and the embedding is zeroed
         # by the mask anyway
-        self._lunder = np.where(lseen, tt, TYPE_FLOOR).astype(np.int8)
+        self._lunder = np.where(lmask, tt, TYPE_FLOOR).astype(np.int8)
 
         win, wvalid = self.window()
         c, ctype, cmask = self._trim_c()
@@ -2358,7 +2327,6 @@ class BPPBatch:
             "b_type": self._emb_type(win[..., 3]),
             "b_pick": self.pick_mask(wvalid),
             "l": lnode, "l_mask": lmask, "l_type": self._emb_type(self._lunder),
-            **({"l_seen": lseen} if self.show_infeasible else {}),
         }
 
     def candidates(self, b=0, k=None):

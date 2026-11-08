@@ -23,10 +23,6 @@ env:
   max_c: 128             # initial packed-item capacity; it grows if exceeded
   rot: 2                 # 1 = no rotation, 2 = also yawed 90 degrees
   ems: 3                 # 0 = every position, 1 = EMS corners, 2 = corner cells, 3 = 1|2
-  # Also show the packer the `ems` positions the rules turn down, flagged 0
-  # (official AR2L's isFeasi), after the legal ones; it still picks only legal
-  # ones.  Changes the packer's input, so a checkpoint is played as it trained.
-  show_infeasible: 0
   stability: com         # com = centre of mass over support, cdrl = 60%/4 corners
   # Contact-area floor.  0.70 on this problem leaves a median of 4 legal
   # placements and caps DBL at 18% utilisation; 0.30 costs ~2 points against
@@ -218,11 +214,6 @@ ppo:
   clip: 0.2               # PPO ratio clip
   vf_coef: 0.5            # value loss weight
   max_grad: 0.5           # gradient-norm clip
-  # Pointer saturation penalty: coef * mean(relu(|y| - 3)^2) over the live
-  # candidates, y the score inside Eq. 28's tanh -- keeps candidates far below
-  # the best where the tanh still passes a gradient.  0 off.
-  sat_coef_sel: 0.0       # the picker nets (selector / mixture, attacker)
-  sat_coef_pack: 0.0      # the packer
 
 model:
   # The paper's 65k-parameter transformer.  Grid resolution does not drive

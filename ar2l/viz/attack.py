@@ -39,8 +39,7 @@ def profile(pack, attacker, nb, seqs, device="cuda", stability="com",
     """
     env = BPPBatch(len(seqs), nb=nb, n_items=seqs.shape[1], stability=stability,
                    min_support=min_support, n_pick=n_pick,
-                   n_types=n_types, types=False,
-                   show_infeasible=getattr(pack, "feas_flag", False))
+                   n_types=n_types, types=False)
     env.reset(seqs)
     slots, chosen, steps, kinds = [], [], [], []
     t = 0

@@ -378,6 +378,11 @@ details.cf>summary b{font-size:14px}
 #trn .pf>span{font-family:ui-monospace,monospace}
 #trn .pf.chg input,#trn .pf.chg select{border-color:var(--c1)}
 #trn .pf.chg>span{color:var(--c1)}
+#trn .pf .rng{font:10.5px ui-monospace,monospace;color:var(--dim);opacity:.75;white-space:nowrap}
+#trn .pf.oor .rng{color:var(--c3);opacity:1}
+#trn .pf.oor input{border-color:var(--c3)}
+#ttip .r{margin-top:4px}
+#ttip .r b{font-weight:600}
 #trn .pf.flag{flex-direction:row;align-items:center;gap:8px;padding-top:16px}
 #trn .pf.flag input{width:15px;height:15px;accent-color:var(--c0);margin:0}
 .tcmd{font:11.5px ui-monospace,monospace;color:var(--dim);background:var(--bg);border:1px solid var(--line);
@@ -4354,6 +4359,16 @@ const TSEC = {'run name': 'Run', train: 'Training (train:)', env: 'Environment (
               run: 'Run settings (run:)', other: 'Other'};
 // a checkbox: a store_true flag, or a 0/1 switch (`--soft_mix 1`)
 const tBox = f => f.kind === 'flag' || f.kind === 'switch';
+/* a field's useful range (lo – hi), as the server's RANGE gives it */
+const tNum = v => Math.abs(v) && (Math.abs(v) < 0.01 || Math.abs(v) >= 1e5) ? v.toExponential(0) : String(v);
+const tRng = r => r ? (r.lo != null ? tNum(r.lo) : '…') + ' – ' + (r.hi != null ? tNum(r.hi) : '…') : '';
+/* outside its range: every number in the box (a WxL pair, a list) is checked */
+function tOut(f, v){
+  const r = f.range;
+  if (!r || String(v).trim() === '') return false;
+  const xs = String(v).split(/[\sx,]+/).filter(Boolean).map(Number);
+  return xs.some(x => !isNaN(x) && ((r.lo != null && x < r.lo) || (r.hi != null && x > r.hi)));
+}
 const tEsc = s => String(s).replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'})[c]);
 async function tLoad(){
   const cfg = $('#tcfg').value.trim();
@@ -4371,7 +4386,8 @@ async function tLoad(){
         ? `<select id="${id}">${f.choices.map(c => `<option${c === f.default ? ' selected' : ''}>${tEsc(c)}</option>`).join('')}</select>`
         : `<input id="${id}" type="text" spellcheck="false" value="${tEsc(f.default)}"${f.required ? ' placeholder="required"' : ''}${f.suggest ? ` list="${id}_l" placeholder="a checkpoint, or empty"` : ''}>`
           + (f.suggest ? `<datalist id="${id}_l">${f.suggest.map(q => `<option value="${tEsc(q)}">`).join('')}</datalist>` : '');
-      return `<div class="pf" ${tip}><span>${f.flag}</span>${ctl}</div>`;
+      const rng = f.range ? `<span class="rng">${tEsc(tRng(f.range))}</span>` : '';
+      return `<div class="pf" ${tip}><span>${f.flag}</span>${ctl}${rng}</div>`;
     }).join('');
     return s === 'run name' ? `<div class="pg" style="margin-top:12px">${body}</div>`
       : `<details class="par"${['train', 'env'].includes(s) ? ' open' : ''}><summary>${TSEC[s] || s}</summary><div class="pg">${body}</div></details>`;
@@ -4466,6 +4482,7 @@ function tValues(){
     v[f.dest] = tBox(f) ? e.checked : e.value;
     const ref = TREF && f.dest in TREF ? TREF[f.dest] : f.default;
     e.closest('.pf').classList.toggle('chg', tBox(f) ? e.checked !== ref : e.value.trim() !== ref);
+    if (!tBox(f)) e.closest('.pf').classList.toggle('oor', tOut(f, e.value));
   });
   return v;
 }
@@ -4883,7 +4900,10 @@ $('#tform').addEventListener('mouseover', ev => {
   if (!pf){ tip.classList.remove('on'); return; }
   const f = TFORM.fields.find(q => q.dest === pf.dataset.dest);
   const def = tBox(f) ? (f.default ? 'on' : 'off') : (f.default === '' ? 'none' : f.default);
-  tip.innerHTML = `<b>${f.flag}</b><div>${tEsc(f.help)}</div><div class="d">default: ${tEsc(def)}</div>`;
+  const fr = f.range, now = $('#tf_' + f.dest);
+  const rng = !fr ? '' : `<div class="r"><b>useful range: ${tEsc(tRng(fr))}</b>${fr.why ? ' — ' + tEsc(fr.why) : ''}`
+    + (now && !tBox(f) && tOut(f, now.value) ? ` <span style="color:var(--c3)">(now outside it)</span>` : '') + '</div>';
+  tip.innerHTML = `<b>${f.flag}</b><div>${tEsc(f.help)}</div>${rng}<div class="d">default: ${tEsc(def)}</div>`;
   const r = pf.getBoundingClientRect(), w = Math.min(340, innerWidth - 16);
   tip.style.left = Math.max(8, Math.min(r.left, innerWidth - w - 8)) + 'px';
   tip.style.top = '0px'; tip.classList.add('on');

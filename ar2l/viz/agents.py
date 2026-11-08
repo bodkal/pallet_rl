@@ -124,9 +124,6 @@ def load_policy(spec, device="cuda", ptr_center=None):
     nets = _nets(path if os.path.exists(path) else info["ckpt"], device)
 
     def fn(env, _net=nets["pack"], _c=_center(ptr_center)):
-        # shown the turned-down candidates only if it trained on them; they
-        # sit after the legal ones, so every index the page reads is the same
-        env.show_infeasible = _net.feas_flag
         o = to_torch(env.obs(), device)
         with torch.no_grad():
             lg = _net.logits(o, _c)
