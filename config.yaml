@@ -182,6 +182,9 @@ train:
   alpha: 1.0              # robustness weight (exact, approx)
   rho: 0.1                # TV uncertainty radius (approx, rfmdp)
   dist_coef: 1.0          # mixture-model distance loss weight (exact)
+  # exact: 0 = KL(pi_mix || pi_perm), as the paper writes Eq. 6; 1 = the
+  # reverse, KL(pi_perm || pi_mix), as the official code computes it
+  kl_reverse: 0
   cvar_q: 0.5             # CVaR level (cppo)
   # Where training episodes come from.  null (or "") is the random generator:
   # boxes drawn from the `types:` size classes above.  A path -- an orders

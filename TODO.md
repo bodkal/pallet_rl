@@ -5,7 +5,7 @@ Packing"** — Pan, Chen & Lin, NeurIPS 2023
 ([arXiv:2310.04323](https://arxiv.org/abs/2310.04323)), and its extension to
 real orders, box types and the UR20 cell.
 
-*Last updated: 2026-11-04* — only open items are listed; finished work is in
+*Last updated: 2026-11-07* — only open items are listed; finished work is in
 the git history (the full list as of 2026-09-27 is `git show eb38e8c:TODO.md`).
 
 The official implementation is at <https://github.com/panyxy/ar2l_bpp>. **No
@@ -22,7 +22,6 @@ listed. What is left:
 | # | Official | Ours | Expected impact |
 |---|---|---|---|
 | 3 | **Stability**: convex hull of the contact rectangles, **shrunk 10%** toward its centroid; centre of mass of the **whole stack above**; checked **recursively** down the pile | per-axis span test, new box only, plus the `min_support` area floor | Ours is more permissive and cannot represent toppling |
-| 4 | Infeasible candidates are **shown** to the network with an `isFeasi = 0` flag | only feasible candidates exposed, rest masked | Small |
 | 5 | PPO: **1 epoch x 32 minibatches**, clip **0.1**, vf coef **1.0**, entropy **0.01**, linear LR decay to a 1e-4 floor | 4 x 4, clip 0.2, vf 0.5, entropy 0.01, no decay | Moderate. 32 small tightly-clipped steps vs our 16 large ones |
 | 6 | **Block alternation**: 10 PPO iterations of the attacker, then 10 of the mixture model, then 10 of the packer | one of each, every iteration | Moderate for ExactAR2L — their mixture model converges against a *fixed* attacker before the packer moves |
 | 7 | `KLDivLoss(mix, wor, log_target=True)` = **KL(pi_perm ‖ pi_mix)** — the reverse of the paper's text | `KL(pi_mix ‖ pi_perm)`, as written | Small |
@@ -90,20 +89,9 @@ which is roughly half the shortfall at `N_B = 10` and almost none of it at
 
 ### D.2 Cheap, independent of the rewrite
 
-- [ ] Show infeasible candidates to the network with a feasibility flag (A.4)
 - [ ] Try the reverse KL in Eq. 6 (A.7) as an ablation, one run
 - [ ] `pct_nb1` + its attackers, to fill the missing PCT row of Table 1
 - [ ] Table 1 at `N_B = 10, 15` (currently only 5 and 20)
-
-- [ ] Pointer saturation penalty: `--ptr_center 2` (max) only stops the top
-      choice tying; candidates far below the best still sit past tanh's range
-      with no gradient (68% of the w128/l1 `column` selector's on pallet
-      13689113, and on 23 of 32 steps every rival of the top box), because the
-      raw score is unbounded -- brown drifted ~240 below blue/white.  Add
-      `coef * mean(relu(|y| - 3)^2)` over the live candidates to the pointer
-      losses (selector first, then packer) so scores stay where the tanh still
-      answers; compare `mix_sat` / `mix_kl` and held-out util against
-      `--ptr_center 2` alone
 
 ### D.4 Robot-arm filter (`env.arm_collision`)
 
@@ -411,3 +399,36 @@ Profiles that share a net batch together.
       `--init` recipe)
 - [ ] Training keeps the Python env. Every rule change then lands twice,
       and the parity test is rerun after each one
+
+### D.9 Short station / short preview at runtime
+
+On the real cell the station does not always hold 5 boxes (`n_pick`), and
+the preview does not always show the next 5 (`nb` - `n_pick`). The net
+already copes mechanically -- `b_mask` and `b_pick` mask the empty slots
+(`ar2l/env.py:940`) -- but in training a short window only happens at the
+**end of an order**, so the policy has learned "empty slots = the order is
+ending" and may play end-game moves (use up space it would keep free). At
+runtime an empty slot means "not there yet, more are coming". Goal: a
+policy that packs as well with a partial window as with a full one, without
+losing the full-window score.
+
+- [ ] **Measure first, no retraining**: an eval flag that hides random
+      slots -- `k_pick` in 1-5, `k_see` in 0-5, resampled each step, always
+      the far end so `valid` stays a prefix. Evaluate the current best
+      checkpoint with it and without. A drop under ~0.02 is seed noise
+      (sd 0.019) and the rest of D.9 is not needed
+- [ ] **If the drop is real, randomize in training**: with probability p
+      (~0.3-0.5) a step gets a smaller `k_pick` / `k_see`; otherwise the
+      full window, so the common case keeps its score. Hide boxes from the
+      observation only -- they stay in `seq` and still slide in through
+      `head += 1`, as on the real conveyor. Resample per step (conveyor
+      gaps change step to step); if the cell can log its real station /
+      preview counts, sample from those instead of uniform. Check both the
+      full-window and the short-window score. The ROS server must pad and
+      mask a short queue the same way; extend its parity test
+- [ ] **End-of-order input**: randomizing takes away the "order is ending"
+      signal the policy got from a shrinking window. If the WMS knows how
+      many boxes are left in the order at runtime, give the net that count
+      (or an "order ending" flag) so it can tell "no more boxes" from "not
+      visible yet". Has to be available always -- training, eval and the
+      cell (same rule as D.7.2's input feature)

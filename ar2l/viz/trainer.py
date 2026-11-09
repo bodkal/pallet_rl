@@ -57,6 +57,77 @@ ORDER = ('run name', 'train', 'env', 'ppo', 'model', 'eval', 'run', 'other')
 #: still in the pickers' Old models submenu, to play, copy or resume
 OLD = 'old'
 
+#: the useful range of a numeric flag, (lo, hi, why): the form shows it under
+#: the field and marks a value outside it.  Not a hard limit -- the run still
+#: starts -- only where the flag is known to stop helping, or to break.
+#: None for a side means "no useful bound that way".
+RANGE = {
+    # ---- train
+    'nb': (5, 20, 'the window; ≥ n_pick, and every step slows past ~20'),
+    'n_pick': (1, 10, '≤ nb; 1 = the boxes come in order'),
+    'alpha': (0, 1, '0 = normal order only, 1 = full AR2L; outside [0, 1] is meaningless'),
+    'rho': (0.05, 0.5, 'a total-variation radius, so ≤ 1; past ~0.5 the order is mostly adversarial'),
+    'dist_coef': (0.1, 2, 'past ~2 the mixture stops moving off the two orders'),
+    'split_seed': (0, None, 'any; keep it fixed so runs score on the same pallets'),
+    'holdout': (0.1, 0.3, 'under 0.1 the held-out score is noisy; over 0.3 wastes training pallets'),
+    'order_random': (0, 0.3, 'the data is already order-mixed (~0.2); 1 = fully random'),
+    'cvar_q': (0.1, 0.9, '1 = plain PPO; under 0.1 too few episodes per update'),
+    'iters': (5000, 30000, '128/l1 peaks around 13k-20k iterations'),
+    'n_env': (32, 256, 'more = steadier gradients, more GPU memory'),
+    'T': (16, 64, 'an episode is ~46 boxes'),
+    # ---- env
+    'rot': (1, 2, '2 = yaw by 90 deg; 1 halves the placements'),
+    'n_types': (1, 3, 'must match the config types: 3 for this data, 1 = untyped'),
+    'n_items': (50, 200, 'random generator only; an episode ends when nothing fits'),
+    'size_lo': (2, 6, 'must be under size_hi'),
+    'max_l': (128, 512, 'raise it only if candidates are being dropped'),
+    'max_c': (64, 256, 'speed only: it grows by itself'),
+    'min_support': (0.6, 0.9, '1 allows only full support; under 0.6 boxes overhang a lot'),
+    'min_total_support': (0, 0.8, '≤ 0.6 never binds under min_support 0.8; 0.8 costs ~0.3 pt'),
+    'white_support_cm': (20, 60, 'the small white box (w), in cm'),
+    'support_reward': (0, 4, 'must stay under 5, or a box at min_support 0.8 earns nothing'),
+    'tower_penalty': (0, 0.9, 'must stay under 1: at 1 a new tower earns nothing; 0.5 = half a box'),
+    # ---- ppo
+    'lr': (1e-4, 1e-3, 'standard PPO range; 3e-4 is the usual pick'),
+    'gamma': (0.99, 1, '1 = undiscounted, as in the paper'),
+    'lam': (0.9, 0.99, 'GAE: 0.95 is the usual pick'),
+    'epochs': (3, 10, 'more passes overfit each rollout'),
+    'minibatches': (2, 8, 'n_env * T / minibatches is the batch size'),
+    'ent_coef': (0.001, 0.05, 'too high keeps the policy random; too low collapses it early'),
+    'ent_final': (0, None, '≤ ent_coef: it is where the bonus ends'),
+    'clip': (0.1, 0.3, 'standard PPO range'),
+    'vf_coef': (0.25, 1, 'standard PPO range'),
+    'max_grad': (0.3, 1, 'standard PPO range'),
+    # ---- model
+    'width': (64, 256, '256 is 2.3x slower and no better than 128'),
+    'heads': (1, 8, 'must divide width'),
+    'layers': (1, 3, 'l3 was no better than l1 at width 128'),
+    'c_temp': (5, 15, 'the logit cap: under 5 too soft to commit, over 15 saturates'),
+    'ptr_norm': (0, 5, '0 = off; 3 pairs with ptr_center 2 (top); 3 caps sharpness without center'),
+    'type_embed': (0, 32, '0 = the net does not see types'),
+    # ---- eval (orders data)
+    'cell_cm': (1, 2, 'bigger cells = coarser grid, more rounding'),
+    'box_scale': (2, 5, 'bigger = coarser grid: faster, more rounding'),
+    'pallet_cm': (20, 200, 'the real pallet, in cm (L W H)'),
+    'box_pad_m': (0, 0.05, 'clearance per box side, before box_scale'),
+    # ---- run
+    'seed': (0, None, 'any; compare configs on the same seeds'),
+    'n_seeds': (1, 4, 'seeds span ~0.04 (sd 0.019): use 2+ to compare configs'),
+    'eval_every': (100, 500, 'best.pt is picked only at these points'),
+    'eval_inst': (256, 1024, 'under 256 the held-out score is noisy'),
+    'log_every': (10, 500, None),
+    'save_every': (100, 1000, 'what a crash can lose'),
+}
+
+
+def _range(dest):
+    r = RANGE.get(dest)
+    if not r:
+        return None
+    lo, hi, why = r
+    return {'lo': lo, 'hi': hi, 'why': why}
+
+
 _CFG_LOCK = threading.RLock()
 _JOBS: dict = {}                 # name -> job, in start order
 _JOBS_LOCK = threading.Lock()
@@ -167,6 +238,7 @@ def form(config_path=None):
             'choices': [str(c) for c in a.choices] if a.choices else None,
             'help': _help(a, default),
             'nargs': a.nargs, 'required': a.required,
+            'range': _range(a.dest),
             'suggest': checkpoints() if a.dest == 'init' else None})
     # the page's own field, not a flag: Start opens one run per seed
     n = cfg['run'].get('n_seeds', 1)
@@ -175,7 +247,7 @@ def form(config_path=None):
     fields.insert(at, {
         'dest': 'n_seeds', 'flag': '--n_seeds', 'kind': 'int', 'section': 'run',
         'default': str(n), 'choices': None, 'nargs': None, 'required': False,
-        'suggest': None,
+        'suggest': None, 'range': _range('n_seeds'),
         'help': f'how many runs Start opens: 1 is the run as named; more are '
                 f'the same run as <name>_seed_<s> for --seed s = seed, seed+1, '
                 f'... (page only, not an ar2l.train flag) (default: {n})'})

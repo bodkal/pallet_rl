@@ -230,6 +230,20 @@ def flat(x):
     return x.reshape(-1)
 
 
+def eq6_kl(logp_mix, logp_perm, reverse=False):
+    """(B,) the KL term of Eq. 6 between the mixture and the attacker.
+
+    `reverse` False is KL(pi_mix || pi_perm), as the paper writes it; True is
+    KL(pi_perm || pi_mix), what the official code's `KLDivLoss(mix, wor,
+    log_target=True)` computes.  A slot the expectation's own distribution
+    gives no mass -- a masked one -- adds nothing either way.
+    """
+    p, lp, lq = (logp_perm, logp_perm, logp_mix) if reverse else \
+                (logp_mix, logp_mix, logp_perm)
+    w = p.exp()
+    return torch.where(w > 0, w * (lp - lq), 0.0).sum(-1)
+
+
 def _held(nom):
     """The held-out number this run is judged on, whatever produced it."""
     for k in ("att_util", "sel_util", "nom_util"):
@@ -506,12 +520,13 @@ def train(args):
             adv, ret = gae(tr["rew"], pm["val"], tr["done"],
                            pm["last_val"], args.gamma, args.lam)
 
-            def aux(o, mb, logp_all, _a=args.alpha, _c=args.dist_coef):
+            def aux(o, mb, logp_all, _a=args.alpha, _c=args.dist_coef,
+                    _rev=bool(args.kl_reverse)):
                 # Eq. 6: stay near the nominal order (index 0) and near pi_perm
                 ce = -logp_all[:, 0]
                 with torch.no_grad():
                     lq = F.log_softmax(attacker.logits(o), -1)
-                kl = (logp_all.exp() * (logp_all - lq)).sum(-1)
+                kl = eq6_kl(logp_all, lq, _rev)
                 return _c * (ce.mean() + _a * kl.mean())
 
             stats["mix"] = ppo_mix.update(flat_obs(pm["obs"]), flat(pm["act"]),
@@ -715,6 +730,10 @@ def get_parser():
     p.add_argument("--dist_coef", type=float, default=t["dist_coef"],
                    help="exact: weight of the loss that keeps the mixture order "
                         "close to both the normal and the adversarial order")
+    p.add_argument("--kl_reverse", type=int, choices=(0, 1),
+                   default=t.get("kl_reverse", 0),
+                   help="exact: 0 = KL(pi_mix || pi_perm) as the paper writes "
+                        "Eq. 6, 1 = KL(pi_perm || pi_mix) as the official code")
     p.add_argument("--data", default=t["data"],
                    help="train on these pallets (an orders .csv or an "
                         "instance .npy); empty = the random generator")
