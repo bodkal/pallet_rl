@@ -128,6 +128,12 @@ def greedy(logits):
     return int(a[0]), float(logp[0, a[0]].exp())
 
 
+def probs(logits):
+    """Every choice's probability, as a list (what `greedy` picks from)."""
+    logits = torch.nan_to_num(logits, nan=NEG, posinf=NEG, neginf=NEG)
+    return F.softmax(logits, -1)[0].tolist()
+
+
 def load_nets(path, selector, device):
     """-> (pack, select or None, checkpoint args) from a training checkpoint.
 

@@ -61,6 +61,12 @@ the agent seeing only the boxes the camera had seen by then
 (`ar2l.viz.logmatch`), pallet after pallet, under the same rules as the big
 experiment; each closed pallet then opens in a result view like a game's.
 
+The "Online game" tab follows the ROS pallet RL server live
+(`ar2l.viz.online`): every request it answers -- the pallet, the conveyor, the
+candidate points with the packer's odds, the box it picked and where it put it
+-- drawn in one big 3D bin, read from the JSON file the server writes
+(`--online_file`).
+
 The "New training" tab starts `ar2l.train` runs with every flag editable,
 preset from `config.yaml` (`ar2l.viz.trainer`).  A run keeps going when the
 browser is closed and stops only with this server -- Ctrl+C or closing its
@@ -96,6 +102,7 @@ from . import dashboard as D
 from . import experiment as X
 # logmatch reads this module's replay helpers back, at call time only
 from . import logmatch as LM
+from . import online as ON
 from . import trainer as TR
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -997,7 +1004,9 @@ def arm_pose(st, hm, size, pos, moves=None):
     box_from_base = np.linalg.inv(B)
     cf = chk.cell_frame
     to_cell = lambda T: cf((box_from_base @ T)[:3, 3]).tolist()
-    tool = joint_tf[5] @ PC.transform(t=[0.0, 0.0, float(CFG['robot']['tool_length_m'])])
+    # a session may bring its own robot (the online view: the ROS server's)
+    robot = st.get('robot') or CFG['robot']
+    tool = joint_tf[5] @ PC.transform(t=[0.0, 0.0, float(robot['tool_length_m'])])
     chain = [to_cell(np.eye(4))] + [to_cell(T) for T in joint_tf] + [to_cell(tool)]
 
     caps = PC.build_arm_capsules(joint_tf, box_from_base, chk.upper_arm_off_a,
@@ -1858,6 +1867,18 @@ class Handler(BaseHTTPRequestHandler):
             s = X.status((q.get('job') or [''])[0])
             return self._json(s or {'error': 'no experiment has run yet'},
                               200 if s else 404)
+        if p == '/api/online':
+            q = parse_qs(u.query)
+            try:
+                have = int((q.get('have') or [''])[0])
+            except ValueError:
+                have = None
+            return self._json(ON.status(have))
+        if p == '/api/online/step':
+            try:
+                return self._json(ON.step(int((parse_qs(u.query).get('id') or [''])[0])))
+            except ValueError as e:
+                return self._json({'error': str(e)}, 404)
         if p == '/api/log/status':
             q = parse_qs(u.query)
             s = LM.status((q.get('job') or [''])[0])
@@ -1994,6 +2015,16 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({'job': jid})
         if p == '/api/log/stop':
             return self._json({'ok': LM.stop(body.get('job'))})
+        if p == '/api/online/arm':
+            try:
+                return self._json(ON.arm(int(body.get('id', -1)), body.get('moves'),
+                                          body.get('at')))
+            except (TypeError, ValueError) as e:
+                return self._json({'error': str(e)}, 400)
+            except Exception as e:
+                return self._json({'error': f'{type(e).__name__}: {e}'}, 500)
+        if p == '/api/online/clear':
+            return self._json(ON.clear())
         if p.startswith('/api/log/'):
             # a closed pallet of a run: its result view, and the replay asks
             try:
@@ -2112,8 +2143,13 @@ def main(argv=None):
     ap.add_argument('--ems', type=int, choices=(0, 1, 2, 3), default=None,
                     help="the packer's candidates: 0 every position, 1 EMS "
                          "corners, 2 corner cells, 3 both")
+    ap.add_argument('--online_file', default=ON.DEFAULT_FILE,
+                    help="the ROS pallet RL server's last-step JSON "
+                         "(its server.snapshot_file), shown live in the "
+                         "Online game tab")
     a = ap.parse_args(argv)
     DEVICE = a.device
+    ON.configure(a.online_file)
 
     def extent(v):
         try:

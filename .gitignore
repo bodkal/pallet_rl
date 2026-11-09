@@ -6,3 +6,8 @@ results/replays/
 results/heatmaps/
 results/big_experiment/
 results/big_experiment_before_dedupe.tar.gz
+
+# ROS2 / colcon workspace outputs
+build/
+install/
+log/

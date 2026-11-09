@@ -573,12 +573,33 @@ details.cf>summary b{font-size:14px}
 @keyframes xpop{from{transform:scale(.4);opacity:0}to{transform:scale(1);opacity:1}}
 @keyframes xin{from{transform:translateY(6px);opacity:0}}
 @keyframes xbeat{50%{opacity:.35;transform:scale(.75)}}
+/* the Online game tab: the ROS server's last step, one big bin */
+main.wide{max-width:none}
+#onl .onlgrid{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:14px;margin-top:12px;align-items:start}
+@media(max-width:1000px){#onl .onlgrid{grid-template-columns:1fr}}
+#onl .onlside{display:flex;flex-direction:column;gap:12px;min-width:0}
+#onl h2.ot{display:flex;align-items:center;gap:8px}
+#onl .olive{width:9px;height:9px;border-radius:50%;background:var(--dim);flex:none}
+#onl .olive.on{background:var(--c2);animation:xbeat 1.6s ease-in-out infinite}
+#onl .kpis{margin:10px 0 0}
+#onl .kpi .v{font-size:19px}
+#onl .kpi .v small{font-size:12px;color:var(--dim);font-weight:500}
+#onl .ost{display:inline-block;padding:1px 8px;border-radius:6px;font-weight:650;font-size:13px}
+#onl .ost.s0{background:color-mix(in srgb,var(--c2) 22%,transparent);color:var(--c2)}
+#onl .ost.s1{background:color-mix(in srgb,var(--c1) 22%,transparent);color:var(--c1)}
+#onl .ost.s2{background:color-mix(in srgb,var(--c3) 22%,transparent);color:var(--c3)}
+#onl .omsg{margin-top:8px;font-size:12px}
+#onl .bad{color:var(--c3)}
+#onl .opts .row{margin-top:6px}
+#onl .empty{padding:60px 20px;text-align:center;color:var(--dim)}
+#onl .empty code{color:var(--fg)}
+@media(prefers-reduced-motion:reduce){#onl .olive{animation:none}}
 @media(prefers-reduced-motion:reduce){#exp *,#exp *::after,#logm *,#logm *::after,nav.tabs *{animation:none!important;transition:none!important}}
 </style>
 
 <header>
   <h1>AR2L &mdash; play the packer</h1>
-  <nav class="tabs" id="tabs"><button data-tab="game" class="on">Play</button><button data-tab="exp">Big experiment<span class="dot" id="xdot" hidden></span></button><button data-tab="logm">Log match<span class="dot" id="ldot" hidden></span></button><button data-tab="cmp">Compare</button><button data-tab="trn">New training<span class="dot" id="tdot" hidden></span></button><button data-tab="dash">Training</button><span class="ink"></span></nav>
+  <nav class="tabs" id="tabs"><button data-tab="game" class="on">Play</button><button data-tab="onl">Online game<span class="dot" id="odot" hidden></span></button><button data-tab="exp">Big experiment<span class="dot" id="xdot" hidden></span></button><button data-tab="logm">Log match<span class="dot" id="ldot" hidden></span></button><button data-tab="cmp">Compare</button><button data-tab="trn">New training<span class="dot" id="tdot" hidden></span></button><button data-tab="dash">Training</button><span class="ink"></span></nav>
   <span class="sub">Koby : {{VERSION}}</span>
   <span class="spacer"></span>
   <span class="sub" id="who"></span>
@@ -1452,6 +1473,54 @@ details.cf>summary b{font-size:14px}
       <stop offset="1" stop-color="var(--c4)"/></linearGradient></defs></svg>
 </section>
 
+<!-- the ROS pallet RL server, live (ar2l.viz.online): the last request it
+     answered, read from the JSON file it writes after each one -->
+<section id="onl" hidden>
+  <div class="card">
+    <div class="row">
+      <h2 class="ot" style="margin:0"><span class="olive" id="olive"></span>Online game &mdash; the ROS pallet RL server, step by step</h2>
+      <span class="spacer"></span>
+      <label class="row" style="cursor:pointer" title="jump to each new step as the server answers it"><input type="checkbox" id="ofollow" checked> <span>follow live</span></label>
+      <button id="oclear" type="button" title="forget the steps kept so far (the server and its file are untouched)">Clear history</button>
+    </div>
+    <div class="sub" id="ofile" style="margin-top:4px"></div>
+    <div class="kpis" id="okpis"></div>
+    <div class="omsg" id="omsg"></div>
+  </div>
+  <div class="scrubbar">
+    <div class="row">
+      <button type="button" data-step="-1" data-for="oscrub" title="the step before">&#9664;</button>
+      <input type="range" id="oscrub" min="0" max="0" value="0">
+      <button type="button" data-step="1" data-for="oscrub" title="the step after">&#9654;</button>
+    </div>
+    <div class="sub" id="oscrublab" style="font-variant-numeric:tabular-nums"></div>
+  </div>
+  <div class="onlgrid">
+    <div class="card">
+      <div class="empty" id="oempty" hidden></div>
+      <div class="isocv" id="oiso"><canvas id="iso-onl"></canvas></div>
+      <div class="row" style="margin-top:10px;gap:16px">
+        <label class="row" style="cursor:pointer"><input type="checkbox" id="oshowpts" checked> <span>candidate points</span></label>
+        <label class="row" style="cursor:pointer" title="also the points its action space offered that the rules turned down, in red"><input type="checkbox" id="oshowbad" checked> <span>turned down</span></label>
+        <label class="row" style="cursor:pointer" title="the box drawn in the place chosen, solid, as the pallet stands after this step; off, it is see-through"><input type="checkbox" id="oafter"> <span>after the placement</span></label>
+        <label class="row" style="cursor:pointer" title="the UR20 placing the chosen box, checked against the pallet as it stood"><input type="checkbox" id="oshowarm"> <span>robot arm</span></label>
+        <label class="row"><span>orientations</span> <select class="ptsrot" title="which of the candidate points to draw: both orientations, or only one of them">
+          <option value="all">all</option><option value="0">only 0&deg;</option>
+          <option value="1">only 90&deg;</option></select></label>
+      </div>
+      <div class="sub" id="oarm" style="margin-top:6px;min-height:18px"></div>
+      <div class="sub" style="margin-top:4px;opacity:.8">Dots: a placement as the box came, diamonds: turned 90&deg;; numbers rank the packer's top 5, the ring is the one it chose;
+        red: what the rules turned down (click one for why).
+        Drag to rotate, scroll to zoom, shift-drag to pan, double-click to reset, click a point for its details.
+        <kbd>&larr;</kbd>/<kbd>&rarr;</kbd> step through the history.</div>
+    </div>
+    <div class="onlside">
+      <div class="card opts"><h2>Where it could go &mdash; the packer's top 10</h2><div class="sub" id="optsh"></div><div id="opts"></div></div>
+      <div class="card"><h2>Conveyor &mdash; at the station for this step</h2><div class="rwin" id="owin" style="margin-top:0"></div></div>
+    </div>
+  </div>
+</section>
+
 <!-- the training dashboard (ar2l.viz.dashboard), served by this server under
      /dashboard/ and loaded the first time the tab is opened -->
 <section id="dash" hidden>
@@ -1975,6 +2044,7 @@ let DRAG = null;
 function redrawIsos(){
   if(!$('#logm').hidden && LRES) lDraw(parseInt($('#lscrub').value,10));
   if(!$('#play').hidden && B) drawPlay3d();
+  if(!$('#onl').hidden && OCUR) oDraw();
   if(!$('#result').hidden && RES) drawReplay(parseInt($('#scrub').value,10));
   if(!$('#result').hidden && RES && RCSEL) drawRcReplay(parseInt($('#rcscrub').value,10));
 }
@@ -2227,7 +2297,7 @@ function baseMoves(moves){
 }
 /* what a pinned base adds to an arm's cache key */
 const baseKey = moves => BASE.auto ? '' : `:b${baseMoves(moves)[0]}`;
-for (const id of ['iso3d', 'iso-h', 'iso-a', 'iso-rc0', 'iso-rc1', 'iso-l']){
+for (const id of ['iso3d', 'iso-h', 'iso-a', 'iso-rc0', 'iso-rc1', 'iso-l', 'iso-onl']){
   const cv = $('#' + id);
   (cv.closest('.isorow') || cv).insertAdjacentHTML('afterend', `<div class="row basebar" id="base-${id}" hidden
       style="gap:8px;margin-top:4px" title="where the robot's base stands for the arm drawn: auto takes the first of the base x moves that clears the pack, as the valid and red points do; off, the slider pins the base at one of them, cleared or not -- every 3D bin follows it">
@@ -3397,6 +3467,14 @@ document.querySelectorAll('.scrubbar button[data-step]').forEach(b =>
 addEventListener('keydown', e => {
   // the Play tab's result, or a log match's pallet, whichever is on show
   const log = !$('#logm').hidden && LRES;
+  if (!$('#onl').hidden){
+    const t = e.target;
+    if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight')
+        && !(t && t.matches && t.matches('input,select,textarea'))){
+      stepScrub('oscrub', e.key === 'ArrowLeft' ? -1 : 1); e.preventDefault();
+    }
+    return;
+  }
   if (!log && ($('#result').hidden || !RES || $('#tabgame').hidden)) return;
   const t = e.target;
   if (t && t.matches && t.matches('input:not([type=range]),select,textarea')) return;
@@ -3656,7 +3734,9 @@ const XCOL = ['--c0', '--c4', '--c2', '--c1', '--c5'];
 let XJOB = null, XPOLL = null, XROWS = {}, XRUN = false, XBAD = false;
 function showTab(t){
   $('#tabgame').hidden = t !== 'game'; $('#exp').hidden = t !== 'exp'; $('#cmp').hidden = t !== 'cmp';
-  $('#logm').hidden = t !== 'logm';
+  $('#logm').hidden = t !== 'logm'; $('#onl').hidden = t !== 'onl';
+  $('main').classList.toggle('wide', t === 'onl');
+  if (t === 'onl') oPoll(); else clearTimeout(OPOLL);
   $('#dash').hidden = t !== 'dash'; $('#trn').hidden = t !== 'trn';
   if (t === 'trn'){ if (!TFORM) tLoad(); tPoll(); sPoll(); }
   if (t === 'dash' && !$('#dashf').src) $('#dashf').src = '/dashboard/';
@@ -5015,6 +5095,227 @@ async function sPoll(){
   SPOLL = setTimeout(sPoll, 1500);
 }
 document.addEventListener('visibilitychange', () => { if (!document.hidden && !$('#trn').hidden) sPoll(); });
+/* ================= the Online game: the ROS pallet RL server, live =================
+   The server writes every request it answers to a JSON file; the game server
+   watches it and keeps each step (`ar2l.viz.online`).  The page polls while
+   the tab is open, follows the newest step unless the slider was moved back,
+   and draws the pallet as the server rebuilt it, the conveyor, every legal
+   candidate point with the packer's probability, and the place chosen. */
+let OPOLL = null, OCUR = null, OSTEPS = [], OHAVE = null;
+// the station box whose points are drawn, when it is not the one picked
+// (needs the server's enable_extra_3d_viw); forgotten on another step
+let OSEL = null;
+const OCACHE = new Map(), OARM = new Map();   // OARM: by step, box and base
+const OSTATUS = ['OK', 'pallet done', 'bad request'];
+const oEsc = t => String(t).replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
+const oCm = v => (Math.round(v * 10) / 10).toString();
+const oTime = t => new Date(t * 1000).toLocaleTimeString();
+async function oPoll(){
+  clearTimeout(OPOLL);
+  let r = null;
+  try { r = await (await fetch('/api/online' + (OHAVE != null ? '?have=' + OHAVE : ''))).json(); }
+  catch (e) { $('#ofile').innerHTML = '<span class="bad">the game server does not answer</span>'; }
+  if (r){
+    if (r.last){ OCACHE.set(r.last.id, r.last); OHAVE = r.last.id; }
+    const prev = OSTEPS.length ? OSTEPS[OSTEPS.length - 1].id : null;
+    OSTEPS = r.steps;
+    const newest = OSTEPS.length ? OSTEPS[OSTEPS.length - 1].id : null;
+    // only the last few hundred full steps stay cached on the page
+    for (const id of OCACHE.keys()) if (OCACHE.size > 300 && (!OCUR || id !== OCUR.id)) OCACHE.delete(id);
+    $('#ofile').innerHTML = `watching <code>${oEsc(r.file)}</code> &middot; ${
+      r.error ? `<span class="bad">${oEsc(r.error)}</span>`
+      : !r.exists ? 'no file yet &mdash; is the server running with <code>server.snapshot_file</code> set?'
+      : `${OSTEPS.length} step${OSTEPS.length === 1 ? '' : 's'} kept`}`;
+    const sc = $('#oscrub');
+    sc.max = Math.max(0, OSTEPS.length - 1);
+    if (!OSTEPS.length){ OCUR = null; OHAVE = null; oDraw(); }
+    else if (newest !== prev && ($('#ofollow').checked || !OCUR)){
+      sc.value = sc.max; await oShow(OSTEPS.length - 1);
+    } else {
+      // older steps may have dropped off the front: keep the slider on this one
+      const k = OCUR ? OSTEPS.findIndex(m => m.id === OCUR.id) : -1;
+      if (k >= 0) sc.value = k;
+      oLab();
+    }
+    const last = OSTEPS[OSTEPS.length - 1];
+    const live = !!last && Date.now() / 1000 - last.time < 30;
+    $('#olive').classList.toggle('on', live);
+    $('#olive').title = live ? 'the server answered in the last 30 s' : 'no request in the last 30 s';
+  }
+  if (!$('#onl').hidden && !document.hidden) OPOLL = setTimeout(oPoll, 700);
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden && !$('#onl').hidden) oPoll(); });
+async function oShow(k){
+  const m = OSTEPS[k]; if (!m) return;
+  let s = OCACHE.get(m.id);
+  if (!s){
+    try { s = await (await fetch('/api/online/step?id=' + m.id)).json(); } catch (e) { return; }
+    if (s.error) return;
+    OCACHE.set(m.id, s);
+  }
+  if (+$('#oscrub').value !== k && OSTEPS[+$('#oscrub').value] !== m) return;   // moved on meanwhile
+  if (!OCUR || OCUR.id !== s.id){ $('#iso-onl')._sel = null; OSEL = null; }   // the old step's pop-up and box
+  OCUR = s;
+  oDraw();
+}
+function oLab(){
+  const k = +$('#oscrub').value, m = OSTEPS[k];
+  $('#oscrublab').innerHTML = !m ? 'no step yet'
+    : `step <b>${k + 1}</b> of ${OSTEPS.length} &middot; pallet <b>${oEsc(m.pallet_id || '—')}</b> &middot; box ${
+        m.n_placed + 1} &middot; request #${m.seq} at ${oTime(m.time)}${
+        k === OSTEPS.length - 1 ? ' &middot; <b>newest</b>' : ''}`;
+}
+function oKpis(s){
+  const v = s.view || {}, pl = s.placement_cm;
+  const c = v.cell_cm || 1;
+  const fill = v.bin && v.placed_cm
+    ? v.placed_cm.reduce((a, b) => a + b[0] * b[1] * b[2], 0) / (v.bin[0] * v.bin[1] * v.bin[2] * c ** 3) : null;
+  const k = [
+    ['status', `<span class="ost s${s.status}">${OSTATUS[s.status] || s.status}</span>`],
+    ['pallet', oEsc(s.pallet_id || '—')],
+    ['boxes on it', v.placed ? v.placed.length : '—'],
+    ['fill, real cm', fill == null ? '—' : (fill * 100).toFixed(1) + '%'],
+    ['picked', s.station_index >= 0 ? `#${s.station_index + 1} <small>${PCT(s.pick_probability)}</small>` : '—'],
+    ['placed at x, y, z cm', pl ? `${oCm(pl.x_cm)}, ${oCm(pl.y_cm)}, ${oCm(pl.z_cm)}${s.rotated ? ' <small>turned</small>' : ''}` : '—'],
+    ['sides as it stands', pl ? `${oCm(pl.length_cm)}×${oCm(pl.width_cm)}×${oCm(pl.height_cm)}` : '—'],
+    ['place probability', s.n_candidates ? `${PCT(s.place_probability)} <small>of ${s.n_candidates}</small>` : '—'],
+    ['answered in', `${Math.round(s.ms)} ms`],
+  ];
+  $('#okpis').innerHTML = k.map(([a, b]) => `<div class="kpi"><div class="v">${b}</div><div class="k">${a}</div></div>`).join('');
+  const msg = [];
+  if (s.status !== 0 && s.message) msg.push(`<div class="${s.status === 2 ? 'bad' : ''}">${oEsc(s.message)}</div>`);
+  for (const w of s.warnings || []) msg.push(`<div class="sub">&#9888; ${oEsc(w)}</div>`);
+  msg.push(`<div class="sub">model ${oEsc(s.checkpoint || '?')}${s.selector ? ` &middot; picker ${oEsc(s.selector)}` : ''}${
+    v.type_rule ? ` &middot; type rule ${oEsc(v.type_rule)}` : ''}${
+    v.bin ? ` &middot; pallet ${v.bin.join('×')} cells of ${v.cell_cm} cm` : ''}</div>`);
+  $('#omsg').innerHTML = msg.join('');
+}
+/* the UR20 placing box `place` ([x, y, z, l, w, h]) on step `s`'s pallet: the
+   box picked where it went, another box in reach where the packer would put
+   it, or the dummy of a point clicked (`what` says which).  With the
+   server's extra data on, the base follows the bar under the bin, as in the
+   other 3D views; off, it goes by the robot's own base x moves (auto). */
+function oArm(s, place, what){
+  const v = s.view, on = $('#oshowarm').checked;
+  const own = (s.robot && s.robot.base_x_moves) || [0], free = !!s.extra_3d_viw;
+  baseBar('iso-onl', own, {cell_cm: v ? v.cell_cm : 1}, v ? v.bin : [1, 1, 1],
+          null, on && free && !!place);
+  if (!on || !v || !place){ $('#oarm').textContent = on && v ? 'no box placed at this step' : ''; return null; }
+  const moves = free ? baseMoves(own) : own;
+  const key = `${s.id}:${place.join(',')}${free ? baseKey(own) : ''}`;
+  if (!OARM.has(key)){
+    OARM.set(key, null);
+    api('/api/online/arm', {id: s.id, at: place, moves})
+      .then(r => { OARM.set(key, r); if (OCUR === s) oDraw(); })
+      .catch(e => { OARM.set(key, {error: String(e)}); if (OCUR === s) oDraw(); });
+  }
+  const a = OARM.get(key);
+  if (free && a && !a.error) baseBar('iso-onl', own, {cell_cm: v.cell_cm}, v.bin, a, true);
+  $('#oarm').innerHTML = !a ? 'asking for the arm&hellip;'
+    : a.error ? `<span class="bad">${oEsc(a.error)}</span>`
+    : !a.reachable ? `<b style="color:var(--c3)">the arm cannot reach ${what}</b>`
+    : `robot arm placing ${what}: base moved ${a.base_move} &middot; ${a.hit
+        ? '<b style="color:var(--c3)">a link hits the pack</b>' : 'clear of the pack'} &middot; joints ${
+        a.joints_deg.map(j => j + '°').join(', ')}`;
+  return a && !a.error && a.reachable ? a : null;
+}
+function oDraw(){
+  const s = OCUR, cv = $('#iso-onl');
+  $('#oempty').hidden = !!s; $('#oiso').hidden = !s;
+  oLab();
+  if (!s){
+    $('#oempty').innerHTML = `Nothing from the server yet.<br><br>Start it (<code>ros2 launch pallet_rl_server server.launch.py</code>)
+      and send it a <code>/pallet_rl/plan_placement</code> request &mdash; each step it answers shows up here.`;
+    for (const id of ['#okpis', '#omsg', '#optsh', '#opts', '#owin', '#oarm']) $(id).innerHTML = '';
+    $('#base-iso-onl').hidden = true;
+    return;
+  }
+  oKpis(s);
+  const v = s.view;
+  if (!v){
+    $('#oiso').hidden = true; $('#oempty').hidden = false;
+    $('#oempty').innerHTML = 'The request could not be read, so there is no pallet to draw.';
+    $('#optsh').innerHTML = $('#opts').innerHTML = $('#owin').innerHTML = $('#oarm').innerHTML = '';
+    $('#base-iso-onl').hidden = true;
+    return;
+  }
+  const [L, W, H] = v.bin, typedV = v.n_types > 1;
+  const boxes = v.placed.map(b => b.slice(0, 6)), types = v.placed.map(b => b[6]);
+  // the box looked at: the one picked, or -- with the server's extra data --
+  // any box in reach, as if it had been picked
+  const own = OSEL == null || OSEL === v.pick;
+  const i = own ? v.pick : OSEL;
+  const pts = own ? {cands: v.cands, cand_probs: v.cand_probs, taken: v.taken, bad: v.bad}
+                  : (v.boxes && v.boxes[i]) || {cands: [], cand_probs: [], taken: -1, bad: null};
+  const head = i >= 0 ? v.station[i] : null, ptype = head ? head[3] : -1;
+  // where it goes: the place chosen, or where the packer would put this box
+  let place = own ? v.place_cells : null;
+  if (!own && pts.taken >= 0){
+    const [x, y, z, r] = pts.cands[pts.taken];
+    place = [x, y, z, r ? head[1] : head[0], r ? head[0] : head[1], head[2]];
+  }
+  const after = $('#oafter').checked && place;
+  if (after){ boxes.push(place); types.push(ptype); }
+  const showBad = $('#oshowbad').checked && pts.bad && pts.bad.length;
+  const vp = {pts: pts.cands, probs: pts.cand_probs, taken: pts.taken,
+              bad: showBad ? pts.bad : null, box: head ? head.slice(0, 3) : null, btype: ptype};
+  const pv = $('#oshowpts').checked && !after && head && (pts.cands.length || showBad)
+    ? isoPoints(vp) : {};
+  // the arm places the dummy of a point clicked, else the box looked at
+  const dummy = pv.points ? pickedBox(cv, vp) : null;
+  const arm = oArm(s, dummy || place, dummy ? `#${i + 1} at (${dummy[0]}, ${dummy[1]}) z ${dummy[2]}`
+    : own ? `box #${i + 1} where it went` : `box #${i + 1} where the packer would put it`);
+  const wide = cv.parentElement.clientWidth || 800;
+  const height = Math.round(Math.max(420, Math.min(innerHeight - 230, wide * 0.75)));
+  drawIso(cv, boxes, L, W, H, {
+    types: typedV ? types : null, height, arm, ...pv,
+    highlight: after ? boxes.length - 1 : undefined,
+    ghost: !after && place ? {box: place, type: typedV ? ptype : -1, i: boxes.length} : null});
+  // the points, best first, numbered as in the bin
+  const nb = pts.bad ? pts.bad.length : null;
+  $('#optsh').innerHTML = !head ? '' : `${own ? `box #${i + 1}, the one picked`
+      : `box #${i + 1} <b>as if it were picked</b> &mdash; the ring is where the packer would put it`}${
+      nb != null ? ` &middot; <span class="bad">${nb} turned down</span>` : ''}`;
+  const top = topPoints(pts.cands, pts.cand_probs, 10);
+  $('#opts').innerHTML = top.length ? pointList(top, pts.cands.length, pts.taken)
+    : `<div class="sub">${own && s.status === 1 ? oEsc(s.message) : 'no legal place for this box'}</div>`;
+  // the conveyor, the box picked marked and the picker's odds on those in
+  // reach; with the extra data, a box in reach is clicked for its points
+  const side = {windows: [], _typed: typedV}, n = v.placed.length;
+  side.windows[n] = {w: v.station.map(b => b.slice(0, 3)), t: v.station.map(b => b[3]),
+                     pick: v.pick, probs: v.pick_probs};
+  drawWindow($('#owin'), side, n, v.n_pick, v.boxes ? {i} : null);
+  if (!v.boxes) $('#owin').insertAdjacentHTML('beforeend', `<div class="sub" style="margin-top:6px">To look at
+    another box's points, set <code>server.enable_extra_3d_viw: true</code> in the server's <code>server.yaml</code>
+    (each answer gets slower by about one packer pass per box in reach).</div>`);
+}
+// a click on a box in reach shows its points; again, or the one picked, goes back
+$('#owin').addEventListener('click', e => {
+  const t = e.target.closest('.rwt.pk'), v = OCUR && OCUR.view;
+  if (!t || !v || !v.boxes) return;
+  const i = +t.dataset.i;
+  OSEL = i === v.pick || i === OSEL ? null : i;
+  $('#iso-onl')._sel = null;
+  oDraw();
+});
+$('#oscrub').oninput = e => {
+  const k = +e.target.value;
+  $('#ofollow').checked = k === OSTEPS.length - 1;
+  oLab(); oShow(k);
+};
+$('#ofollow').onchange = e => {
+  if (e.target.checked && OSTEPS.length){ $('#oscrub').value = OSTEPS.length - 1; oShow(OSTEPS.length - 1); }
+};
+for (const id of ['#oshowpts', '#oshowbad', '#oafter', '#oshowarm']) $(id).onchange = () => OCUR && oDraw();
+$('#oclear').onclick = async () => {
+  if (!confirm('Forget every step kept so far? The server and its file are not touched.')) return;
+  await api('/api/online/clear');
+  OCACHE.clear(); OARM.clear(); OSTEPS = []; OCUR = null; OHAVE = null;
+  $('#oscrub').max = 0; $('#oscrub').value = 0;
+  oDraw();
+};
+addEventListener('resize', () => { if (!$('#onl').hidden) oDraw(); });
+bindRotate('#iso-onl');
 document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => showTab(b.dataset.tab));
 addEventListener('resize', moveInk);
 // colour theme: dark (default) <-> light, remembered per browser.
@@ -5032,7 +5333,7 @@ function setTheme(t){
 $('#theme').textContent = THEME_ICON[curTheme()];
 $('#theme').onclick = () => setTheme(curTheme() === 'dark' ? 'light' : 'dark');
 requestAnimationFrame(moveInk);
-if (['#exp', '#logm', '#cmp', '#trn', '#dash'].includes(location.hash)) setTimeout(() => showTab(location.hash.slice(1)), 300);
+if (['#exp', '#logm', '#onl', '#cmp', '#trn', '#dash'].includes(location.hash)) setTimeout(() => showTab(location.hash.slice(1)), 300);
 else xPoll();                           // an experiment already running shows its dot
 tPoll();                                // and so does a training run
 </script>

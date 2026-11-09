@@ -3,7 +3,7 @@
 Every value the server uses comes from one file (`config/server.yaml`):
 `server` (service, checkpoint, device), `grid` (cm <-> cells), `rules` (the
 packing rules) and `robot` (the arm check).  Relative paths are read from the
-file's own folder.
+file's own folder (the checkpoint, and the snapshot file).
 
 The network itself was trained under some rules; if the file says otherwise
 the policy is being asked about a world it never saw.  `check_checkpoint`
@@ -17,7 +17,8 @@ import yaml
 
 REQUIRED = {
     "server": ("service", "checkpoint", "selector", "device",
-               "check_checkpoint", "z_tolerance_cm"),
+               "check_checkpoint", "z_tolerance_cm", "snapshot_file",
+               "enable_extra_3d_viw"),
     "grid": ("cell_cm", "pallet_cells", "box_pad_cm", "box_round"),
     "rules": ("nb", "n_pick", "rot", "ems", "max_l", "stability",
               "min_support", "min_total_support", "n_types", "type_constraint",
@@ -48,6 +49,10 @@ def load(path):
         raise ValueError(f"{path}: unknown section(s) {extra}")
     ck = os.path.expanduser(s["server"]["checkpoint"])
     s["server"]["checkpoint"] = os.path.join(os.path.dirname(path), ck)
+    snap = s["server"]["snapshot_file"]
+    if snap:
+        s["server"]["snapshot_file"] = os.path.join(
+            os.path.dirname(path), os.path.expanduser(str(snap)))
     if s["grid"]["box_round"] not in ("up", "down", "nearest"):
         raise ValueError("grid.box_round is up, down or nearest")
     return s

@@ -16,12 +16,22 @@ server:
   check_checkpoint: warn
   # warn when a placed box's reported bottom is this far from where it rests
   z_tolerance_cm: 2.0
+  # after every request the step is written here as JSON -- the pallet, the
+  # conveyor, the candidate points and what was chosen -- for the game's
+  # "Online game" tab (python3 -m ar2l.viz.game reads the same default path).
+  # null = off
+  snapshot_file: /tmp/pallet_rl_server/last_step.json
+  # with the snapshot on: also bring every box within reach to the front and
+  # score it as if it were picked (its candidate points, the packer's odds,
+  # the points the rules turn down), so the Online game tab can show any box.
+  # Slows every answer by about one more packer pass per box in reach.
+  enable_extra_3d_viw: true
 
 grid:
   # real cm per grid cell (training: eval.cell_cm * eval.box_scale = 1 * 4)
-  cell_cm: 4.0
+  cell_cm: 1.0
   # pallet in cells, x y z: 31 x 27 x 40 = 124 x 108 x 160 cm
-  pallet_cells: [31, 27, 40]
+  pallet_cells: [125, 108, 160]
   # added to every box's length and width before gridding (eval.box_pad_m)
   box_pad_cm: 4.0
   # up | down | nearest (1.5 -> 1, 1.51 -> 2)

@@ -16,7 +16,7 @@ from rclpy.node import Node
 from pallet_rl_interfaces.msg import Box as BoxMsg
 from pallet_rl_interfaces.srv import PlanPlacement
 
-from . import settings
+from . import settings, snapshot
 from .planner import Box, Planner
 
 
@@ -38,14 +38,18 @@ class PlannerNode(Node):
                                "config", "server.yaml")
         path = self.declare_parameter("config", default).value
         cfg = settings.load(path)
+        self.cfg = cfg
         self.planner = Planner(cfg, log=self.get_logger().warning)
+        self.snap_path = cfg["server"]["snapshot_file"]
+        self.seq = 0
         name = cfg["server"]["service"]
         self.create_service(PlanPlacement, name, self.on_request)
         r = self.planner.rules
         self.get_logger().info(
             f"ready on {name}: {r.Lx}x{r.Ly}x{r.Lz} cells of "
             f"{self.planner.cell_cm:g} cm, rule {r.type_rule}, "
-            f"checkpoint {cfg['server']['checkpoint']}")
+            f"checkpoint {cfg['server']['checkpoint']}"
+            + (f", last step -> {self.snap_path}" if self.snap_path else ""))
 
     def on_request(self, req, res):
         plan = self.planner.plan([_box(m) for m in req.placed],
@@ -69,6 +73,14 @@ class PlannerNode(Node):
             f"({plan.ms:.0f} ms)")
         for w in plan.warnings:
             self.get_logger().warning(f"[{req.pallet_id}] {w}")
+        if self.snap_path:
+            self.seq += 1
+            try:
+                snapshot.write(self.snap_path, snapshot.build(
+                    plan, req.pallet_id, self.seq, self.cfg))
+            except (OSError, TypeError, ValueError) as e:
+                self.get_logger().warning(
+                    f"could not write the snapshot {self.snap_path}: {e}")
         return res
 
 

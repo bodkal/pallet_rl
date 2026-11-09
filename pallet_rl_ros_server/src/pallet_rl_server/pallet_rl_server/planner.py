@@ -21,8 +21,9 @@ import numpy as np
 import torch
 
 from . import settings as S
+from .points import turned_down
 from .core.arm import ArmChecker
-from .core.nets import greedy, load_nets
+from .core.nets import greedy, load_nets, probs
 from .core.pallet import Pallet
 from .core.rules import Rules, cm_to_cells
 
@@ -54,6 +55,9 @@ class Plan:
     n_candidates: int = 0
     warnings: list = field(default_factory=list)
     ms: float = 0.0
+    # the step as the online view draws it (`Planner._view`); None on a bad
+    # request
+    view: dict | None = None
 
 
 class Planner:
@@ -66,6 +70,11 @@ class Planner:
         self.rounding = grid["box_round"]
         self.z_tol = float(srv["z_tolerance_cm"])
         self.device = srv["device"]
+        # the snapshot's extras: the points the rules turned down (whenever a
+        # snapshot is written), and every box in reach scored as if it were
+        # picked (`enable_extra_3d_viw`, slower)
+        self.views = bool(srv["snapshot_file"])
+        self.extra = self.views and bool(srv["enable_extra_3d_viw"])
         self.rules = Rules(cfg["rules"], grid["pallet_cells"], self.cell_cm,
                            self.pad_cm, self.rounding)
         self.arm = (ArmChecker(cfg["robot"], self.cell_cm / 100.0,
@@ -140,31 +149,47 @@ class Planner:
         if len(station) > R.nb:
             warn.append(f"{len(station)} station boxes sent, the policy sees "
                         f"the first {R.nb}")
-        pal = Pallet(R, self.arm, [self._placed_cells(b) for b in placed],
+        cells = [self._placed_cells(b) for b in placed]
+        pal = Pallet(R, self.arm, cells,
                      [self._station_cells(b) for b in station[:R.nb]])
         for i, (b, z) in enumerate(zip(placed, pal.landed)):
             if abs(z * self.cell_cm - b.z_cm) > self.z_tol:
                 warn.append(f"placed[{i}] reported at z {b.z_cm:g} cm but "
                             f"rests at {z * self.cell_cm:g} cm")
+        view = self._view(pal, cells, placed, station)
 
         # 1. the selector brings a station box to the front
         idx, p_pick = 0, 1.0
         if self.select is not None:
             o = pal.obs_cb()
+            view["reach"] = o["b_pick"][0, : len(view["station"])].tolist()
             if R.pick_feasible and not o["b_pick"].any():
+                self._every_box(pal, view, 0)
                 return Plan(PALLET_DONE, "no box within reach has a legal "
-                            "place", warnings=warn)
-            idx, p_pick = greedy(self.select(self._torch(o)))
+                            "place", warnings=warn, view=view)
+            logits = self.select(self._torch(o))
+            idx, p_pick = greedy(logits)
+            view["pick_probs"] = probs(logits)[: len(view["station"])]
             pal.permute(idx)
+        view["pick"] = idx
 
         # 2. the packer places it
         o = pal.obs()
         n_cand = int(o["l_mask"].sum())
+        if self.views:
+            view["bad"] = turned_down(pal)
         if not n_cand:
+            self._every_box(pal, view, idx)
             return Plan(PALLET_DONE, "the chosen box has no legal place",
-                        station_index=idx, warnings=warn)
-        a, p_place = greedy(self.pack(self._torch(o)))
+                        station_index=idx, warnings=warn, view=view)
+        logits = self.pack(self._torch(o))
+        a, p_place = greedy(logits)
         x, y, r, z, sx, sy, sz = (int(v) for v in pal.cand[a])
+        view["cands"] = self._cands(pal, n_cand)
+        view["cand_probs"] = probs(logits)[:n_cand]
+        view["taken"] = a
+        view["place_cells"] = [x, y, z, sx, sy, sz]
+        self._every_box(pal, view, idx)
 
         box = station[idx]
         length, width = ((box.width_cm, box.length_cm) if r
@@ -176,7 +201,67 @@ class Planner:
         return Plan(OK, "; ".join(warn), station_index=idx, placement=place,
                     rotated=bool(r), pick_probability=p_pick,
                     place_probability=p_place, n_candidates=n_cand,
-                    warnings=warn)
+                    warnings=warn, view=view)
+
+    def _view(self, pal, cells, placed, station):
+        """The step in grid cells, for the online view: the pallet as the
+        planner rebuilt it (each box at the height it rests at), the
+        conveyor, and -- filled in by `_plan` as it decides -- the picker's
+        and the packer's probabilities and what they chose."""
+        R = self.rules
+        rows = [[int(v) for v in (x, y, int(z), sx, sy, sz, t)]
+                for (x, y, _, sx, sy, sz, t), z in zip(cells, pal.landed)]
+        cm = lambda b: [float(b.length_cm), float(b.width_cm),
+                        float(b.height_cm)]
+        return {
+            "bin": [R.Lx, R.Ly, R.Lz], "cell_cm": self.cell_cm,
+            "n_types": R.n_types, "nb": R.nb, "n_pick": R.n_pick,
+            "type_rule": R.type_rule if R.type_constraint else "none",
+            "placed": rows, "placed_cm": [cm(b) for b in placed],
+            "station": [[int(v) for v in self._station_cells(b)]
+                        for b in station[: R.nb]],
+            "station_cm": [cm(b) for b in station[: R.nb]],
+            "reach": None, "pick_probs": None, "pick": -1,
+            "cands": [], "cand_probs": [], "taken": -1, "place_cells": None,
+            # the points the rules turned down for the box picked, and with
+            # `enable_extra_3d_viw` every box in reach's own points
+            "bad": None, "boxes": None,
+        }
+
+    @staticmethod
+    def _cands(pal, n):
+        """The legal candidates (they come first in `cand`) as the view
+        takes them: (x, y, z, orientation), as the game's 3D bin draws them."""
+        return [[int(c[0]), int(c[1]), int(c[3]), int(c[2])]
+                for c in pal.cand[:n]]
+
+    def _every_box(self, pal, view, front):
+        """With `enable_extra_3d_viw`: each box within reach in turn brought
+        to the front and asked as if it were picked -- its candidates, the
+        packer's probabilities over them, and the points the rules turned
+        down -- as `view["boxes"][i]` (station order).  Runs after the
+        decision; `pal` is left with some other box in front.  `front`: the
+        station index in front now."""
+        if not self.extra:
+            return
+        n = len(view["station"])
+        order = [front] + [j for j in range(n) if j != front]
+        boxes = [None] * n
+        for j in range(min(self.rules.n_pick, n)):
+            k = order.index(j)
+            if k:
+                pal.permute(k)
+                order = [order[k]] + order[:k] + order[k + 1:]
+            o = pal.obs()
+            nc = int(o["l_mask"].sum())
+            box = {"cands": self._cands(pal, nc), "cand_probs": [],
+                   "taken": -1, "bad": turned_down(pal)}
+            if nc:
+                logits = self.pack(self._torch(o))
+                box["cand_probs"] = probs(logits)[:nc]
+                box["taken"] = greedy(logits)[0]
+            boxes[j] = box
+        view["boxes"] = boxes
 
     def _torch(self, o):
         return {k: torch.as_tensor(v).to(self.device) for k, v in o.items()}

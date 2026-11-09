@@ -25,6 +25,7 @@ src/pallet_rl_server/              the node (ament_python)
     pallet_rl_server/
         node.py                    ROS wrapper, nothing else
         planner.py                 stateless planner: cm in, cm out (no ROS)
+        snapshot.py                writes each step to a JSON file for the game
         settings.py                reads server.yaml, checks it against the model
         core/pallet.py             the pallet state + every feasibility rule
         core/rules.py              the rules resolved to grid cells
@@ -108,6 +109,31 @@ then every side is divided by `cell_cm` (4 cm) and rounded (`nearest`). A
 50 x 30 x 28 box is 13 x 8 x 7 cells. A placed box's position is snapped
 to the nearest cell. A reported `z_cm` more than `z_tolerance_cm` away from
 where the box would actually rest gives a warning, and the rest height is used.
+
+## Watching it live (the game's "Online game" tab)
+
+After every request the node writes the step to `server.snapshot_file`
+(`/tmp/pallet_rl_server/last_step.json` by default; `null` turns it off): the
+pallet as the server rebuilt it, the conveyor, the picker's probability for
+each box in reach, every legal candidate point with the packer's probability,
+and what it chose, plus the points the rules turned down for the chosen box
+(drawn red, each with the rule that did it). The file is replaced atomically.
+
+`server.enable_extra_3d_viw: true` also brings every box within reach to the
+front and scores it as if it were picked (its candidates, the packer's
+probabilities, the points turned down), so the tab can show any box in reach,
+not only the one picked. It slows each answer by about one more packer pass
+per box in reach (~40 ms with the default rules on a desktop CPU).
+
+The training repo's game shows it in its **Online game** tab, in one big 3D
+view that follows each new step, with a slider back through the earlier ones
+and the UR20 placing the chosen box:
+
+```bash
+cd ~/Projects/pallet_rl
+python3 -m ar2l.viz.game --port 8096          # --online_file <path> if not the default
+# open http://127.0.0.1:8096/#onl
+```
 
 ## Settings
 
