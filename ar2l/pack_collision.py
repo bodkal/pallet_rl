@@ -1072,12 +1072,16 @@ class ArmPackChecker:
         return [(lp.effective_radius(), lp.effective_radius_end())
                 for lp in (p.upper_arm, p.forearm, p.wrist)]
 
-    def collides_batch(self, sizes, poses, base_from_box, hms, which=None):
+    def collides_batch(self, sizes, poses, base_from_box, hms, which=None,
+                       table=None, geometry=False):
         """`is_arm_collid_with_pack(...)[0]` for N placements at once.
 
         sizes, poses   (N, 3) ints, as `object_size` / `object_pos`
         hms            (M, nx, ny) height maps, or one (nx, ny)
         which          (N,) the map each placement is over; all 0 when None
+        table          `pack_table(hms)`, if the caller keeps one
+        geometry       also return the `(ok, seg)` it was decided on, which
+                       `columns_from` reads without looking it up again
 
         No pyramid is needed: the maps are read directly.
         """
@@ -1089,17 +1093,18 @@ class ArmPackChecker:
         n = len(sizes)
         which = np.zeros(n, int) if which is None else np.asarray(which, int)
         if n == 0:
-            return np.zeros(0, bool)
+            out = np.zeros(0, bool)
+            return (out, out, np.zeros((0, 3, 2, 3))) if geometry else out
         ok, seg = self._geometry(sizes, poses, base_from_box)
         out = ~ok                     # unreachable counts as a collision
         idx = np.flatnonzero(ok)
-        if not len(idx):
-            return out
-        caps = [(seg[idx, li, 0], seg[idx, li, 1], ra, rb)
-                for li, (ra, rb) in enumerate(self._radii())]
-        out[idx] = capsules_hit_packs_b(caps, hms, which[idx], self.pad,
-                                        self.cell_frame.height_scale())
-        return out
+        if len(idx):
+            caps = [(seg[idx, li, 0], seg[idx, li, 1], ra, rb)
+                    for li, (ra, rb) in enumerate(self._radii())]
+            out[idx] = capsules_hit_packs_b(caps, hms, which[idx], self.pad,
+                                            self.cell_frame.height_scale(),
+                                            table)
+        return (out, ok, seg) if geometry else out
 
     def columns_read(self, sizes, poses, base_from_box):
         """(N, 4) inclusive x0, x1, y0, y1: the columns `collides_batch` can
@@ -1109,7 +1114,11 @@ class ArmPackChecker:
         placements read no column and come back as an empty box."""
         sizes = np.asarray(sizes, int).reshape(-1, 3)
         poses = np.asarray(poses, int).reshape(-1, 3)
-        ok, seg = self._geometry(sizes, poses, base_from_box)
+        return self.columns_from(*self._geometry(sizes, poses, base_from_box))
+
+    def columns_from(self, ok, seg):
+        """`columns_read` from the `(ok, seg)` geometry of the placements,
+        as `collides_batch(..., geometry=True)` returns it."""
         rm = np.array([max(ra, rb) for ra, rb in self._radii()]) + self.pad
         with np.errstate(invalid="ignore"):
             lo = (seg.min(2)[..., :2] - rm[None, :, None]).min(1)
@@ -1290,7 +1299,27 @@ def _column_hits_b(a, b, ra, rb, px, py, h):
     return Z.min(0) <= h
 
 
-def capsules_hit_packs_b(caps, hms, which, pad=K_CELL_PAD, height_scale=1.0):
+def pack_table(hms):
+    """(lg, tab) the row range-max table `capsules_hit_packs_b` reads:
+    `tab[j, m, x, y]` is the max of `hms[m, x, y : y + 2^j]`, `lg[w]` is
+    floor(log2 w).  It depends on the height maps alone, so a caller that asks
+    many batches of the same maps can build it once and hand it in."""
+    hms = np.asarray(hms)
+    ny = hms.shape[2]
+    lg = np.zeros(ny + 1, np.int64)
+    for i in range(2, ny + 1):
+        lg[i] = lg[i // 2] + 1
+    tab = np.zeros((lg[ny] + 1,) + hms.shape, hms.dtype)
+    tab[0] = hms
+    for j in range(1, lg[ny] + 1):
+        s = 1 << (j - 1)
+        np.maximum(tab[j - 1][..., : ny - s], tab[j - 1][..., s:],
+                   out=tab[j][..., : ny - s])
+    return lg, tab
+
+
+def capsules_hit_packs_b(caps, hms, which, pad=K_CELL_PAD, height_scale=1.0,
+                         table=None):
     """(N,) does any of each placement's capsules hit its own height map?
 
     `caps` is a list of (a (N, 3), b (N, 3), ra, rb), one per link; `hms` is
@@ -1305,7 +1334,8 @@ def capsules_hit_packs_b(caps, hms, which, pad=K_CELL_PAD, height_scale=1.0):
     order, and the height maps are read only at those pairs.  A row of the
     run whose tallest column -- a sparse-table range max -- is below the
     capsule's lowest point cannot pass the height test anywhere, so it is
-    dropped before its cells are listed; that is most of them.
+    dropped before its cells are listed; that is most of them.  `table` is
+    `pack_table(hms)`, when the caller has it already.
     """
     hms = np.asarray(hms)
     M, nx, ny = hms.shape
@@ -1317,15 +1347,7 @@ def capsules_hit_packs_b(caps, hms, which, pad=K_CELL_PAD, height_scale=1.0):
     cx = np.arange(nx) + 0.5
     cy = np.arange(ny) + 0.5
     # tab[j, m, x, y] = max of hms[m, x, y : y + 2^j], for the rows' range max
-    lg = np.zeros(ny + 1, np.int64)
-    for i in range(2, ny + 1):
-        lg[i] = lg[i // 2] + 1
-    tab = np.zeros((lg[ny] + 1,) + hms.shape, hms.dtype)
-    tab[0] = hms
-    for j in range(1, lg[ny] + 1):
-        s = 1 << (j - 1)
-        np.maximum(tab[j - 1][..., : ny - s], tab[j - 1][..., s:],
-                   out=tab[j][..., : ny - s])
+    lg, tab = pack_table(hms) if table is None else table
     for a, b, ra, rb in caps:
         live = ~hit
         if not live.any():
